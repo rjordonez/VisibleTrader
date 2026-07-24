@@ -1,0 +1,386 @@
+[
+  {
+    "top_k": 250,
+    "train_frac": 0.25,
+    "metric": "pnl",
+    "thresholds": {
+      "1": {
+        "signal_count": 517,
+        "win_rate": 0.7215,
+        "mean_return": 0.1826
+      },
+      "2": {
+        "signal_count": 23,
+        "win_rate": 0.4783,
+        "mean_return": 2.2456
+      },
+      "3": {
+        "signal_count": 5,
+        "win_rate": 0.6,
+        "mean_return": -0.044
+      },
+      "5": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      },
+      "10": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      }
+    }
+  },
+  {
+    "top_k": 500,
+    "train_frac": 0.25,
+    "metric": "pnl",
+    "thresholds": {
+      "1": {
+        "signal_count": 517,
+        "win_rate": 0.7215,
+        "mean_return": 0.1826
+      },
+      "2": {
+        "signal_count": 23,
+        "win_rate": 0.4783,
+        "mean_return": 2.2456
+      },
+      "3": {
+        "signal_count": 5,
+        "win_rate": 0.6,
+        "mean_return": -0.044
+      },
+      "5": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      },
+      "10": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      }
+    }
+  },
+  {
+    "top_k": 250,
+    "train_frac": 0.35,
+    "metric": "pnl",
+    "thresholds": {
+      "1": {
+        "signal_count": 1410,
+        "win_rate": 0.5468,
+        "mean_return": 1.316
+      },
+      "2": {
+        "signal_count": 124,
+        "win_rate": 0.5,
+        "mean_return": 0.1674
+      },
+      "3": {
+        "signal_count": 37,
+        "win_rate": 0.5676,
+        "mean_return": 1.2333
+      },
+      "5": {
+        "signal_count": 9,
+        "win_rate": 0.6667,
+        "mean_return": -0.0012
+      },
+      "10": {
+        "signal_count": 1,
+        "win_rate": 1.0,
+        "mean_return": 0.9011
+      }
+    }
+  },
+  {
+    "top_k": 500,
+    "train_frac": 0.35,
+    "metric": "pnl",
+    "thresholds": {
+      "1": {
+        "signal_count": 1410,
+        "win_rate": 0.5468,
+        "mean_return": 1.316
+      },
+      "2": {
+        "signal_count": 124,
+        "win_rate": 0.5,
+        "mean_return": 0.1674
+      },
+      "3": {
+        "signal_count": 37,
+        "win_rate": 0.5676,
+        "mean_return": 1.2333
+      },
+      "5": {
+        "signal_count": 9,
+        "win_rate": 0.6667,
+        "mean_return": -0.0012
+      },
+      "10": {
+        "signal_count": 1,
+        "win_rate": 1.0,
+        "mean_return": 0.9011
+      }
+    }
+  },
+  {
+    "top_k": 250,
+    "train_frac": 0.5,
+    "metric": "pnl",
+    "thresholds": {
+      "1": {
+        "signal_count": 4376,
+        "win_rate": 0.6092,
+        "mean_return": 0.281
+      },
+      "2": {
+        "signal_count": 574,
+        "win_rate": 0.6202,
+        "mean_return": 0.1408
+      },
+      "3": {
+        "signal_count": 176,
+        "win_rate": 0.6307,
+        "mean_return": -0.0008
+      },
+      "5": {
+        "signal_count": 31,
+        "win_rate": 0.7097,
+        "mean_return": -0.0137
+      },
+      "10": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      }
+    }
+  },
+  {
+    "top_k": 500,
+    "train_frac": 0.5,
+    "metric": "pnl",
+    "thresholds": {
+      "1": {
+        "signal_count": 4376,
+        "win_rate": 0.6092,
+        "mean_return": 0.281
+      },
+      "2": {
+        "signal_count": 574,
+        "win_rate": 0.6202,
+        "mean_return": 0.1408
+      },
+      "3": {
+        "signal_count": 176,
+        "win_rate": 0.6307,
+        "mean_return": -0.0008
+      },
+      "5": {
+        "signal_count": 31,
+        "win_rate": 0.7097,
+        "mean_return": -0.0137
+      },
+      "10": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      }
+    }
+  },
+  {
+    "top_k": 250,
+    "train_frac": 0.25,
+    "metric": "roi",
+    "thresholds": {
+      "1": {
+        "signal_count": 517,
+        "win_rate": 0.7215,
+        "mean_return": 0.1826
+      },
+      "2": {
+        "signal_count": 23,
+        "win_rate": 0.4783,
+        "mean_return": 2.2456
+      },
+      "3": {
+        "signal_count": 5,
+        "win_rate": 0.6,
+        "mean_return": -0.044
+      },
+      "5": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      },
+      "10": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      }
+    }
+  },
+  {
+    "top_k": 500,
+    "train_frac": 0.25,
+    "metric": "roi",
+    "thresholds": {
+      "1": {
+        "signal_count": 517,
+        "win_rate": 0.7215,
+        "mean_return": 0.1826
+      },
+      "2": {
+        "signal_count": 23,
+        "win_rate": 0.4783,
+        "mean_return": 2.2456
+      },
+      "3": {
+        "signal_count": 5,
+        "win_rate": 0.6,
+        "mean_return": -0.044
+      },
+      "5": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      },
+      "10": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      }
+    }
+  },
+  {
+    "top_k": 250,
+    "train_frac": 0.35,
+    "metric": "roi",
+    "thresholds": {
+      "1": {
+        "signal_count": 1410,
+        "win_rate": 0.5468,
+        "mean_return": 1.316
+      },
+      "2": {
+        "signal_count": 124,
+        "win_rate": 0.5,
+        "mean_return": 0.1674
+      },
+      "3": {
+        "signal_count": 37,
+        "win_rate": 0.5676,
+        "mean_return": 1.2333
+      },
+      "5": {
+        "signal_count": 9,
+        "win_rate": 0.6667,
+        "mean_return": -0.0012
+      },
+      "10": {
+        "signal_count": 1,
+        "win_rate": 1.0,
+        "mean_return": 0.9011
+      }
+    }
+  },
+  {
+    "top_k": 500,
+    "train_frac": 0.35,
+    "metric": "roi",
+    "thresholds": {
+      "1": {
+        "signal_count": 1410,
+        "win_rate": 0.5468,
+        "mean_return": 1.316
+      },
+      "2": {
+        "signal_count": 124,
+        "win_rate": 0.5,
+        "mean_return": 0.1674
+      },
+      "3": {
+        "signal_count": 37,
+        "win_rate": 0.5676,
+        "mean_return": 1.2333
+      },
+      "5": {
+        "signal_count": 9,
+        "win_rate": 0.6667,
+        "mean_return": -0.0012
+      },
+      "10": {
+        "signal_count": 1,
+        "win_rate": 1.0,
+        "mean_return": 0.9011
+      }
+    }
+  },
+  {
+    "top_k": 250,
+    "train_frac": 0.5,
+    "metric": "roi",
+    "thresholds": {
+      "1": {
+        "signal_count": 4376,
+        "win_rate": 0.6092,
+        "mean_return": 0.2806
+      },
+      "2": {
+        "signal_count": 574,
+        "win_rate": 0.6202,
+        "mean_return": 0.1377
+      },
+      "3": {
+        "signal_count": 175,
+        "win_rate": 0.6286,
+        "mean_return": -0.0009
+      },
+      "5": {
+        "signal_count": 31,
+        "win_rate": 0.7097,
+        "mean_return": -0.0137
+      },
+      "10": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      }
+    }
+  },
+  {
+    "top_k": 500,
+    "train_frac": 0.5,
+    "metric": "roi",
+    "thresholds": {
+      "1": {
+        "signal_count": 4376,
+        "win_rate": 0.6092,
+        "mean_return": 0.2806
+      },
+      "2": {
+        "signal_count": 574,
+        "win_rate": 0.6202,
+        "mean_return": 0.1377
+      },
+      "3": {
+        "signal_count": 175,
+        "win_rate": 0.6286,
+        "mean_return": -0.0009
+      },
+      "5": {
+        "signal_count": 31,
+        "win_rate": 0.7097,
+        "mean_return": -0.0137
+      },
+      "10": {
+        "signal_count": 0,
+        "win_rate": 0.0,
+        "mean_return": 0.0
+      }
+    }
+  }
+]

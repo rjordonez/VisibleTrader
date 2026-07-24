@@ -1,0 +1,269 @@
+import http from 'http'
+import { execFile } from 'child_process'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { fileURLToPath } from 'url'
+import path from 'path'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const DB_PATH = path.join(__dirname, '..', 'venter_signals.db')
+const CONFIG_PATH = path.join(__dirname, '..', 'venter_config.json')
+const PORT = 5201
+
+const CONFIG_DEFAULTS = {
+  roster_size: 500,
+  tiers: [1000, 5000, 20000, 50000, 100000],
+  ticker_min_usd: 100,
+  scalp_window_minutes: 30,
+}
+
+function readConfig() {
+  if (!existsSync(CONFIG_PATH)) return { ...CONFIG_DEFAULTS }
+  try {
+    const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'))
+    return { ...CONFIG_DEFAULTS, ...raw }
+  } catch {
+    return { ...CONFIG_DEFAULTS }
+  }
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = ''
+    req.on('data', chunk => { body += chunk })
+    req.on('end', () => resolve(body))
+    req.on('error', reject)
+  })
+}
+
+// Escapes a value for safe interpolation inside a single-quoted SQL string
+// literal. execFile (not exec) already avoids shell injection since sqlite3
+// is invoked directly with an args array, not through a shell — this handles
+// the separate SQL-injection risk from interpolating URL path params into
+// the query text itself.
+function sqlEscape(value) {
+  return String(value).replace(/'/g, "''")
+}
+
+function runQuery(sql) {
+  return new Promise((resolve, reject) => {
+    if (!existsSync(DB_PATH)) {
+      resolve([])
+      return
+    }
+    execFile('sqlite3', ['-json', DB_PATH, sql], (err, stdout, stderr) => {
+      if (err) {
+        reject(new Error(stderr || err.message))
+        return
+      }
+      const trimmed = stdout.trim()
+      resolve(trimmed ? JSON.parse(trimmed) : [])
+    })
+  })
+}
+
+function sendJson(res, status, data) {
+  res.writeHead(status, {
+    'content-type': 'application/json',
+    'access-control-allow-origin': '*',
+    'cache-control': 'no-store',
+  })
+  res.end(JSON.stringify(data))
+}
+
+const server = http.createServer(async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'GET, OPTIONS',
+      'access-control-allow-headers': '*',
+    })
+    res.end()
+    return
+  }
+
+  const url = new URL(req.url ?? '/', 'http://localhost')
+
+  try {
+    if (url.pathname === '/opportunities') {
+      const rows = await runQuery(`
+        SELECT o.*,
+          COALESCE(w.entries, 0) AS entries,
+          COALESCE(w.exited, 0) AS exited,
+          COALESCE(w.scalped, 0) AS scalped,
+          COALESCE(w.closed, 0) AS closed,
+          COALESCE(w.won, 0) AS won,
+          COALESCE(w.lost, 0) AS lost
+        FROM opportunities o
+        INNER JOIN (
+          SELECT condition_id, outcome, MAX(tier) AS max_tier
+          FROM opportunities GROUP BY condition_id, outcome
+        ) m ON o.condition_id = m.condition_id AND o.outcome = m.outcome AND o.tier = m.max_tier
+        LEFT JOIN (
+          SELECT condition_id, outcome,
+            COUNT(*) AS entries,
+            SUM(CASE WHEN exit_ts IS NOT NULL THEN 1 ELSE 0 END) AS exited,
+            SUM(CASE WHEN is_scalp = 1 THEN 1 ELSE 0 END) AS scalped,
+            SUM(CASE WHEN market_closed = 1 THEN 1 ELSE 0 END) AS closed,
+            SUM(CASE WHEN market_closed = 1 AND resolved_win = 1 THEN 1 ELSE 0 END) AS won,
+            SUM(CASE WHEN market_closed = 1 AND resolved_win = 0 THEN 1 ELSE 0 END) AS lost
+          FROM opportunity_wallets GROUP BY condition_id, outcome
+        ) w ON o.condition_id = w.condition_id AND o.outcome = w.outcome
+        ORDER BY o.last_updated DESC
+      `)
+      sendJson(res, 200, rows)
+      return
+    }
+
+    if (url.pathname === '/ticker') {
+      const rows = await runQuery(`
+        SELECT id, condition_id, outcome, slug, title, usd, price, side, wallet, wallet_name, roster_tagged, category, ts
+        FROM ticker ORDER BY epoch DESC LIMIT 200
+      `)
+      sendJson(res, 200, rows)
+      return
+    }
+
+    if (url.pathname === '/profits') {
+      const [summaryRows, dailyRows, detailRows] = await Promise.all([
+        runQuery(`
+          SELECT
+            COUNT(*) AS resolved_n,
+            SUM(CASE WHEN resolved_win = 1 THEN 1 ELSE 0 END) AS won,
+            SUM(CASE WHEN resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
+            SUM(usd) AS deployed,
+            SUM(CASE WHEN resolved_win = 1 THEN (usd / price) - usd ELSE -usd END) AS net_profit
+          FROM opportunity_wallets WHERE market_closed = 1
+        `),
+        runQuery(`
+          SELECT date(resolved_ts) AS d,
+            SUM(CASE WHEN resolved_win = 1 THEN (usd / price) - usd ELSE -usd END) AS day_profit
+          FROM opportunity_wallets WHERE market_closed = 1
+          GROUP BY d ORDER BY d ASC
+        `),
+        runQuery(`
+          SELECT ow.wallet, ow.wallet_name, o.title, ow.outcome, ow.usd, ow.price, ow.resolved_win, ow.resolved_ts,
+            CASE WHEN ow.resolved_win = 1 THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END AS profit
+          FROM opportunity_wallets ow
+          JOIN (SELECT condition_id, outcome, MAX(title) AS title FROM opportunities GROUP BY condition_id, outcome) o
+            ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
+          WHERE ow.market_closed = 1
+          ORDER BY ow.resolved_ts DESC LIMIT 200
+        `),
+      ])
+      sendJson(res, 200, { summary: summaryRows[0] ?? null, daily: dailyRows, positions: detailRows })
+      return
+    }
+
+    if (url.pathname === '/leaderboard') {
+      const rows = await runQuery(`
+        SELECT wallet, wallet_name,
+          COUNT(*) AS n,
+          SUM(CASE WHEN resolved_win = 1 THEN 1 ELSE 0 END) AS won,
+          SUM(CASE WHEN resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
+          SUM(usd) AS deployed,
+          SUM(CASE WHEN resolved_win = 1 THEN (usd / price) - usd ELSE -usd END) AS net_profit
+        FROM opportunity_wallets
+        WHERE market_closed = 1 AND wallet IS NOT NULL
+        GROUP BY wallet
+        ORDER BY net_profit DESC
+      `)
+      sendJson(res, 200, rows)
+      return
+    }
+
+    if (url.pathname === '/settings' && req.method === 'GET') {
+      sendJson(res, 200, readConfig())
+      return
+    }
+
+    if (url.pathname === '/settings' && req.method === 'POST') {
+      const body = await readBody(req)
+      let parsed
+      try {
+        parsed = JSON.parse(body)
+      } catch {
+        sendJson(res, 400, { error: 'invalid JSON body' })
+        return
+      }
+      // Clamp/validate everything — this writes straight to a file the Python
+      // backend trusts and reloads unattended, so garbage in here would silently
+      // break the live pipeline rather than just fail one HTTP request.
+      const tiers = Array.isArray(parsed.tiers)
+        ? [...new Set(parsed.tiers.map(Number).filter(n => Number.isFinite(n) && n >= 0))].sort((a, b) => a - b)
+        : CONFIG_DEFAULTS.tiers
+      const cfg = {
+        roster_size: Math.max(1, Math.min(2000, Math.round(Number(parsed.roster_size)) || CONFIG_DEFAULTS.roster_size)),
+        tiers: tiers.length > 0 ? tiers : CONFIG_DEFAULTS.tiers,
+        ticker_min_usd: Math.max(1, Math.round(Number(parsed.ticker_min_usd)) || CONFIG_DEFAULTS.ticker_min_usd),
+        scalp_window_minutes: Math.max(1, Math.round(Number(parsed.scalp_window_minutes)) || CONFIG_DEFAULTS.scalp_window_minutes),
+      }
+      writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2))
+      sendJson(res, 200, cfg)
+      return
+    }
+
+    const traderMatch = url.pathname.match(/^\/trader\/([^/]+)$/)
+    if (traderMatch) {
+      const wallet = sqlEscape(decodeURIComponent(traderMatch[1]))
+      const [summaryRows, positionRows, categoryRows] = await Promise.all([
+        runQuery(`
+          SELECT wallet, wallet_name,
+            COUNT(*) AS n,
+            SUM(CASE WHEN resolved_win = 1 THEN 1 ELSE 0 END) AS won,
+            SUM(CASE WHEN resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
+            SUM(usd) AS deployed,
+            SUM(CASE WHEN resolved_win = 1 THEN (usd / price) - usd ELSE -usd END) AS net_profit
+          FROM opportunity_wallets
+          WHERE market_closed = 1 AND lower(wallet) = lower('${wallet}')
+          GROUP BY wallet
+        `),
+        runQuery(`
+          SELECT ow.usd, ow.price, ow.resolved_win, ow.resolved_ts, o.title, o.outcome, o.category,
+            CASE WHEN ow.resolved_win = 1 THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END AS profit
+          FROM opportunity_wallets ow
+          JOIN (SELECT condition_id, outcome, MAX(title) AS title, MAX(category) AS category FROM opportunities GROUP BY condition_id, outcome) o
+            ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
+          WHERE ow.market_closed = 1 AND lower(ow.wallet) = lower('${wallet}')
+          ORDER BY ow.resolved_ts DESC
+        `),
+        runQuery(`
+          SELECT COALESCE(o.category, 'other') AS category,
+            COUNT(*) AS n,
+            SUM(CASE WHEN ow.resolved_win = 1 THEN 1 ELSE 0 END) AS won,
+            SUM(CASE WHEN ow.resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
+            SUM(CASE WHEN ow.resolved_win = 1 THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END) AS profit
+          FROM opportunity_wallets ow
+          JOIN (SELECT condition_id, outcome, MAX(category) AS category FROM opportunities GROUP BY condition_id, outcome) o
+            ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
+          WHERE ow.market_closed = 1 AND lower(ow.wallet) = lower('${wallet}')
+          GROUP BY category
+          ORDER BY profit DESC
+        `),
+      ])
+      sendJson(res, 200, { summary: summaryRows[0] ?? null, positions: positionRows, by_category: categoryRows })
+      return
+    }
+
+    const walletsMatch = url.pathname.match(/^\/opportunities\/([^/]+)\/([^/]+)\/wallets$/)
+    if (walletsMatch) {
+      const conditionId = sqlEscape(decodeURIComponent(walletsMatch[1]))
+      const outcome = sqlEscape(decodeURIComponent(walletsMatch[2]))
+      const rows = await runQuery(`
+        SELECT wallet, wallet_name, usd, price, ts, exit_ts, exit_price, exit_usd, hold_seconds, is_scalp,
+          market_closed, resolved_win, resolved_ts
+        FROM opportunity_wallets
+        WHERE condition_id = '${conditionId}' AND outcome = '${outcome}'
+        ORDER BY ts DESC
+      `)
+      sendJson(res, 200, rows)
+      return
+    }
+
+    sendJson(res, 404, { error: 'not found' })
+  } catch (err) {
+    console.error('[signals-proxy]', err.message)
+    sendJson(res, 502, { error: err.message })
+  }
+})
+
+server.listen(PORT, () => console.log(`[signals-proxy] running on http://localhost:${PORT}`))

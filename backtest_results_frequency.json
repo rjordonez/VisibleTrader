@@ -1,0 +1,42 @@
+[
+  {
+    "threshold": 1,
+    "signal_count": 147326,
+    "span_days": 1094.3,
+    "signals_per_week": 942.39,
+    "earliest": 1690217677,
+    "latest": 1784767123
+  },
+  {
+    "threshold": 2,
+    "signal_count": 38034,
+    "span_days": 1082.1,
+    "signals_per_week": 246.05,
+    "earliest": 1691276239,
+    "latest": 1784767063
+  },
+  {
+    "threshold": 3,
+    "signal_count": 16349,
+    "span_days": 928.2,
+    "signals_per_week": 123.3,
+    "earliest": 1704574283,
+    "latest": 1784767023
+  },
+  {
+    "threshold": 5,
+    "signal_count": 6001,
+    "span_days": 812.9,
+    "signals_per_week": 51.67,
+    "earliest": 1714528503,
+    "latest": 1784767065
+  },
+  {
+    "threshold": 10,
+    "signal_count": 1364,
+    "span_days": 753.7,
+    "signals_per_week": 12.67,
+    "earliest": 1719646839,
+    "latest": 1784766858
+  }
+]

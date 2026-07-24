@@ -1,0 +1,156 @@
+{
+  "config": {
+    "top_k": 250,
+    "interval_days": 30,
+    "metric": "pnl"
+  },
+  "slippage": [
+    {
+      "threshold": 1,
+      "baseline": {
+        "signal_count": 17223,
+        "win_rate": 0.5492,
+        "mean_return": 0.8437
+      },
+      "slippage_adjusted": {
+        "signal_count": 11055,
+        "win_rate": 0.5439,
+        "mean_return": 0.1035
+      }
+    },
+    {
+      "threshold": 2,
+      "baseline": {
+        "signal_count": 2784,
+        "win_rate": 0.5787,
+        "mean_return": 0.2657
+      },
+      "slippage_adjusted": {
+        "signal_count": 2206,
+        "win_rate": 0.5952,
+        "mean_return": 0.3856
+      }
+    },
+    {
+      "threshold": 3,
+      "baseline": {
+        "signal_count": 740,
+        "win_rate": 0.6243,
+        "mean_return": 0.5903
+      },
+      "slippage_adjusted": {
+        "signal_count": 622,
+        "win_rate": 0.6318,
+        "mean_return": 0.1807
+      }
+    },
+    {
+      "threshold": 5,
+      "baseline": {
+        "signal_count": 133,
+        "win_rate": 0.7444,
+        "mean_return": 0.0105
+      },
+      "slippage_adjusted": {
+        "signal_count": 118,
+        "win_rate": 0.7373,
+        "mean_return": 0.0003
+      }
+    },
+    {
+      "threshold": 10,
+      "baseline": {
+        "signal_count": 8,
+        "win_rate": 1.0,
+        "mean_return": 0.0611
+      },
+      "slippage_adjusted": {
+        "signal_count": 7,
+        "win_rate": 1.0,
+        "mean_return": 0.0742
+      }
+    }
+  ],
+  "concentration": {
+    "signal_count": 17223,
+    "unique_days": 741,
+    "total_pnl_100": 1453059.75,
+    "top1_day_pct_of_total": 13.9,
+    "top5_days_pct_of_total": 42.8,
+    "top10_days_pct_of_total": 66.3,
+    "top_days": [
+      [
+        "2025-04-25",
+        202662.33
+      ],
+      [
+        "2025-05-24",
+        108914.89
+      ],
+      [
+        "2025-09-29",
+        106898.27
+      ],
+      [
+        "2024-11-21",
+        103247.29
+      ],
+      [
+        "2025-04-26",
+        100528.43
+      ],
+      [
+        "2025-04-29",
+        99396.98
+      ],
+      [
+        "2026-02-23",
+        98458.98
+      ],
+      [
+        "2025-07-01",
+        58963.69
+      ],
+      [
+        "2026-01-01",
+        51143.16
+      ],
+      [
+        "2025-03-29",
+        33032.03
+      ]
+    ]
+  },
+  "dollar_weighted": [
+    {
+      "dollar_threshold": 1000,
+      "signal_count": 7188,
+      "win_rate": 0.6245,
+      "mean_return": 0.0491
+    },
+    {
+      "dollar_threshold": 5000,
+      "signal_count": 3449,
+      "win_rate": 0.6553,
+      "mean_return": 0.076
+    },
+    {
+      "dollar_threshold": 20000,
+      "signal_count": 1268,
+      "win_rate": 0.6814,
+      "mean_return": 0.0932
+    },
+    {
+      "dollar_threshold": 50000,
+      "signal_count": 530,
+      "win_rate": 0.7019,
+      "mean_return": 0.0646
+    },
+    {
+      "dollar_threshold": 100000,
+      "signal_count": 223,
+      "win_rate": 0.7354,
+      "mean_return": 0.0698
+    }
+  ]
+}

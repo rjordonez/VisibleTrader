@@ -56,8 +56,6 @@ export default function Features() {
               </div>
             </div>
           </Link>
-
-          {/* ── +EV — small right ── */}
           <Link to="/features/ev" className="bento-card bento-ev">
             <span className="bento-label bento-label-purple">POSITIVE EV →</span>
             <h3 className="bento-title">Bet with a real edge</h3>
@@ -103,7 +101,6 @@ export default function Features() {
             </div>
           </Link>
 
-          {/* ── Portfolio — large right ── */}
           <Link to="/features/portfolio" className="bento-card bento-port">
             <span className="bento-label bento-label-teal">PORTFOLIO →</span>
             <h3 className="bento-title">See your full edge</h3>
@@ -131,7 +128,6 @@ export default function Features() {
             </div>
           </Link>
 
-          {/* ── Promo — large left ── */}
           <Link to="/features/promo" className="bento-card bento-promo">
             <span className="bento-label bento-label-orange">PROMO OPTIMIZER →</span>
             <h3 className="bento-title">Maximize your bonuses</h3>
@@ -152,7 +148,6 @@ export default function Features() {
             </div>
           </Link>
 
-          {/* ── Coaching — small right → /pricing ── */}
           <Link to="/pricing" className="bento-card bento-coach">
             <span className="bento-label bento-label-gray">FREE 1:1 →</span>
             <h3 className="bento-title">No experience?<br />No problem.</h3>

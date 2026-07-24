@@ -1,0 +1,602 @@
+[
+  {
+    "top_k": 20,
+    "interval_days": 14,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 1247,
+      "win_rate": 0.5052,
+      "mean_return": 1.8254
+    },
+    "threshold_2": {
+      "signal_count": 157,
+      "win_rate": 0.5605,
+      "mean_return": 0.9771
+    }
+  },
+  {
+    "top_k": 50,
+    "interval_days": 14,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 2701,
+      "win_rate": 0.4898,
+      "mean_return": 0.7924
+    },
+    "threshold_2": {
+      "signal_count": 292,
+      "win_rate": 0.5514,
+      "mean_return": 0.6218
+    }
+  },
+  {
+    "top_k": 100,
+    "interval_days": 14,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 5296,
+      "win_rate": 0.5346,
+      "mean_return": 0.4179
+    },
+    "threshold_2": {
+      "signal_count": 512,
+      "win_rate": 0.543,
+      "mean_return": 0.3578
+    }
+  },
+  {
+    "top_k": 250,
+    "interval_days": 14,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 22398,
+      "win_rate": 0.5489,
+      "mean_return": 0.7252
+    },
+    "threshold_2": {
+      "signal_count": 3838,
+      "win_rate": 0.5743,
+      "mean_return": 0.2113
+    }
+  },
+  {
+    "top_k": 500,
+    "interval_days": 14,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 41788,
+      "win_rate": 0.5365,
+      "mean_return": 0.511
+    },
+    "threshold_2": {
+      "signal_count": 8862,
+      "win_rate": 0.5592,
+      "mean_return": 0.2519
+    }
+  },
+  {
+    "top_k": 20,
+    "interval_days": 30,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 965,
+      "win_rate": 0.5109,
+      "mean_return": 1.6054
+    },
+    "threshold_2": {
+      "signal_count": 112,
+      "win_rate": 0.5089,
+      "mean_return": 0.8809
+    }
+  },
+  {
+    "top_k": 50,
+    "interval_days": 30,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 1879,
+      "win_rate": 0.4918,
+      "mean_return": 0.7845
+    },
+    "threshold_2": {
+      "signal_count": 185,
+      "win_rate": 0.5297,
+      "mean_return": 0.6063
+    }
+  },
+  {
+    "top_k": 100,
+    "interval_days": 30,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 3919,
+      "win_rate": 0.545,
+      "mean_return": 0.4012
+    },
+    "threshold_2": {
+      "signal_count": 333,
+      "win_rate": 0.5495,
+      "mean_return": 0.3382
+    }
+  },
+  {
+    "top_k": 250,
+    "interval_days": 30,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 17223,
+      "win_rate": 0.5492,
+      "mean_return": 0.8437
+    },
+    "threshold_2": {
+      "signal_count": 2784,
+      "win_rate": 0.5787,
+      "mean_return": 0.2657
+    }
+  },
+  {
+    "top_k": 500,
+    "interval_days": 30,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 33724,
+      "win_rate": 0.5292,
+      "mean_return": 0.5616
+    },
+    "threshold_2": {
+      "signal_count": 7830,
+      "win_rate": 0.4862,
+      "mean_return": 0.1946
+    }
+  },
+  {
+    "top_k": 20,
+    "interval_days": 60,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 647,
+      "win_rate": 0.4961,
+      "mean_return": 2.1535
+    },
+    "threshold_2": {
+      "signal_count": 83,
+      "win_rate": 0.494,
+      "mean_return": 0.818
+    }
+  },
+  {
+    "top_k": 50,
+    "interval_days": 60,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 1483,
+      "win_rate": 0.497,
+      "mean_return": 0.8987
+    },
+    "threshold_2": {
+      "signal_count": 136,
+      "win_rate": 0.5147,
+      "mean_return": 0.4242
+    }
+  },
+  {
+    "top_k": 100,
+    "interval_days": 60,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 2912,
+      "win_rate": 0.5381,
+      "mean_return": 0.4843
+    },
+    "threshold_2": {
+      "signal_count": 255,
+      "win_rate": 0.5255,
+      "mean_return": 0.199
+    }
+  },
+  {
+    "top_k": 250,
+    "interval_days": 60,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 14109,
+      "win_rate": 0.5528,
+      "mean_return": 0.8512
+    },
+    "threshold_2": {
+      "signal_count": 2205,
+      "win_rate": 0.5741,
+      "mean_return": 0.2069
+    }
+  },
+  {
+    "top_k": 500,
+    "interval_days": 60,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 29472,
+      "win_rate": 0.5126,
+      "mean_return": 0.4874
+    },
+    "threshold_2": {
+      "signal_count": 7121,
+      "win_rate": 0.4242,
+      "mean_return": 0.0605
+    }
+  },
+  {
+    "top_k": 20,
+    "interval_days": 90,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 683,
+      "win_rate": 0.5007,
+      "mean_return": 0.4054
+    },
+    "threshold_2": {
+      "signal_count": 77,
+      "win_rate": 0.4805,
+      "mean_return": 0.6024
+    }
+  },
+  {
+    "top_k": 50,
+    "interval_days": 90,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 1313,
+      "win_rate": 0.4867,
+      "mean_return": 0.1696
+    },
+    "threshold_2": {
+      "signal_count": 139,
+      "win_rate": 0.4892,
+      "mean_return": 0.42
+    }
+  },
+  {
+    "top_k": 100,
+    "interval_days": 90,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 2930,
+      "win_rate": 0.5522,
+      "mean_return": 0.1001
+    },
+    "threshold_2": {
+      "signal_count": 235,
+      "win_rate": 0.5404,
+      "mean_return": 0.2199
+    }
+  },
+  {
+    "top_k": 250,
+    "interval_days": 90,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 12943,
+      "win_rate": 0.5557,
+      "mean_return": 0.8239
+    },
+    "threshold_2": {
+      "signal_count": 2039,
+      "win_rate": 0.59,
+      "mean_return": 0.2856
+    }
+  },
+  {
+    "top_k": 500,
+    "interval_days": 90,
+    "metric": "pnl",
+    "threshold_1": {
+      "signal_count": 25952,
+      "win_rate": 0.5118,
+      "mean_return": 0.5281
+    },
+    "threshold_2": {
+      "signal_count": 4460,
+      "win_rate": 0.5787,
+      "mean_return": 0.2571
+    }
+  },
+  {
+    "top_k": 20,
+    "interval_days": 14,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 1722,
+      "win_rate": 0.4292,
+      "mean_return": 1.3393
+    },
+    "threshold_2": {
+      "signal_count": 210,
+      "win_rate": 0.519,
+      "mean_return": 0.9118
+    }
+  },
+  {
+    "top_k": 50,
+    "interval_days": 14,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 3400,
+      "win_rate": 0.4606,
+      "mean_return": 1.0623
+    },
+    "threshold_2": {
+      "signal_count": 331,
+      "win_rate": 0.5106,
+      "mean_return": 0.5581
+    }
+  },
+  {
+    "top_k": 100,
+    "interval_days": 14,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 6707,
+      "win_rate": 0.4847,
+      "mean_return": 1.364
+    },
+    "threshold_2": {
+      "signal_count": 603,
+      "win_rate": 0.534,
+      "mean_return": 0.5184
+    }
+  },
+  {
+    "top_k": 250,
+    "interval_days": 14,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 28558,
+      "win_rate": 0.5403,
+      "mean_return": 0.6543
+    },
+    "threshold_2": {
+      "signal_count": 4884,
+      "win_rate": 0.5563,
+      "mean_return": 0.3128
+    }
+  },
+  {
+    "top_k": 500,
+    "interval_days": 14,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 43585,
+      "win_rate": 0.5562,
+      "mean_return": 0.5257
+    },
+    "threshold_2": {
+      "signal_count": 9520,
+      "win_rate": 0.5546,
+      "mean_return": 0.2014
+    }
+  },
+  {
+    "top_k": 20,
+    "interval_days": 30,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 1250,
+      "win_rate": 0.4456,
+      "mean_return": 1.2713
+    },
+    "threshold_2": {
+      "signal_count": 132,
+      "win_rate": 0.5076,
+      "mean_return": 0.9439
+    }
+  },
+  {
+    "top_k": 50,
+    "interval_days": 30,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 2269,
+      "win_rate": 0.4535,
+      "mean_return": 1.836
+    },
+    "threshold_2": {
+      "signal_count": 220,
+      "win_rate": 0.4636,
+      "mean_return": 0.5115
+    }
+  },
+  {
+    "top_k": 100,
+    "interval_days": 30,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 5923,
+      "win_rate": 0.4889,
+      "mean_return": 1.5177
+    },
+    "threshold_2": {
+      "signal_count": 388,
+      "win_rate": 0.5052,
+      "mean_return": 0.4418
+    }
+  },
+  {
+    "top_k": 250,
+    "interval_days": 30,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 22230,
+      "win_rate": 0.5381,
+      "mean_return": 0.744
+    },
+    "threshold_2": {
+      "signal_count": 3647,
+      "win_rate": 0.5596,
+      "mean_return": 0.2628
+    }
+  },
+  {
+    "top_k": 500,
+    "interval_days": 30,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 35555,
+      "win_rate": 0.5362,
+      "mean_return": 0.5468
+    },
+    "threshold_2": {
+      "signal_count": 8188,
+      "win_rate": 0.491,
+      "mean_return": 0.1527
+    }
+  },
+  {
+    "top_k": 20,
+    "interval_days": 60,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 940,
+      "win_rate": 0.4053,
+      "mean_return": 1.4636
+    },
+    "threshold_2": {
+      "signal_count": 95,
+      "win_rate": 0.4737,
+      "mean_return": 0.7899
+    }
+  },
+  {
+    "top_k": 50,
+    "interval_days": 60,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 1831,
+      "win_rate": 0.4457,
+      "mean_return": 3.3811
+    },
+    "threshold_2": {
+      "signal_count": 156,
+      "win_rate": 0.4615,
+      "mean_return": 0.5195
+    }
+  },
+  {
+    "top_k": 100,
+    "interval_days": 60,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 3823,
+      "win_rate": 0.4732,
+      "mean_return": 1.6655
+    },
+    "threshold_2": {
+      "signal_count": 303,
+      "win_rate": 0.5017,
+      "mean_return": 0.4518
+    }
+  },
+  {
+    "top_k": 250,
+    "interval_days": 60,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 18019,
+      "win_rate": 0.5452,
+      "mean_return": 0.7053
+    },
+    "threshold_2": {
+      "signal_count": 2869,
+      "win_rate": 0.5587,
+      "mean_return": 0.2031
+    }
+  },
+  {
+    "top_k": 500,
+    "interval_days": 60,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 30347,
+      "win_rate": 0.523,
+      "mean_return": 0.489
+    },
+    "threshold_2": {
+      "signal_count": 7298,
+      "win_rate": 0.4272,
+      "mean_return": 0.0018
+    }
+  },
+  {
+    "top_k": 20,
+    "interval_days": 90,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 980,
+      "win_rate": 0.4633,
+      "mean_return": 0.2821
+    },
+    "threshold_2": {
+      "signal_count": 92,
+      "win_rate": 0.4783,
+      "mean_return": 0.6685
+    }
+  },
+  {
+    "top_k": 50,
+    "interval_days": 90,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 1654,
+      "win_rate": 0.4891,
+      "mean_return": 0.2001
+    },
+    "threshold_2": {
+      "signal_count": 157,
+      "win_rate": 0.4586,
+      "mean_return": 0.328
+    }
+  },
+  {
+    "top_k": 100,
+    "interval_days": 90,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 3865,
+      "win_rate": 0.4872,
+      "mean_return": 2.0283
+    },
+    "threshold_2": {
+      "signal_count": 282,
+      "win_rate": 0.5,
+      "mean_return": 0.2057
+    }
+  },
+  {
+    "top_k": 250,
+    "interval_days": 90,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 15644,
+      "win_rate": 0.5498,
+      "mean_return": 0.7869
+    },
+    "threshold_2": {
+      "signal_count": 2461,
+      "win_rate": 0.5705,
+      "mean_return": 0.2478
+    }
+  },
+  {
+    "top_k": 500,
+    "interval_days": 90,
+    "metric": "roi",
+    "threshold_1": {
+      "signal_count": 23751,
+      "win_rate": 0.5655,
+      "mean_return": 0.6172
+    },
+    "threshold_2": {
+      "signal_count": 4432,
+      "win_rate": 0.5787,
+      "mean_return": 0.2689
+    }
+  }
+]

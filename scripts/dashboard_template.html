@@ -1,0 +1,791 @@
+<title>Polymarket Top-Trader Leaderboard</title>
+<style>
+  .viz-root {
+    --surface-1: #fcfcfb;
+    --page-plane: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --good: #0ca30c;
+
+    --series-1: #2a78d6; /* blue */
+    --series-2: #1baf7a; /* aqua */
+    --series-3: #eda100; /* yellow */
+    --series-4: #008300; /* green */
+    --series-5: #4a3aa7; /* violet */
+    --series-6: #e34948; /* red */
+    --series-7: #e87ba4; /* magenta */
+    --series-8: #eb6834; /* orange */
+
+    --seq-100: #cde2fb; --seq-250: #86b6ef; --seq-450: #2a78d6; --seq-650: #104281;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --surface-1: #1a1a19; --page-plane: #0d0d0d;
+      --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
+      --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+      --good: #0ca30c;
+      --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-4: #008300;
+      --series-5: #9085e9; --series-6: #e66767; --series-7: #d55181; --series-8: #d95926;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    --surface-1: #1a1a19; --page-plane: #0d0d0d;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
+    --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-4: #008300;
+    --series-5: #9085e9; --series-6: #e66767; --series-7: #d55181; --series-8: #d95926;
+  }
+  :root[data-theme="light"] .viz-root {
+    --surface-1: #fcfcfb; --page-plane: #f9f9f7;
+    --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #898781;
+    --grid: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --series-1: #2a78d6; --series-2: #1baf7a; --series-3: #eda100; --series-4: #008300;
+    --series-5: #4a3aa7; --series-6: #e34948; --series-7: #e87ba4; --series-8: #eb6834;
+  }
+
+  .viz-root {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    padding: 24px 16px 80px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .viz-root * { box-sizing: border-box; }
+  .viz-header h1 { font-size: 1.75rem; font-weight: 650; margin: 0 0 4px; }
+  .viz-header p { color: var(--text-secondary); margin: 0 0 28px; font-size: 0.95rem; }
+
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 36px;
+  }
+  .stat-tile {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .stat-tile .label { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 6px; }
+  .stat-tile .value { font-size: 1.55rem; font-weight: 650; }
+
+  .chart-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 20px 12px;
+    margin-bottom: 24px;
+  }
+  .chart-card h2 { font-size: 1.05rem; font-weight: 650; margin: 0 0 2px; }
+  .chart-card h3 { font-size: 0.92rem; font-weight: 650; margin: 18px 0 2px; }
+  .chart-card h3:first-of-type { margin-top: 4px; }
+  .chart-card .sub { font-size: 0.85rem; color: var(--text-secondary); margin: 0 0 14px; }
+  .chart-scroll { overflow-x: auto; }
+  .chart-scroll svg { display: block; }
+
+  .axis-label { fill: var(--text-muted); font-size: 10px; }
+  .axis-tick { fill: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .baseline { stroke: var(--baseline); stroke-width: 1; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 12px 18px; margin: 4px 0 14px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-secondary); }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+
+  .viz-tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: var(--text-primary);
+    color: var(--surface-1);
+    font-size: 0.78rem;
+    padding: 6px 9px;
+    border-radius: 6px;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.08s;
+    max-width: 240px;
+  }
+  .viz-tooltip .tt-value { font-weight: 650; }
+  .viz-tooltip .tt-label { opacity: 0.8; }
+
+  details.table-toggle { margin: 6px 0 14px; }
+  details.table-toggle summary {
+    cursor: pointer; font-size: 0.8rem; color: var(--text-secondary);
+    user-select: none;
+  }
+  .data-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.78rem; }
+  .data-table th, .data-table td {
+    text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--grid);
+    font-variant-numeric: tabular-nums;
+  }
+  .data-table th:first-child, .data-table td:first-child { text-align: left; font-variant-numeric: normal; }
+
+  .bar-hit:hover, .cell-hit:hover, .dot-hit:hover { opacity: 0.85; }
+  .empty-note { color: var(--text-muted); font-size: 0.85rem; padding: 20px 0; }
+</style>
+
+<div class="viz-root">
+  <div class="viz-header">
+    <h1>Polymarket Top-Trader Leaderboard</h1>
+    <p id="header-sub">Aggregated from the leaderboard endpoint's full parameter space (11 categories × 4 time periods × 2 sort orders).</p>
+  </div>
+
+  <div class="stat-row" id="stat-row"></div>
+
+  <div class="chart-card">
+    <h2>Where does the money concentrate?</h2>
+    <p class="sub">Cumulative share of total profit (among traders with positive PnL) held by the top X% of that population.</p>
+    <div class="chart-scroll"><svg id="chart-pareto"></svg></div>
+    <div id="legend-pareto"></div>
+    <details class="table-toggle"><summary>Show data table</summary><div id="table-pareto"></div></details>
+  </div>
+
+  <div class="chart-card">
+    <h2>PnL distribution</h2>
+    <p class="sub">Count of wallets by their best all-time PnL, bucketed on a log scale. Negative buckets are traders whose only leaderboard appearances were volume-ranked with a net loss.</p>
+    <div class="chart-scroll"><svg id="chart-pnl-hist"></svg></div>
+    <details class="table-toggle"><summary>Show data table</summary><div id="table-pnl-hist"></div></details>
+  </div>
+
+  <div class="chart-card">
+    <h2>Volume vs. PnL</h2>
+    <p class="sub">Each point is one wallet's best-PnL appearance (log-log). High volume doesn't imply high profit — separates grinders/market-makers from traders with real edge.</p>
+    <div class="chart-scroll"><svg id="chart-scatter"></svg></div>
+    <div class="legend" id="legend-scatter"></div>
+    <details class="table-toggle"><summary>Show data table (top 100 by PnL)</summary><div id="table-scatter"></div></details>
+  </div>
+
+  <div class="chart-card">
+    <h2>How many leaderboards does a wallet appear on?</h2>
+    <p class="sub">Out of 88 possible (category × time period × sort order) rankings. Most wallets are niche to one category; a long tail of generalists show up everywhere.</p>
+    <div class="chart-scroll"><svg id="chart-appearances"></svg></div>
+    <details class="table-toggle"><summary>Show data table</summary><div id="table-appearances"></div></details>
+  </div>
+
+  <div class="chart-card">
+    <h2>Unique traders per category</h2>
+    <p class="sub">How many distinct wallets ever ranked in each category's leaderboard.</p>
+    <div class="chart-scroll"><svg id="chart-categories"></svg></div>
+    <details class="table-toggle"><summary>Show data table</summary><div id="table-categories"></div></details>
+  </div>
+
+  <div class="chart-card">
+    <h2>Category overlap</h2>
+    <p class="sub">Of traders who rank in category A (row), the count who also rank in category B (column). The diagonal is each category's total.</p>
+    <div class="chart-scroll"><svg id="chart-heatmap"></svg></div>
+    <details class="table-toggle"><summary>Show data table</summary><div id="table-heatmap"></div></details>
+  </div>
+
+  <div class="chart-card">
+    <h2>Verified vs. unverified</h2>
+    <p class="sub">Mean and median best PnL, by verified-badge status.</p>
+    <div class="chart-scroll"><svg id="chart-verified"></svg></div>
+    <div class="legend" id="legend-verified"></div>
+  </div>
+
+  <div class="chart-card">
+    <h2>Who has real edge?</h2>
+    <p class="sub" id="edge-sub"></p>
+    <div class="chart-scroll"><svg id="chart-edge"></svg></div>
+    <details class="table-toggle"><summary>Show data table</summary><div id="table-edge"></div></details>
+  </div>
+
+  <div class="chart-card">
+    <h2>Is a trader's day-rank predictive of their all-time rank?</h2>
+    <p class="sub">Each point is a wallet that ranked in OVERALL by PnL on both a single day and all-time (log-log rank axes — lower is better). A tight diagonal band would mean day rank predicts skill; a scatter cloud means it's mostly noise.</p>
+    <div class="chart-scroll"><svg id="chart-day-vs-all"></svg></div>
+  </div>
+
+  <div class="chart-card">
+    <h2>Common words in trader usernames</h2>
+    <p class="sub">Top 40 tokens (wallet-address-style names excluded).</p>
+    <div class="chart-scroll"><svg id="chart-words"></svg></div>
+  </div>
+
+  <div class="chart-card" id="backtest-card" style="display:none">
+    <h2>Does copying trader consensus actually work?</h2>
+    <p class="sub" id="backtest-sub"></p>
+    <div class="chart-scroll"><svg id="chart-backtest"></svg></div>
+    <details class="table-toggle"><summary>Show threshold data table</summary><div id="table-backtest"></div></details>
+    <details class="table-toggle"><summary>Show biggest winning &amp; losing signals</summary><div id="table-backtest-notable"></div></details>
+  </div>
+
+  <div class="chart-card" id="walkforward-card" style="display:none">
+    <h2>Naive vs. honest (walk-forward) backtest</h2>
+    <p class="sub" id="walkforward-sub">The naive version ranks traders by PnL as scraped today, then scores their whole history — including trades that made them rank highly in the first place. The walk-forward version ranks traders using only PnL realized *before* each point in time, then only scores trades *after* that point, so the ranking can never see what it's about to grade.</p>
+    <div class="chart-scroll"><svg id="chart-walkforward"></svg></div>
+    <div class="legend" id="legend-walkforward"></div>
+    <details class="table-toggle"><summary>Show data table</summary><div id="table-walkforward"></div></details>
+  </div>
+
+  <div class="chart-card" id="strategy-card" style="display:none">
+    <h2>Which strategy actually works?</h2>
+    <p class="sub">Sweeping pool size, ranking window, and ranking metric entirely offline from cached data (no new network calls) — 40 rolling-window configs and 12 single-split configs.</p>
+
+    <h3>Pool size reliability</h3>
+    <p class="sub">Win rate range (min–median–max) across every ranking-window/metric combo tested at each pool size. A narrow "elite" pool swings wildly depending on which window you're in; a broad pool is stable.</p>
+    <div class="chart-scroll"><svg id="chart-poolsize"></svg></div>
+    <details class="table-toggle"><summary>Show data table</summary><div id="table-poolsize"></div></details>
+
+    <h3>Agreement threshold: win rate vs. return</h3>
+    <p class="sub" id="tradeoff-sub"></p>
+    <div class="chart-scroll"><svg id="chart-tradeoff-winrate"></svg></div>
+    <div class="chart-scroll"><svg id="chart-tradeoff-return"></svg></div>
+    <div class="legend" id="legend-tradeoff"></div>
+    <details class="table-toggle"><summary>Show data table</summary><div id="table-tradeoff"></div></details>
+  </div>
+</div>
+
+<div class="viz-tooltip" id="tooltip"></div>
+
+<script id="viz-data" type="application/json">__VIZ_DATA__</script>
+<script>
+(function () {
+  const DATA = JSON.parse(document.getElementById('viz-data').textContent);
+  const MIN_VOL_DISPLAY = 1000; // must match MIN_VOL_FOR_EDGE in build-dashboard.py
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const cs = getComputedStyle(document.querySelector('.viz-root'));
+  const cv = (name) => cs.getPropertyValue(name).trim();
+  const SERIES = [1,2,3,4,5,6,7,8].map(i => cv(`--series-${i}`));
+  const OTHER_COLOR = cv('--text-muted');
+
+  function svgEl(tag, attrs) {
+    const e = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+  function textEl(tag, attrs, text) {
+    const e = svgEl(tag, attrs);
+    e.textContent = text;
+    return e;
+  }
+  function fmtCompact(v) {
+    const sign = v < 0 ? '-' : '';
+    const a = Math.abs(v);
+    if (a >= 1e6) return sign + (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'M';
+    if (a >= 1e3) return sign + (a / 1e3).toFixed(a >= 1e4 ? 0 : 1) + 'K';
+    return sign + Math.round(a);
+  }
+  function fmtMoney(v) { return '$' + fmtCompact(v); }
+
+  const tooltip = document.getElementById('tooltip');
+  function showTooltip(x, y, valueText, labelText) {
+    tooltip.innerHTML = '';
+    const v = document.createElement('div'); v.className = 'tt-value'; v.textContent = valueText;
+    const l = document.createElement('div'); l.className = 'tt-label'; l.textContent = labelText;
+    tooltip.appendChild(v); tooltip.appendChild(l);
+    tooltip.style.left = (x + 14) + 'px';
+    tooltip.style.top = (y + 14) + 'px';
+    tooltip.style.opacity = '1';
+  }
+  function hideTooltip() { tooltip.style.opacity = '0'; }
+
+  function statTile(label, value) {
+    const d = document.createElement('div'); d.className = 'stat-tile';
+    const l = document.createElement('div'); l.className = 'label'; l.textContent = label;
+    const v = document.createElement('div'); v.className = 'value'; v.textContent = value;
+    d.appendChild(l); d.appendChild(v);
+    return d;
+  }
+
+  function dataTable(container, headers, rows) {
+    container.innerHTML = '';
+    const t = document.createElement('table'); t.className = 'data-table';
+    const thead = document.createElement('thead');
+    const htr = document.createElement('tr');
+    headers.forEach(h => { const th = document.createElement('th'); th.textContent = h; htr.appendChild(th); });
+    thead.appendChild(htr); t.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      r.forEach(c => { const td = document.createElement('td'); td.textContent = c; tr.appendChild(td); });
+      tbody.appendChild(tr);
+    });
+    t.appendChild(tbody);
+    container.appendChild(t);
+  }
+
+  function legend(container, items) {
+    container.innerHTML = '';
+    items.forEach(([label, color]) => {
+      const item = document.createElement('div'); item.className = 'legend-item';
+      const sw = document.createElement('div'); sw.className = 'legend-swatch'; sw.style.background = color;
+      const txt = document.createElement('span'); txt.textContent = label;
+      item.appendChild(sw); item.appendChild(txt);
+      container.appendChild(item);
+    });
+  }
+
+  // ---- generic vertical bar chart ----
+  function renderBarChart(svgId, labels, values, opts) {
+    opts = opts || {};
+    const svg = document.getElementById(svgId);
+    const W = Math.max(560, labels.length * (opts.minSlot || 34));
+    const H = 260, padL = 56, padR = 16, padT = 12, padB = 46;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('width', W); svg.setAttribute('height', H);
+    svg.innerHTML = '';
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxV = Math.max(1, ...values);
+    const niceMax = maxV <= 10 ? maxV : Math.ceil(maxV / Math.pow(10, Math.floor(Math.log10(maxV)))) * Math.pow(10, Math.floor(Math.log10(maxV)));
+    const yScale = (v) => plotH - (v / niceMax) * plotH;
+
+    [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+      const y = padT + plotH * (1 - f);
+      svg.appendChild(svgEl('line', { class: 'grid-line', x1: padL, x2: padL + plotW, y1: y, y2: y }));
+      svg.appendChild(textEl('text', { class: 'axis-tick', x: padL - 8, y: y + 3, 'text-anchor': 'end' }, fmtCompact(niceMax * f)));
+    });
+    svg.appendChild(svgEl('line', { class: 'baseline', x1: padL, x2: padL + plotW, y1: padT + plotH, y2: padT + plotH }));
+
+    const slot = plotW / labels.length;
+    const barW = Math.min(24, slot - 2);
+    const color = opts.color || SERIES[0];
+
+    labels.forEach((label, i) => {
+      const v = values[i];
+      const x = padL + i * slot + (slot - barW) / 2;
+      const yTop = padT + yScale(v);
+      const h = Math.max(0, padT + plotH - yTop);
+      const rTop = Math.min(4, h);
+      if (h > 0) {
+        const bar = svgEl('path', {
+          d: `M${x},${padT+plotH} L${x},${yTop+rTop} Q${x},${yTop} ${x+rTop},${yTop} L${x+barW-rTop},${yTop} Q${x+barW},${yTop} ${x+barW},${yTop+rTop} L${x+barW},${padT+plotH} Z`,
+          fill: color,
+        });
+        svg.appendChild(bar);
+      }
+      const hit = svgEl('rect', { class: 'bar-hit', x, y: padT, width: barW, height: plotH, fill: 'transparent' });
+      hit.addEventListener('pointermove', (e) => showTooltip(e.clientX, e.clientY, opts.valueFmt ? opts.valueFmt(v) : v.toLocaleString(), label));
+      hit.addEventListener('pointerleave', hideTooltip);
+      svg.appendChild(hit);
+
+      if (i % Math.ceil(labels.length / 18) === 0 || labels.length <= 18) {
+        svg.appendChild(textEl('text', {
+          class: 'axis-tick', x: x + barW / 2, y: padT + plotH + 16, 'text-anchor': 'middle',
+        }, label));
+      }
+    });
+
+    if (opts.xLabel) svg.appendChild(textEl('text', { class: 'axis-label', x: padL + plotW / 2, y: H - 4, 'text-anchor': 'middle' }, opts.xLabel));
+  }
+
+  // ---- two-series grouped bar chart (e.g. naive vs. walk-forward) ----
+  function renderGroupedBarChart(svgId, labels, seriesA, seriesB, opts) {
+    opts = opts || {};
+    const svg = document.getElementById(svgId);
+    const W = Math.max(560, labels.length * (opts.minSlot || 110));
+    const H = 260, padL = 56, padR = 16, padT = 12, padB = 46;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('width', W); svg.setAttribute('height', H);
+    svg.innerHTML = '';
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const allVals = seriesA.concat(seriesB);
+    const maxV = Math.max(1, ...allVals, 0);
+    const minV = Math.min(0, ...allVals);
+    const range = maxV - minV || 1;
+    const yScale = (v) => plotH - ((v - minV) / range) * plotH;
+    const zeroY = padT + yScale(0);
+
+    [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+      const val = minV + range * f;
+      const y = padT + yScale(val);
+      svg.appendChild(svgEl('line', { class: 'grid-line', x1: padL, x2: padL + plotW, y1: y, y2: y }));
+      svg.appendChild(textEl('text', { class: 'axis-tick', x: padL - 8, y: y + 3, 'text-anchor': 'end' },
+        opts.valueFmt ? opts.valueFmt(val) : fmtCompact(val)));
+    });
+    svg.appendChild(svgEl('line', { class: 'baseline', x1: padL, x2: padL + plotW, y1: zeroY, y2: zeroY }));
+
+    const slot = plotW / labels.length;
+    const barW = Math.min(22, (slot - 12) / 2);
+    const colorA = opts.colorA || SERIES[0], colorB = opts.colorB || SERIES[6];
+
+    const drawBar = (x, v, color, label, seriesName) => {
+      const y = padT + yScale(v);
+      const top = Math.min(y, zeroY), h = Math.abs(zeroY - y);
+      const r = Math.min(4, h);
+      if (h > 0) {
+        const fromBottom = v >= 0;
+        const d = fromBottom
+          ? `M${x},${zeroY} L${x},${top+r} Q${x},${top} ${x+r},${top} L${x+barW-r},${top} Q${x+barW},${top} ${x+barW},${top+r} L${x+barW},${zeroY} Z`
+          : `M${x},${zeroY} L${x},${top+h-r} Q${x},${top+h} ${x+r},${top+h} L${x+barW-r},${top+h} Q${x+barW},${top+h} ${x+barW},${top+h-r} L${x+barW},${zeroY} Z`;
+        svg.appendChild(svgEl('path', { d, fill: color }));
+      }
+      const hit = svgEl('rect', { class: 'bar-hit', x, y: padT, width: barW, height: plotH, fill: 'transparent' });
+      hit.addEventListener('pointermove', (e) => showTooltip(e.clientX, e.clientY, opts.valueFmt ? opts.valueFmt(v) : v.toFixed(1), `${seriesName} · ${label}`));
+      hit.addEventListener('pointerleave', hideTooltip);
+      svg.appendChild(hit);
+    };
+
+    labels.forEach((label, i) => {
+      const groupX = padL + i * slot + (slot - (barW * 2 + 2)) / 2;
+      drawBar(groupX, seriesA[i], colorA, label, opts.nameA || 'A');
+      drawBar(groupX + barW + 2, seriesB[i], colorB, label, opts.nameB || 'B');
+      svg.appendChild(textEl('text', {
+        class: 'axis-tick', x: groupX + barW + 1, y: padT + plotH + 16, 'text-anchor': 'middle',
+      }, label));
+    });
+
+    if (opts.xLabel) svg.appendChild(textEl('text', { class: 'axis-label', x: padL + plotW / 2, y: H - 4, 'text-anchor': 'middle' }, opts.xLabel));
+  }
+
+  // ---- range chart: min-median-max whisker per category, e.g. pool-size reliability ----
+  function renderRangeChart(svgId, rows, opts) {
+    opts = opts || {};
+    const svg = document.getElementById(svgId);
+    const W = Math.max(420, rows.length * (opts.minSlot || 110));
+    const H = 220, padL = 48, padR = 16, padT = 12, padB = 40;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('width', W); svg.setAttribute('height', H);
+    svg.innerHTML = '';
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const allVals = rows.flatMap(r => [r.min, r.median, r.max]);
+    const lo = Math.min(0, ...allVals), hi = Math.max(...allVals);
+    const pad = (hi - lo) * 0.08 || 1;
+    const yMin = lo - pad, yMax = hi + pad;
+    const y = (v) => padT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+
+    [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+      const val = yMin + (yMax - yMin) * f;
+      const yy = padT + plotH * (1 - f);
+      svg.appendChild(svgEl('line', { class: 'grid-line', x1: padL, x2: padL + plotW, y1: yy, y2: yy }));
+      svg.appendChild(textEl('text', { class: 'axis-tick', x: padL - 8, y: yy + 3, 'text-anchor': 'end' },
+        opts.valueFmt ? opts.valueFmt(val) : val.toFixed(0)));
+    });
+    if (opts.refLine != null) {
+      const ry = y(opts.refLine);
+      svg.appendChild(svgEl('line', { class: 'baseline', x1: padL, x2: padL + plotW, y1: ry, y2: ry, 'stroke-dasharray': 'none' }));
+      svg.appendChild(textEl('text', { class: 'axis-tick', x: padL + plotW, y: ry - 4, 'text-anchor': 'end' }, opts.refLabel || ''));
+    }
+
+    const slot = plotW / rows.length;
+    rows.forEach((r, i) => {
+      const cx = padL + i * slot + slot / 2;
+      const yMinPx = y(r.min), yMaxPx = y(r.max), yMedPx = y(r.median);
+      const line = svgEl('line', { x1: cx, x2: cx, y1: yMaxPx, y2: yMinPx, stroke: opts.color || SERIES[0], 'stroke-width': 2 });
+      svg.appendChild(line);
+      [['min', yMinPx], ['max', yMaxPx]].forEach(([label, yy]) => {
+        svg.appendChild(svgEl('line', { x1: cx - 6, x2: cx + 6, y1: yy, y2: yy, stroke: opts.color || SERIES[0], 'stroke-width': 2 }));
+      });
+      const dot = svgEl('circle', { cx, cy: yMedPx, r: 5, fill: opts.color || SERIES[0], stroke: cv('--surface-1'), 'stroke-width': 2 });
+      svg.appendChild(dot);
+      const hit = svgEl('rect', { x: cx - slot / 2, y: padT, width: slot, height: plotH, fill: 'transparent' });
+      hit.addEventListener('pointermove', (e) => showTooltip(e.clientX, e.clientY,
+        `${(opts.valueFmt ? opts.valueFmt(r.median) : r.median.toFixed(1))} median`,
+        `${r.label} · range ${(opts.valueFmt ? opts.valueFmt(r.min) : r.min.toFixed(1))}–${(opts.valueFmt ? opts.valueFmt(r.max) : r.max.toFixed(1))}`));
+      hit.addEventListener('pointerleave', hideTooltip);
+      svg.appendChild(hit);
+      svg.appendChild(textEl('text', { class: 'axis-tick', x: cx, y: padT + plotH + 16, 'text-anchor': 'middle' }, r.label));
+    });
+  }
+
+  // ---- generic log-log scatter ----
+  function renderScatter(svgId, points, opts) {
+    const svg = document.getElementById(svgId);
+    const fmt = opts.fmt || fmtMoney;
+    const tooltipText = opts.tooltipText || ((xv, yv, p) => [`${fmt(yv)}`, `${fmt(xv)} · ${p[opts.colorKey]}`]);
+    svg.setAttribute('viewBox', `0 0 720 440`);
+    svg.setAttribute('width', '100%'); svg.removeAttribute('height');
+    svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+    svg.innerHTML = '';
+    const pl = 64, pr = 16, pt = 12, pb = 40, ph = 440;
+    const plotW = 720 - pl - pr, plotH = ph - pt - pb;
+
+    const xs = points.map(p => p[opts.x]).filter(v => v > 0);
+    const ys = points.map(p => p[opts.y]).filter(v => v > 0);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs);
+    const yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const lx = (v) => pl + (Math.log10(v) - Math.log10(xMin)) / (Math.log10(xMax) - Math.log10(xMin)) * plotW;
+    const ly = (v) => pt + plotH - (Math.log10(v) - Math.log10(yMin)) / (Math.log10(yMax) - Math.log10(yMin)) * plotH;
+
+    [0,0.25,0.5,0.75,1].forEach(f => {
+      const y = pt + plotH * (1 - f);
+      svg.appendChild(svgEl('line', { class: 'grid-line', x1: pl, x2: pl + plotW, y1: y, y2: y }));
+    });
+    svg.appendChild(svgEl('line', { class: 'baseline', x1: pl, x2: pl + plotW, y1: pt + plotH, y2: pt + plotH }));
+    svg.appendChild(svgEl('line', { class: 'baseline', x1: pl, x2: pl, y1: pt, y2: pt + plotH }));
+    svg.appendChild(textEl('text', { class: 'axis-tick', x: pl, y: pt + plotH + 16 }, fmt(xMin)));
+    svg.appendChild(textEl('text', { class: 'axis-tick', x: pl + plotW, y: pt + plotH + 16, 'text-anchor': 'end' }, fmt(xMax)));
+    svg.appendChild(textEl('text', { class: 'axis-label', x: pl + plotW/2, y: ph - 2, 'text-anchor': 'middle' }, opts.xLabel));
+    svg.appendChild(textEl('text', { class: 'axis-tick', x: pl - 8, y: pt + plotH, 'text-anchor': 'end' }, fmt(yMin)));
+    svg.appendChild(textEl('text', { class: 'axis-tick', x: pl - 8, y: pt + 8, 'text-anchor': 'end' }, fmt(yMax)));
+    if (opts.yLabel) svg.appendChild(textEl('text', { class: 'axis-label', x: 0, y: 0, transform: `translate(14, ${pt + plotH/2}) rotate(-90)`, 'text-anchor': 'middle' }, opts.yLabel));
+
+    points.forEach(p => {
+      const xv = p[opts.x], yv = p[opts.y];
+      if (xv <= 0 || yv <= 0) return;
+      const cx = lx(xv), cy = ly(yv);
+      const color = opts.colorMap[p[opts.colorKey]] || OTHER_COLOR;
+      const dot = svgEl('circle', { cx, cy, r: 4, fill: color, 'fill-opacity': 0.75, stroke: cv('--surface-1'), 'stroke-width': 1 });
+      svg.appendChild(dot);
+      const hit = svgEl('circle', { class: 'dot-hit', cx, cy, r: 12, fill: 'transparent' });
+      const [ttValue, ttLabel] = tooltipText(xv, yv, p);
+      hit.addEventListener('pointermove', (e) => showTooltip(e.clientX, e.clientY, ttValue, ttLabel));
+      hit.addEventListener('pointerleave', hideTooltip);
+      svg.appendChild(hit);
+    });
+  }
+
+  // ---- heatmap ----
+  function renderHeatmap(svgId, categories, matrix) {
+    const svg = document.getElementById(svgId);
+    const n = categories.length;
+    const cell = 42, padL = 90, padT = 90;
+    const W = padL + n * cell + 10, H = padT + n * cell + 10;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('width', W); svg.setAttribute('height', H);
+    svg.innerHTML = '';
+    const maxV = Math.max(...matrix.flat());
+
+    categories.forEach((cat, i) => {
+      svg.appendChild(textEl('text', { class: 'axis-tick', x: padL - 6, y: padT + i * cell + cell / 2 + 3, 'text-anchor': 'end' }, cat));
+      const tx = padL + i * cell + cell / 2;
+      const t = textEl('text', { class: 'axis-tick', x: 0, y: 0, transform: `translate(${tx}, ${padT - 8}) rotate(-40)`, 'text-anchor': 'start' }, cat);
+      svg.appendChild(t);
+    });
+
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const v = matrix[i][j];
+        const t = Math.sqrt(v / maxV); // perceptual-ish ramp
+        const steps = ['--seq-100', '--seq-250', '--seq-450', '--seq-650'];
+        const idx = Math.min(3, Math.floor(t * 4));
+        const color = cv(steps[idx]);
+        const x = padL + j * cell, y = padT + i * cell;
+        const rect = svgEl('rect', { class: 'cell-hit', x: x + 1, y: y + 1, width: cell - 2, height: cell - 2, rx: 3, fill: color });
+        rect.addEventListener('pointermove', (e) => showTooltip(e.clientX, e.clientY, v.toLocaleString(), `${categories[i]} ∩ ${categories[j]}`));
+        rect.addEventListener('pointerleave', hideTooltip);
+        svg.appendChild(rect);
+      }
+    }
+  }
+
+  // ---- cumulative line (pareto) ----
+  function renderLine(svgId, points) {
+    const svg = document.getElementById(svgId);
+    const W = 720, H = 320, pl = 46, pr = 16, pt = 12, pb = 34;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('width', '100%'); svg.removeAttribute('height');
+    svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+    svg.innerHTML = '';
+    const plotW = W - pl - pr, plotH = H - pt - pb;
+    const x = (v) => pl + (v / 100) * plotW;
+    const y = (v) => pt + plotH - (v / 100) * plotH;
+
+    [0,25,50,75,100].forEach(f => {
+      const yy = y(f);
+      svg.appendChild(svgEl('line', { class: 'grid-line', x1: pl, x2: pl + plotW, y1: yy, y2: yy }));
+      svg.appendChild(textEl('text', { class: 'axis-tick', x: pl - 8, y: yy + 3, 'text-anchor': 'end' }, f + '%'));
+      const xx = x(f);
+      svg.appendChild(textEl('text', { class: 'axis-tick', x: xx, y: pt + plotH + 16, 'text-anchor': 'middle' }, f + '%'));
+    });
+    svg.appendChild(svgEl('line', { class: 'baseline', x1: pl, x2: pl + plotW, y1: pt + plotH, y2: pt + plotH }));
+    svg.appendChild(textEl('text', { class: 'axis-label', x: pl + plotW/2, y: H - 2, 'text-anchor': 'middle' }, '% of winning traders (poorest → richest)'));
+
+    const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p[0])},${y(p[1])}`).join(' ');
+    const area = `${d} L${x(points[points.length-1][0])},${y(0)} L${x(points[0][0])},${y(0)} Z`;
+    svg.appendChild(svgEl('path', { d: area, fill: SERIES[0], 'fill-opacity': 0.1 }));
+    svg.appendChild(svgEl('path', { d, fill: 'none', stroke: SERIES[0], 'stroke-width': 2, 'stroke-linejoin': 'round' }));
+
+    const hit = svgEl('rect', { x: pl, y: pt, width: plotW, height: plotH, fill: 'transparent' });
+    hit.addEventListener('pointermove', (e) => {
+      const rect = svg.getBoundingClientRect();
+      const scale = W / rect.width;
+      const mx = (e.clientX - rect.left) * scale;
+      const pct = Math.max(0, Math.min(100, ((mx - pl) / plotW) * 100));
+      let nearest = points[0];
+      for (const p of points) if (Math.abs(p[0] - pct) < Math.abs(nearest[0] - pct)) nearest = p;
+      showTooltip(e.clientX, e.clientY, nearest[1].toFixed(1) + '% of PnL', 'held by top ' + nearest[0].toFixed(1) + '% of winners');
+    });
+    hit.addEventListener('pointerleave', hideTooltip);
+    svg.appendChild(hit);
+  }
+
+  // ================= render =================
+
+  document.getElementById('stat-row').append(
+    statTile('Unique wallets scraped', DATA.meta.total_users.toLocaleString()),
+    statTile('Traders with positive PnL', DATA.pareto.winner_count.toLocaleString()),
+    statTile('Total profit (winners)', fmtMoney(DATA.pareto.total_pnl)),
+    statTile('Categories tracked', DATA.category_counts.categories.length),
+  );
+
+  renderLine('chart-pareto', DATA.pareto.points);
+  dataTable(document.getElementById('table-pareto'), ['Top % of winners', 'Cumulative % of profit'],
+    DATA.pareto.points.filter((_, i) => i % 20 === 0).map(p => [p[0].toFixed(1) + '%', p[1].toFixed(1) + '%']));
+
+  renderBarChart('chart-pnl-hist', DATA.pnl_histogram.buckets, DATA.pnl_histogram.counts, { valueFmt: v => v.toLocaleString() + ' wallets', minSlot: 46 });
+  dataTable(document.getElementById('table-pnl-hist'), ['PnL bucket', 'Wallets'],
+    DATA.pnl_histogram.buckets.map((b, i) => [b, DATA.pnl_histogram.counts[i].toLocaleString()]));
+
+  const scatterCats = DATA.scatter.categories;
+  const colorMap = {};
+  scatterCats.forEach((c, i) => colorMap[c] = c === 'Other' ? OTHER_COLOR : SERIES[i]);
+  renderScatter('chart-scatter', DATA.scatter.points, {
+    x: 'vol', y: 'pnl', colorKey: 'category', colorMap, xLabel: 'Volume (log)', yLabel: 'PnL (log)', fmt: fmtMoney,
+    tooltipText: (xv, yv, p) => [`${fmtMoney(yv)} pnl`, `${fmtMoney(xv)} vol · ${p.category}`],
+  });
+  legend(document.getElementById('legend-scatter'), scatterCats.map(c => [c, colorMap[c]]));
+  const topScatter = [...DATA.scatter.points].sort((a,b) => b.pnl - a.pnl).slice(0, 100);
+  dataTable(document.getElementById('table-scatter'), ['Category', 'Volume', 'PnL'],
+    topScatter.map(p => [p.category, fmtMoney(p.vol), fmtMoney(p.pnl)]));
+
+  renderBarChart('chart-appearances', DATA.appearances_histogram.buckets, DATA.appearances_histogram.counts, { valueFmt: v => v.toLocaleString() + ' wallets', minSlot: 30 });
+  dataTable(document.getElementById('table-appearances'), ['Appearances', 'Wallets'],
+    DATA.appearances_histogram.buckets.map((b, i) => [b, DATA.appearances_histogram.counts[i].toLocaleString()]));
+
+  renderBarChart('chart-categories', DATA.category_counts.categories, DATA.category_counts.counts, { valueFmt: v => v.toLocaleString() + ' traders', minSlot: 70 });
+  dataTable(document.getElementById('table-categories'), ['Category', 'Unique traders'],
+    DATA.category_counts.categories.map((c, i) => [c, DATA.category_counts.counts[i].toLocaleString()]));
+
+  renderHeatmap('chart-heatmap', DATA.cooccurrence.categories, DATA.cooccurrence.matrix);
+  const hmRows = [];
+  DATA.cooccurrence.categories.forEach((a, i) => DATA.cooccurrence.categories.forEach((b, j) => {
+    if (i < j) hmRows.push([a + ' ∩ ' + b, DATA.cooccurrence.matrix[i][j].toLocaleString()]);
+  }));
+  dataTable(document.getElementById('table-heatmap'), ['Category pair', 'Shared traders'], hmRows.sort((a,b) => parseInt(b[1].replace(/,/g,'')) - parseInt(a[1].replace(/,/g,''))).slice(0, 40));
+
+  const vLabels = ['Unverified · mean', 'Unverified · median', 'Verified · mean', 'Verified · median'];
+  const vValues = [DATA.verified.unverified.mean, DATA.verified.unverified.median, DATA.verified.verified.mean, DATA.verified.verified.median];
+  renderBarChart('chart-verified', vLabels, vValues.map(v => Math.max(0, v)), { valueFmt: v => fmtMoney(v), minSlot: 130, color: SERIES[0] });
+  legend(document.getElementById('legend-verified'), [
+    [`Unverified (n=${DATA.verified.unverified.count.toLocaleString()})`, SERIES[0]],
+    [`Verified (n=${DATA.verified.verified.count.toLocaleString()})`, SERIES[0]],
+  ]);
+
+  const edge = DATA.edge_traders.traders;
+  document.getElementById('edge-sub').textContent = edge.length
+    ? `Profitable in every OVERALL time window we can see them in (not a one-day fluke), with at least $${MIN_VOL_DISPLAY} of volume behind it, ranked by return on volume deployed. ${DATA.edge_traders.candidate_pool_size.toLocaleString()} traders met the bar; showing the top ${edge.length}.`
+    : 'No traders met the consistency + volume bar for this sample.';
+  if (edge.length) {
+    renderBarChart('chart-edge', edge.map(t => t.username), edge.map(t => t.roi * 100),
+      { valueFmt: v => v.toFixed(0) + '% ROI', minSlot: 60, color: SERIES[4] });
+    dataTable(document.getElementById('table-edge'), ['Trader', 'ROI (PnL/Vol)', 'PnL', 'Volume', 'Time windows profitable in'],
+      edge.map(t => [t.username, (t.roi*100).toFixed(1) + '%', fmtMoney(t.pnl), fmtMoney(t.vol), t.periods]));
+  } else {
+    document.getElementById('chart-edge').outerHTML = '<div class="empty-note">No qualifying traders.</div>';
+  }
+
+  if (DATA.day_vs_all.points.length > 0) {
+    renderScatter('chart-day-vs-all', DATA.day_vs_all.points.map(p => ({ day: p[0], all: p[1], cat: 'rank' })),
+      {
+        x: 'day', y: 'all', colorKey: 'cat', colorMap: { rank: SERIES[0] },
+        xLabel: 'Day rank (log)', yLabel: 'All-time rank (log)',
+        fmt: (v) => '#' + Math.round(v).toLocaleString(),
+        tooltipText: (xv, yv) => [`#${Math.round(yv).toLocaleString()} all-time`, `#${Math.round(xv).toLocaleString()} that day`],
+      });
+  } else {
+    document.getElementById('chart-day-vs-all').outerHTML = '<div class="empty-note">No wallets ranked in OVERALL by PnL on both DAY and ALL windows.</div>';
+  }
+
+  renderBarChart('chart-words', DATA.word_freq.words, DATA.word_freq.counts, { valueFmt: v => v.toLocaleString(), minSlot: 34, color: SERIES[2] });
+
+  if (DATA.backtest) {
+    document.getElementById('backtest-card').style.display = '';
+    const bt = DATA.backtest;
+    const tenPlus = bt.thresholds.find(t => t.threshold === 10);
+    document.getElementById('backtest-sub').textContent =
+      `Simulated buying at the price when the Nth distinct top trader entered a market, held to resolution. ${bt.thresholds.length} thresholds tested.` +
+      (tenPlus && tenPlus.signals_per_week != null ? ` 10+ agreement happens ~${tenPlus.signals_per_week.toFixed(0)}x/week among these 1000 traders.` : '');
+    const labels = bt.thresholds.map(t => t.threshold === 1 ? '1 (baseline)' : String(t.threshold) + '+');
+    renderBarChart('chart-backtest', labels, bt.thresholds.map(t => t.win_rate * 100), { valueFmt: v => v.toFixed(1) + '% win rate', minSlot: 90, color: SERIES[1] });
+    dataTable(document.getElementById('table-backtest'), ['Traders agreeing', 'Signals', '~ per week', 'Win rate', 'Mean return', 'Total PnL ($100/signal)'],
+      bt.thresholds.map(t => [String(t.threshold) + '+', t.signal_count.toLocaleString(), t.signals_per_week != null ? t.signals_per_week.toFixed(1) : '—', (t.win_rate*100).toFixed(1) + '%', (t.mean_return*100).toFixed(1) + '%', fmtMoney(t.total_pnl_100)]));
+    if (bt.notable_signals && bt.notable_signals.length) {
+      dataTable(document.getElementById('table-backtest-notable'), ['Market', 'Outcome', 'Threshold', 'Entry', 'Settled', 'Return'],
+        bt.notable_signals.map(s => [s.slug, s.outcome, s.threshold + '+', s.entry_price.toFixed(3), s.settled_price.toFixed(2), (s.return_pct*100).toFixed(0) + '%']));
+    }
+  }
+
+  if (DATA.walkforward && DATA.backtest) {
+    document.getElementById('walkforward-card').style.display = '';
+    const wf = DATA.walkforward;
+    const naiveByT = Object.fromEntries(DATA.backtest.thresholds.map(t => [t.threshold, t]));
+    const wfByT = Object.fromEntries(wf.thresholds.map(t => [t.threshold, t]));
+    const commonThresholds = wf.thresholds.map(t => t.threshold).filter(t => naiveByT[t]);
+    const labels = commonThresholds.map(t => t === 1 ? '1 (baseline)' : t + '+');
+    const naiveVals = commonThresholds.map(t => naiveByT[t].win_rate * 100);
+    const wfVals = commonThresholds.map(t => wfByT[t].win_rate * 100);
+
+    const thin = commonThresholds.filter(t => wfByT[t].signal_count < 30 && wfByT[t].signal_count > 0);
+    const zero = commonThresholds.filter(t => wfByT[t].signal_count === 0);
+    let caveat = ` Walk-forward ranks traders using only PnL realized before each point in time, then only scores trades after that point — the naive version's ranking could see the future, this one can't.`;
+    if (thin.length) caveat += ` Caution: ${thin.map(t => t + '+').join(', ')} have under 30 out-of-sample signals — too few to trust at face value.`;
+    if (zero.length) caveat += ` ${zero.map(t => t + '+').join(', ')} never occurred out-of-sample in this window.`;
+    document.getElementById('walkforward-sub').textContent =
+      `Naive win rate (hindsight-biased) vs. walk-forward win rate (honest, out-of-sample), by agreement threshold.` + caveat;
+
+    renderGroupedBarChart('chart-walkforward', labels, naiveVals, wfVals, {
+      nameA: 'Naive (hindsight)', nameB: 'Walk-forward (honest)',
+      colorA: SERIES[0], colorB: SERIES[6],
+      valueFmt: v => v.toFixed(1) + '% win rate', minSlot: 110,
+    });
+    legend(document.getElementById('legend-walkforward'), [
+      ['Naive (hindsight-biased)', SERIES[0]],
+      ['Walk-forward (honest, out-of-sample)', SERIES[6]],
+    ]);
+    dataTable(document.getElementById('table-walkforward'),
+      ['Traders agreeing', 'Naive win rate', 'Naive signals', 'Naive mean return', 'WF win rate', 'WF signals', 'WF mean return'],
+      commonThresholds.map(t => [
+        t === 1 ? '1 (baseline)' : t + '+',
+        (naiveByT[t].win_rate * 100).toFixed(1) + '%', naiveByT[t].signal_count.toLocaleString(), (naiveByT[t].mean_return * 100).toFixed(1) + '%',
+        (wfByT[t].win_rate * 100).toFixed(1) + '%', wfByT[t].signal_count.toLocaleString(), (wfByT[t].mean_return * 100).toFixed(1) + '%',
+      ]));
+  }
+
+  if (DATA.strategy_comparison && (DATA.strategy_comparison.pool_size_spread || DATA.strategy_comparison.single_split)) {
+    document.getElementById('strategy-card').style.display = '';
+    const sc = DATA.strategy_comparison;
+
+    if (sc.pool_size_spread) {
+      const rows = sc.pool_size_spread.map(r => ({
+        label: 'top ' + r.top_k, min: r.min * 100, median: r.median * 100, max: r.max * 100,
+      }));
+      renderRangeChart('chart-poolsize', rows, {
+        valueFmt: v => v.toFixed(0) + '%', refLine: 50, refLabel: 'coin flip', minSlot: 90,
+      });
+      dataTable(document.getElementById('table-poolsize'), ['Pool size', 'Min win rate', 'Median win rate', 'Max win rate'],
+        sc.pool_size_spread.map(r => ['top ' + r.top_k, (r.min*100).toFixed(1)+'%', (r.median*100).toFixed(1)+'%', (r.max*100).toFixed(1)+'%']));
+    } else {
+      document.getElementById('chart-poolsize').outerHTML = '<div class="empty-note">Run scripts/strategy-sweep.py --mode rolling to populate this.</div>';
+    }
+
+    if (sc.single_split && DATA.walkforward) {
+      const rollingByT = Object.fromEntries(DATA.walkforward.thresholds.map(t => [t.threshold, t]));
+      const splitByT = Object.fromEntries(sc.single_split.thresholds.map(t => [t.threshold, t]));
+      const commonT = sc.single_split.thresholds.map(t => t.threshold).filter(t => rollingByT[t]);
+      const labels = commonT.map(t => t === 1 ? '1 (baseline)' : t + '+');
+
+      document.getElementById('tradeoff-sub').textContent =
+        `Rolling (monthly re-rank) vs. single-split (rank once on the first ${(sc.single_split.train_frac*100).toFixed(0)}% of history, test the rest) — two independently-built tests, same underlying data. Where they agree on direction, that's the trustworthy signal.`;
+
+      renderGroupedBarChart('chart-tradeoff-winrate', labels,
+        commonT.map(t => rollingByT[t].win_rate * 100), commonT.map(t => splitByT[t].win_rate * 100),
+        { nameA: 'Rolling', nameB: 'Single-split', colorA: SERIES[1], colorB: SERIES[4], valueFmt: v => v.toFixed(1) + '% win rate', minSlot: 110 });
+
+      renderGroupedBarChart('chart-tradeoff-return', labels,
+        commonT.map(t => rollingByT[t].mean_return * 100), commonT.map(t => splitByT[t].mean_return * 100),
+        { nameA: 'Rolling', nameB: 'Single-split', colorA: SERIES[1], colorB: SERIES[4], valueFmt: v => v.toFixed(1) + '% mean return', minSlot: 110 });
+
+      legend(document.getElementById('legend-tradeoff'), [
+        ['Rolling (monthly re-rank)', SERIES[1]],
+        ['Single-split (rank once)', SERIES[4]],
+      ]);
+      dataTable(document.getElementById('table-tradeoff'),
+        ['Traders agreeing', 'Rolling win rate', 'Rolling signals', 'Rolling return', 'Split win rate', 'Split signals', 'Split return'],
+        commonT.map(t => [
+          t === 1 ? '1 (baseline)' : t + '+',
+          (rollingByT[t].win_rate*100).toFixed(1)+'%', rollingByT[t].signal_count.toLocaleString(), (rollingByT[t].mean_return*100).toFixed(1)+'%',
+          (splitByT[t].win_rate*100).toFixed(1)+'%', splitByT[t].signal_count.toLocaleString(), (splitByT[t].mean_return*100).toFixed(1)+'%',
+        ]));
+    } else {
+      document.getElementById('chart-tradeoff-winrate').outerHTML = '<div class="empty-note">Run scripts/strategy-sweep.py --mode single-split to populate this.</div>';
+      document.getElementById('chart-tradeoff-return').style.display = 'none';
+    }
+  }
+})();
+</script>

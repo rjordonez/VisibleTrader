@@ -1,0 +1,60 @@
+{
+  "methodology": "walk_forward",
+  "interval_days": 30,
+  "top_k": 100,
+  "min_resolved_trades": 5,
+  "windows_total": 36,
+  "windows_with_signals": 36,
+  "thresholds": [
+    {
+      "threshold": 1,
+      "signal_count": 3919,
+      "win_rate": 0.545,
+      "mean_return": 0.4012,
+      "median_return": 0.0101,
+      "total_pnl_100": 157229.32,
+      "span_days": 1062.9,
+      "signals_per_week": 25.81
+    },
+    {
+      "threshold": 2,
+      "signal_count": 333,
+      "win_rate": 0.5495,
+      "mean_return": 0.3382,
+      "median_return": 0.0111,
+      "total_pnl_100": 11263.44,
+      "span_days": 912.2,
+      "signals_per_week": 2.56
+    },
+    {
+      "threshold": 3,
+      "signal_count": 73,
+      "win_rate": 0.6164,
+      "mean_return": 0.2625,
+      "median_return": 0.0472,
+      "total_pnl_100": 1916.21,
+      "span_days": 781.9,
+      "signals_per_week": 0.65
+    },
+    {
+      "threshold": 5,
+      "signal_count": 12,
+      "win_rate": 0.75,
+      "mean_return": 0.1503,
+      "median_return": 0.3846,
+      "total_pnl_100": 180.32,
+      "span_days": 109.1,
+      "signals_per_week": 0.77
+    },
+    {
+      "threshold": 10,
+      "signal_count": 1,
+      "win_rate": 1.0,
+      "mean_return": 0.0152,
+      "median_return": 0.0152,
+      "total_pnl_100": 1.52,
+      "span_days": 1,
+      "signals_per_week": 7.0
+    }
+  ]
+}

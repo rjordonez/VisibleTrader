@@ -1725,6 +1725,8 @@
   border: 1px solid var(--border);
   box-shadow: 0 32px 80px rgba(0,0,0,0.6);
   user-select: none;
+  pointer-events: none;
+  cursor: default;
 }
 
 .dashboard-chrome {

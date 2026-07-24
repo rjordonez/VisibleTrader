@@ -12,6 +12,20 @@ dist
 dist-ssr
 *.local
 
+# Generated data dumps (scripts/*.py output)
+polymarket_users.json
+backtest_results.json
+polymarket_dashboard.html
+venter_config.json
+trades_cache.json
+resolution_cache_v2.json
+
+# Live SQLite DB — mutates on every trade, not source
+venter_signals.db
+
+# Not for the public repo — real-money order-execution script, kept local only
+scripts/copy-trader.py
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
