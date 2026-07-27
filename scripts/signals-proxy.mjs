@@ -212,7 +212,7 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === '/leaderboard') {
       const rows = await runQuery(`
-        SELECT wallet, wallet_name,
+        SELECT wallet, MAX(wallet_name) AS wallet_name,
           COUNT(*) AS n,
           SUM(CASE WHEN resolved_win = true THEN 1 ELSE 0 END) AS won,
           SUM(CASE WHEN resolved_win = false THEN 1 ELSE 0 END) AS lost,
@@ -264,7 +264,7 @@ const server = http.createServer(async (req, res) => {
       const wallet = sqlEscape(decodeURIComponent(traderMatch[1]))
       const [summaryRows, positionRows, categoryRows] = await Promise.all([
         runQuery(`
-          SELECT wallet, wallet_name,
+          SELECT wallet, MAX(wallet_name) AS wallet_name,
             COUNT(*) AS n,
             SUM(CASE WHEN resolved_win = true THEN 1 ELSE 0 END) AS won,
             SUM(CASE WHEN resolved_win = false THEN 1 ELSE 0 END) AS lost,
