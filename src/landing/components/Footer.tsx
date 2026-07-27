@@ -7,7 +7,7 @@ export default function Footer() {
         <div className="footer-top">
           <div className="footer-brand">
             <a href="/" className="nav-logo" style={{ marginBottom: '0.5rem', display: 'inline-flex' }}>
-              Venter
+              VisibleTrader
             </a>
             <p>
               Real-time tracking of Polymarket's top-performing wallets.
@@ -59,12 +59,12 @@ export default function Footer() {
         </div>
 
         <div className="footer-bottom">
-          <p>© 2026 Venter, Inc. All rights reserved. 18+</p>
+          <p>© 2026 VisibleTrader, Inc. All rights reserved. 18+</p>
           <p>Prediction markets involve financial risk. Trade responsibly.</p>
         </div>
 
         <p className="footer-legal">
-          Venter is a trade-tracking and analytics tool. It does not execute trades on your behalf and is not
+          VisibleTrader is a trade-tracking and analytics tool. It does not execute trades on your behalf and is not
           a registered investment or trading adviser. Past performance of tracked wallets is not indicative of
           future results. Individual outcomes vary. Please trade responsibly.
         </p>

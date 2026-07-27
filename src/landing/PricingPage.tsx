@@ -55,7 +55,7 @@ const plans = [
       'Dedicated account manager',
     ],
     cta: 'Contact us',
-    href: 'mailto:hello@venter.io',
+    href: 'mailto:hello@visibletrader.io',
     highlighted: false,
   },
 ]

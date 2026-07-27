@@ -165,16 +165,16 @@ const calcs = [
   {
     id: 'ev', name: 'EV Calculator',
     component: EVCalc,
-    howTo: `The Venter EV Calculator tells you whether a prediction market contract is worth buying. Enter the current contract price (in cents) and your estimated true probability of the event happening. The calculator shows your expected profit or loss per $1 wagered.
+    howTo: `The VisibleTrader EV Calculator tells you whether a prediction market contract is worth buying. Enter the current contract price (in cents) and your estimated true probability of the event happening. The calculator shows your expected profit or loss per $1 wagered.
 
 A contract priced at 45¢ with a true probability of 55% has a positive expected value of +22.2%. Over many trades, consistently finding and taking +EV positions is the entire basis of profitable prediction market trading.
 
 The formula is: EV = (true probability × profit if win) − (1 − true probability) × cost. If EV is positive, the contract is underpriced relative to your model. If negative, the market is overpricing the event.
 
-Use this calculator alongside Venter's live EV scanner to verify opportunities before placing a trade.`,
+Use this calculator to sanity-check a contract's price against your own probability estimate before trading.`,
     faqs: [
       { q: 'What does positive EV mean?', a: 'Positive expected value means the contract is priced below its true probability. Over many trades, +EV bets generate profit even though individual outcomes are uncertain.' },
-      { q: 'How do I estimate true probability?', a: 'Use news, base rates, or Venter\'s probability models. The no-vig calculator can also extract implied probabilities from two-sided markets.' },
+      { q: 'How do I estimate true probability?', a: 'Use news, base rates, or your own research. The no-vig calculator can also extract implied probabilities from two-sided markets.' },
       { q: 'How much EV is worth trading?', a: 'Most serious traders look for at least +3–5% EV before entering a position, accounting for liquidity and transaction costs.' },
     ],
   },
@@ -187,10 +187,10 @@ Enter the YES price on one platform and the NO price on another. The calculator 
 
 The formula: profit % = (100 − YES − NO) / (YES + NO) × 100. Stakes split proportionally: YES stake = total × NO price / (YES + NO).
 
-Venter's Arbitrage Finder scans 6+ platforms in real time and alerts you the moment a spread opens.`,
+Spreads like this can close within seconds once other traders notice them, so cross-check live prices on each platform right before you place both legs.`,
     faqs: [
       { q: 'Is arbitrage risk-free?', a: 'Yes — as long as both trades execute before prices move. The main risk is price slippage between placing the two legs.' },
-      { q: 'How often do arb opportunities appear?', a: 'Venter users typically see 5–15 arb opportunities per day across major platforms, with edges ranging from 2% to 12%.' },
+      { q: 'How often do arb opportunities appear?', a: 'It varies widely by platform liquidity and market volatility — there\'s no fixed rate, and they tend to close quickly once noticed.' },
       { q: 'Do platforms allow arbitrage?', a: 'Prediction market platforms generally allow arb trading since it improves price discovery. Unlike sportsbooks, they rarely limit winners.' },
     ],
   },
@@ -247,9 +247,9 @@ A $200 bonus with a 1x rollover means you must trade $200 before withdrawing. If
 
 Enter the bonus amount, rollover multiplier, and expected win probability on your hedge trades. The calculator returns the EV of the bonus and a suggested hedge stake.
 
-Venter's Promo Optimizer automates this process — it identifies the best trades to fulfill rollover requirements with minimal risk.`,
+Work through the calculator before committing to a bonus so you know the required trades in advance, rather than discovering the rollover terms mid-way through.`,
     faqs: [
-      { q: 'Are platform bonuses actually profitable?', a: 'Yes. Most sign-up bonuses on prediction market platforms have positive expected value when combined with smart rollover trades. Venter users typically extract 60–90% of face value.' },
+      { q: 'Are platform bonuses actually profitable?', a: 'Often yes — most sign-up bonuses on prediction market platforms have positive expected value when combined with smart rollover trades, though the exact value depends on the specific terms.' },
       { q: 'What is a rollover requirement?', a: 'A rollover (or playthrough) requires you to trade a multiple of the bonus before withdrawing. A 1x rollover on a $200 bonus means you must trade $200.' },
       { q: 'Can I use arbitrage to meet rollover?', a: 'Often yes — if a platform allows multi-leg trades, you can use arb to fulfill rollover requirements with near-zero risk while retaining the full bonus value.' },
     ],

@@ -1,13 +1,27 @@
 import http from 'http'
-import { execFile } from 'child_process'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
+import pg from 'pg'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DB_PATH = path.join(__dirname, '..', 'venter_signals.db')
+const ENV_PATH = path.join(__dirname, '..', '.env')
+if (existsSync(ENV_PATH)) process.loadEnvFile(ENV_PATH)
+
 const CONFIG_PATH = path.join(__dirname, '..', 'venter_config.json')
 const PORT = 5201
+
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL not set — add it to .env (Supabase Settings > Database > Connection string)')
+}
+// pg returns numeric/int8 columns as strings by default (avoids precision loss
+// for values past Number.MAX_SAFE_INTEGER) — nothing here gets remotely close
+// to that, and every query result below feeds straight into frontend math
+// (r.won / (r.won + r.lost), etc.) that assumes real numbers, so parse both
+// back to JS numbers at the driver level rather than patching every call site.
+pg.types.setTypeParser(20, val => parseInt(val, 10))   // int8 (COUNT(*), bigint ids)
+pg.types.setTypeParser(1700, val => parseFloat(val))   // numeric (money columns)
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
 
 const CONFIG_DEFAULTS = {
   roster_size: 500,
@@ -58,29 +72,18 @@ async function resolveTokenId(slug, outcome) {
 }
 
 // Escapes a value for safe interpolation inside a single-quoted SQL string
-// literal. execFile (not exec) already avoids shell injection since sqlite3
-// is invoked directly with an args array, not through a shell — this handles
-// the separate SQL-injection risk from interpolating URL path params into
-// the query text itself.
+// literal — every query in this file builds SQL text (not $1-style bound
+// params), so this is the only thing standing between a URL path param and
+// SQL injection now that queries go to a real network DB instead of a local
+// trusted file. (Real parameterization is a fast-follow, not a blocker for
+// MVP1 — see the migration plan.)
 function sqlEscape(value) {
   return String(value).replace(/'/g, "''")
 }
 
-function runQuery(sql) {
-  return new Promise((resolve, reject) => {
-    if (!existsSync(DB_PATH)) {
-      resolve([])
-      return
-    }
-    execFile('sqlite3', ['-json', DB_PATH, sql], (err, stdout, stderr) => {
-      if (err) {
-        reject(new Error(stderr || err.message))
-        return
-      }
-      const trimmed = stdout.trim()
-      resolve(trimmed ? JSON.parse(trimmed) : [])
-    })
-  })
+async function runQuery(sql) {
+  const result = await pool.query(sql)
+  return result.rows
 }
 
 function sendJson(res, status, data) {
@@ -138,14 +141,14 @@ const server = http.createServer(async (req, res) => {
             COUNT(DISTINCT ow.wallet) AS live_wallet_count,
             SUM(ow.usd) AS live_total_usd,
             SUM(CASE WHEN ow.exit_ts IS NOT NULL THEN 1 ELSE 0 END) AS exited,
-            SUM(CASE WHEN ow.is_scalp = 1 THEN 1 ELSE 0 END) AS scalped,
-            SUM(CASE WHEN ow.market_closed = 1 THEN 1 ELSE 0 END) AS closed,
-            SUM(CASE WHEN ow.market_closed = 1 AND ow.resolved_win = 1 THEN 1 ELSE 0 END) AS won,
-            SUM(CASE WHEN ow.market_closed = 1 AND ow.resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
+            SUM(CASE WHEN ow.is_scalp = true THEN 1 ELSE 0 END) AS scalped,
+            SUM(CASE WHEN ow.market_closed = true THEN 1 ELSE 0 END) AS closed,
+            SUM(CASE WHEN ow.market_closed = true AND ow.resolved_win = true THEN 1 ELSE 0 END) AS won,
+            SUM(CASE WHEN ow.market_closed = true AND ow.resolved_win = false THEN 1 ELSE 0 END) AS lost,
             SUM(
               CASE
-                WHEN ow.market_closed = 1 THEN
-                  CASE WHEN ow.resolved_win = 1 THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END
+                WHEN ow.market_closed = true THEN
+                  CASE WHEN ow.resolved_win = true THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END
                 WHEN ow.exit_ts IS NOT NULL AND ow.exit_price IS NOT NULL THEN
                   (ow.usd / ow.price) * ow.exit_price - ow.usd
                 ELSE
@@ -181,25 +184,25 @@ const server = http.createServer(async (req, res) => {
         runQuery(`
           SELECT
             COUNT(*) AS resolved_n,
-            SUM(CASE WHEN resolved_win = 1 THEN 1 ELSE 0 END) AS won,
-            SUM(CASE WHEN resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
+            SUM(CASE WHEN resolved_win = true THEN 1 ELSE 0 END) AS won,
+            SUM(CASE WHEN resolved_win = false THEN 1 ELSE 0 END) AS lost,
             SUM(usd) AS deployed,
-            SUM(CASE WHEN resolved_win = 1 THEN (usd / price) - usd ELSE -usd END) AS net_profit
-          FROM opportunity_wallets WHERE market_closed = 1
+            SUM(CASE WHEN resolved_win = true THEN (usd / price) - usd ELSE -usd END) AS net_profit
+          FROM opportunity_wallets WHERE market_closed = true
         `),
         runQuery(`
-          SELECT date(resolved_ts) AS d,
-            SUM(CASE WHEN resolved_win = 1 THEN (usd / price) - usd ELSE -usd END) AS day_profit
-          FROM opportunity_wallets WHERE market_closed = 1
+          SELECT resolved_ts::date AS d,
+            SUM(CASE WHEN resolved_win = true THEN (usd / price) - usd ELSE -usd END) AS day_profit
+          FROM opportunity_wallets WHERE market_closed = true
           GROUP BY d ORDER BY d ASC
         `),
         runQuery(`
           SELECT ow.wallet, ow.wallet_name, o.title, ow.outcome, ow.usd, ow.price, ow.resolved_win, ow.resolved_ts,
-            CASE WHEN ow.resolved_win = 1 THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END AS profit
+            CASE WHEN ow.resolved_win = true THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END AS profit
           FROM opportunity_wallets ow
           JOIN (SELECT condition_id, outcome, MAX(title) AS title FROM opportunities GROUP BY condition_id, outcome) o
             ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
-          WHERE ow.market_closed = 1
+          WHERE ow.market_closed = true
           ORDER BY ow.resolved_ts DESC LIMIT 200
         `),
       ])
@@ -211,13 +214,13 @@ const server = http.createServer(async (req, res) => {
       const rows = await runQuery(`
         SELECT wallet, wallet_name,
           COUNT(*) AS n,
-          SUM(CASE WHEN resolved_win = 1 THEN 1 ELSE 0 END) AS won,
-          SUM(CASE WHEN resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
+          SUM(CASE WHEN resolved_win = true THEN 1 ELSE 0 END) AS won,
+          SUM(CASE WHEN resolved_win = false THEN 1 ELSE 0 END) AS lost,
           SUM(usd) AS deployed,
-          SUM(CASE WHEN resolved_win = 1 THEN usd ELSE 0 END) AS won_usd,
-          SUM(CASE WHEN resolved_win = 1 THEN (usd / price) - usd ELSE -usd END) AS net_profit
+          SUM(CASE WHEN resolved_win = true THEN usd ELSE 0 END) AS won_usd,
+          SUM(CASE WHEN resolved_win = true THEN (usd / price) - usd ELSE -usd END) AS net_profit
         FROM opportunity_wallets
-        WHERE market_closed = 1 AND wallet IS NOT NULL
+        WHERE market_closed = true AND wallet IS NOT NULL
         GROUP BY wallet
         ORDER BY net_profit DESC
       `)
@@ -263,34 +266,34 @@ const server = http.createServer(async (req, res) => {
         runQuery(`
           SELECT wallet, wallet_name,
             COUNT(*) AS n,
-            SUM(CASE WHEN resolved_win = 1 THEN 1 ELSE 0 END) AS won,
-            SUM(CASE WHEN resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
+            SUM(CASE WHEN resolved_win = true THEN 1 ELSE 0 END) AS won,
+            SUM(CASE WHEN resolved_win = false THEN 1 ELSE 0 END) AS lost,
             SUM(usd) AS deployed,
-            SUM(CASE WHEN resolved_win = 1 THEN usd ELSE 0 END) AS won_usd,
-            SUM(CASE WHEN resolved_win = 1 THEN (usd / price) - usd ELSE -usd END) AS net_profit
+            SUM(CASE WHEN resolved_win = true THEN usd ELSE 0 END) AS won_usd,
+            SUM(CASE WHEN resolved_win = true THEN (usd / price) - usd ELSE -usd END) AS net_profit
           FROM opportunity_wallets
-          WHERE market_closed = 1 AND lower(wallet) = lower('${wallet}')
+          WHERE market_closed = true AND lower(wallet) = lower('${wallet}')
           GROUP BY wallet
         `),
         runQuery(`
           SELECT ow.usd, ow.price, ow.resolved_win, ow.resolved_ts, o.title, o.outcome, o.category,
-            CASE WHEN ow.resolved_win = 1 THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END AS profit
+            CASE WHEN ow.resolved_win = true THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END AS profit
           FROM opportunity_wallets ow
           JOIN (SELECT condition_id, outcome, MAX(title) AS title, MAX(category) AS category FROM opportunities GROUP BY condition_id, outcome) o
             ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
-          WHERE ow.market_closed = 1 AND lower(ow.wallet) = lower('${wallet}')
+          WHERE ow.market_closed = true AND lower(ow.wallet) = lower('${wallet}')
           ORDER BY ow.resolved_ts DESC
         `),
         runQuery(`
           SELECT COALESCE(o.category, 'other') AS category,
             COUNT(*) AS n,
-            SUM(CASE WHEN ow.resolved_win = 1 THEN 1 ELSE 0 END) AS won,
-            SUM(CASE WHEN ow.resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
-            SUM(CASE WHEN ow.resolved_win = 1 THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END) AS profit
+            SUM(CASE WHEN ow.resolved_win = true THEN 1 ELSE 0 END) AS won,
+            SUM(CASE WHEN ow.resolved_win = false THEN 1 ELSE 0 END) AS lost,
+            SUM(CASE WHEN ow.resolved_win = true THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END) AS profit
           FROM opportunity_wallets ow
           JOIN (SELECT condition_id, outcome, MAX(category) AS category FROM opportunities GROUP BY condition_id, outcome) o
             ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
-          WHERE ow.market_closed = 1 AND lower(ow.wallet) = lower('${wallet}')
+          WHERE ow.market_closed = true AND lower(ow.wallet) = lower('${wallet}')
           GROUP BY category
           ORDER BY profit DESC
         `),

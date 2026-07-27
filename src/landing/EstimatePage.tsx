@@ -55,7 +55,7 @@ export default function EstimatePage() {
       {/* Logo */}
       <div className="ep-topbar">
         <button className="ep-logo" onClick={() => navigate('/')}>
-          Venter
+          VisibleTrader
         </button>
       </div>
 

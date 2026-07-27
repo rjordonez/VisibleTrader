@@ -2,16 +2,21 @@
 """Live signal-detection backend: watches real-time Polymarket trades via
 WebSocket, resolves each trade's on-chain sender wallet, and surfaces
 capital-weighted-conviction opportunities from a tracked roster of top
-traders into a local SQLite DB for a future UI to read.
+traders into a Supabase Postgres DB for a future UI to read. Schema lives in
+supabase/migrations/*.sql, applied via Supabase's GitHub integration — this
+file only connects and writes, it never creates or alters tables.
 
 Long-running process — run with `python3 scripts/live-signal-service.py` and
-leave it going. Stdlib only, no new dependencies (raw-socket WebSocket client,
-same pattern validated live earlier this session).
+leave it going. Requires DATABASE_URL in the environment (Supabase Settings
+> Database > Connection string). Uses the raw-socket WebSocket client
+pattern validated live earlier this session; the only non-stdlib dependency
+is psycopg for the Postgres connection.
 """
-import argparse, bisect, json, os, socket, sqlite3, ssl, struct, base64, threading, time, urllib.error, urllib.request
+import argparse, bisect, json, os, socket, ssl, struct, base64, threading, time, urllib.error, urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import psycopg
 
 WS_HOST = 'ws-subscriptions-clob.polymarket.com'
 WS_PATH = '/ws/market'
@@ -38,6 +43,26 @@ KNOWN_CATEGORY_SLUGS = {
     'mentions', 'weather', 'economics', 'tech', 'finance',
 }  # Polymarket's own top-level taxonomy (same list the leaderboard scraper uses)
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'venter_config.json')
+ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
+
+
+def load_env_file(path):
+    """Minimal KEY=VALUE .env loader — no new dependency for this alone.
+    Same file the frontend/Node proxy read via Vite/process.loadEnvFile();
+    existing environment variables win over the file, matching normal
+    dotenv precedence."""
+    if not os.path.exists(path):
+        return
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, _, value = line.partition('=')
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+load_env_file(ENV_PATH)
 
 lock = threading.Lock()
 stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trades': 0}
@@ -385,80 +410,64 @@ def recv_frames(ssock, buf):
 
 # ---------------- persistence ----------------
 
-def ensure_column(conn, table, column, coltype):
-    """CREATE TABLE IF NOT EXISTS is a no-op on a table that already exists
-    with an older schema — this handles adding a column that got introduced
-    after the DB file was first created, so existing venter_signals.db files
-    from earlier runs don't crash on the next INSERT/UPDATE."""
-    existing = {row[1] for row in conn.execute(f'PRAGMA table_info({table})')}
-    if column not in existing:
-        conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {coltype}')
+class Database:
+    """Thin wrapper around a single psycopg connection. Schema lives in
+    supabase/migrations/*.sql now (applied via Supabase's GitHub
+    integration) — this never creates or alters tables, it only connects
+    and runs statements. A network DB connection can drop in ways a local
+    SQLite file never did, so execute() reconnects and retries once on a
+    dropped-connection error; every write in this file already goes through
+    the module-level `lock`, so this stays safe under the existing
+    ThreadPoolExecutor workers without extra locking here."""
+
+    def __init__(self, database_url):
+        self.database_url = database_url
+        self.conn = psycopg.connect(database_url, autocommit=False)
+
+    def _reconnect(self):
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+        self.conn = psycopg.connect(self.database_url, autocommit=False)
+
+    def execute(self, sql, params=None):
+        try:
+            cur = self.conn.execute(sql, params)
+        except (psycopg.OperationalError, psycopg.InterfaceError):
+            self._reconnect()
+            cur = self.conn.execute(sql, params)
+        self.conn.commit()
+        return cur
 
 
-def init_db(path):
-    conn = sqlite3.connect(path, check_same_thread=False)
-    conn.execute('''CREATE TABLE IF NOT EXISTS opportunities (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        condition_id TEXT, outcome TEXT, slug TEXT, title TEXT,
-        cumulative_usd REAL, tier INTEGER, wallet_count INTEGER,
-        first_seen TEXT, last_updated TEXT, latest_price REAL,
-        UNIQUE(condition_id, outcome, tier)
-    )''')
-    conn.execute('''CREATE TABLE IF NOT EXISTS opportunity_wallets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        condition_id TEXT, outcome TEXT, wallet TEXT, wallet_name TEXT, usd REAL, price REAL, ts TEXT
-    )''')
-    conn.execute('''CREATE TABLE IF NOT EXISTS ticker (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        condition_id TEXT, outcome TEXT, slug TEXT, title TEXT,
-        usd REAL, price REAL, side TEXT, tx_hash TEXT,
-        wallet TEXT, wallet_name TEXT, roster_tagged INTEGER DEFAULT 0,
-        ts TEXT, epoch REAL
-    )''')
-    ensure_column(conn, 'opportunity_wallets', 'wallet_name', 'TEXT')
-    ensure_column(conn, 'opportunity_wallets', 'exit_ts', 'TEXT')
-    ensure_column(conn, 'opportunity_wallets', 'exit_price', 'REAL')
-    ensure_column(conn, 'opportunity_wallets', 'exit_usd', 'REAL')
-    ensure_column(conn, 'opportunity_wallets', 'hold_seconds', 'REAL')
-    ensure_column(conn, 'opportunity_wallets', 'is_scalp', 'INTEGER')
-    ensure_column(conn, 'opportunity_wallets', 'market_closed', 'INTEGER')
-    ensure_column(conn, 'opportunity_wallets', 'resolved_win', 'INTEGER')
-    ensure_column(conn, 'opportunity_wallets', 'resolved_ts', 'TEXT')
-    ensure_column(conn, 'ticker', 'wallet_name', 'TEXT')
-    ensure_column(conn, 'ticker', 'category', 'TEXT')
-    ensure_column(conn, 'opportunities', 'category', 'TEXT')
-    conn.commit()
-    return conn
-
-
-def record_tier_crossed(conn, condition_id, outcome, token_info, cumulative_usd, tier, wallet_count, price):
+def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, tier, wallet_count, price):
     slug = title = None
     category = 'other'
     meta = token_info.get((condition_id, outcome))
     if meta:
         slug, title = meta.get('slug'), meta.get('title')
         category = fetch_event_category(meta.get('eventId'))
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
     with lock:
-        conn.execute('''INSERT OR IGNORE INTO opportunities
+        db.execute('''INSERT INTO opportunities
             (condition_id, outcome, slug, title, cumulative_usd, tier, wallet_count, first_seen, last_updated, latest_price, category)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (condition_id, outcome, tier) DO NOTHING''',
             (condition_id, outcome, slug, title, cumulative_usd, tier, wallet_count, now, now, price, category))
-        conn.execute('''UPDATE opportunities SET cumulative_usd=?, wallet_count=?, last_updated=?, latest_price=?, category=?
-            WHERE condition_id=? AND outcome=? AND tier=?''',
+        db.execute('''UPDATE opportunities SET cumulative_usd=%s, wallet_count=%s, last_updated=%s, latest_price=%s, category=%s
+            WHERE condition_id=%s AND outcome=%s AND tier=%s''',
             (cumulative_usd, wallet_count, now, price, category, condition_id, outcome, tier))
-        conn.commit()
 
 
-def record_contribution(conn, condition_id, outcome, wallet, wallet_name, usd, price):
-    now = datetime.now(timezone.utc).isoformat()
+def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, price):
+    now = datetime.now(timezone.utc)
     with lock:
-        conn.execute('''INSERT INTO opportunity_wallets (condition_id, outcome, wallet, wallet_name, usd, price, ts)
-            VALUES (?,?,?,?,?,?,?)''', (condition_id, outcome, wallet, wallet_name, usd, price, now))
-        conn.commit()
+        db.execute('''INSERT INTO opportunity_wallets (condition_id, outcome, wallet, wallet_name, usd, price, ts)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)''', (condition_id, outcome, wallet, wallet_name, usd, price, now))
 
 
-def record_exit(conn, condition_id, outcome, wallet, price, usd):
+def record_exit(db, condition_id, outcome, wallet, price, usd):
     """Closes the oldest still-open contribution row for this wallet+market
     (FIFO — this is a best-effort signal classifier, not real accounting) and
     classifies the round trip as a scalp (held < SCALP_WINDOW_SECONDS) or a
@@ -467,18 +476,16 @@ def record_exit(conn, condition_id, outcome, wallet, price, usd):
     process started watching, or before it started tracking sells at all)."""
     now_dt = datetime.now(timezone.utc)
     with lock:
-        row = conn.execute('''SELECT id, ts FROM opportunity_wallets
-            WHERE condition_id=? AND outcome=? AND wallet=? AND exit_ts IS NULL
+        row = db.execute('''SELECT id, ts FROM opportunity_wallets
+            WHERE condition_id=%s AND outcome=%s AND wallet=%s AND exit_ts IS NULL
             ORDER BY ts ASC LIMIT 1''', (condition_id, outcome, wallet)).fetchone()
         if not row:
             return None
-        row_id, buy_ts_str = row
-        buy_ts = datetime.fromisoformat(buy_ts_str).timestamp()
-        hold_seconds = now_dt.timestamp() - buy_ts
+        row_id, buy_ts = row
+        hold_seconds = now_dt.timestamp() - buy_ts.timestamp()
         is_scalp = hold_seconds <= SCALP_WINDOW_SECONDS
-        conn.execute('''UPDATE opportunity_wallets SET exit_ts=?, exit_price=?, exit_usd=?, hold_seconds=?, is_scalp=?
-            WHERE id=?''', (now_dt.isoformat(), price, usd, hold_seconds, 1 if is_scalp else 0, row_id))
-        conn.commit()
+        db.execute('''UPDATE opportunity_wallets SET exit_ts=%s, exit_price=%s, exit_usd=%s, hold_seconds=%s, is_scalp=%s
+            WHERE id=%s''', (now_dt, price, usd, hold_seconds, is_scalp, row_id))
     return hold_seconds, is_scalp
 
 
@@ -509,15 +516,15 @@ def check_market_closed(slug):
         return None  # transient failure — try again on the next sweep, don't guess
 
 
-def sweep_resolved_positions(conn):
+def sweep_resolved_positions(db):
     """Runs periodically (not per-trade — this is a network call per distinct open
     market, too slow to do inline). Finds every market with still-open positions,
     checks whether it has resolved, and closes out all its open rows at once."""
     with lock:
-        rows = conn.execute('''SELECT DISTINCT ow.condition_id, ow.outcome, o.slug
+        rows = db.execute('''SELECT DISTINCT ow.condition_id, ow.outcome, o.slug
             FROM opportunity_wallets ow
             JOIN opportunities o ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
-            WHERE ow.exit_ts IS NULL AND (ow.market_closed IS NULL OR ow.market_closed = 0)''').fetchall()
+            WHERE ow.exit_ts IS NULL AND (ow.market_closed IS NULL OR ow.market_closed = false)''').fetchall()
     slug_results = {}
     closed_count = 0
     for condition_id, outcome, slug in rows:
@@ -527,49 +534,46 @@ def sweep_resolved_positions(conn):
         if result is None:
             continue  # still open
         won = result.get(outcome)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
         with lock:
-            conn.execute('''UPDATE opportunity_wallets SET market_closed=1, resolved_win=?, resolved_ts=?
-                WHERE condition_id=? AND outcome=? AND exit_ts IS NULL''',
-                (1 if won else (0 if won is not None else None), now, condition_id, outcome))
-            conn.commit()
+            db.execute('''UPDATE opportunity_wallets SET market_closed=true, resolved_win=%s, resolved_ts=%s
+                WHERE condition_id=%s AND outcome=%s AND exit_ts IS NULL''',
+                (won, now, condition_id, outcome))
         closed_count += 1
     if closed_count:
         print(f'  [resolved] {closed_count} market/outcome pairs closed out (positions settled by resolution, not a sale)')
 
 
-def record_ticker_trade(conn, info, usd, price, side, tx_hash):
+def record_ticker_trade(db, info, usd, price, side, tx_hash):
     """Inserted immediately on a big-enough trade, BEFORE on-chain wallet
     resolution — this is what makes the ticker sub-second instead of waiting
     on an RPC round trip like the roster-matched signals do."""
     now = datetime.now(timezone.utc)
     with lock:
-        cur = conn.execute('''INSERT INTO ticker
+        cur = db.execute('''INSERT INTO ticker
             (condition_id, outcome, slug, title, usd, price, side, tx_hash, wallet, roster_tagged, ts, epoch)
-            VALUES (?,?,?,?,?,?,?,?,NULL,0,?,?)''',
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NULL,false,%s,%s)
+            RETURNING id''',
             (info['conditionId'], info['outcome'], info['slug'], info['title'],
-             usd, price, side, tx_hash, now.isoformat(), now.timestamp()))
-        conn.commit()
-        return cur.lastrowid
+             usd, price, side, tx_hash, now, now.timestamp()))
+        return cur.fetchone()[0]
 
 
-def update_ticker_wallet(conn, ticker_id, wallet, wallet_name, roster_tagged, category):
+def update_ticker_wallet(db, ticker_id, wallet, wallet_name, roster_tagged, category):
     with lock:
-        conn.execute('UPDATE ticker SET wallet=?, wallet_name=?, roster_tagged=?, category=? WHERE id=?',
-                      (wallet, wallet_name, 1 if roster_tagged else 0, category, ticker_id))
-        conn.commit()
+        db.execute('UPDATE ticker SET wallet=%s, wallet_name=%s, roster_tagged=%s, category=%s WHERE id=%s',
+                    (wallet, wallet_name, bool(roster_tagged), category, ticker_id))
 
 
-def prune_ticker(conn):
+def prune_ticker(db):
     cutoff = time.time() - TICKER_RETENTION_SECONDS
     with lock:
-        conn.execute('DELETE FROM ticker WHERE epoch < ?', (cutoff,))
-        conn.commit()
+        db.execute('DELETE FROM ticker WHERE epoch < %s', (cutoff,))
 
 
 # ---------------- signal processing ----------------
 
-def process_trade(conn, keyed_token_info, tid, price, size, side, tx_hash, roster, wallet_names):
+def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster, wallet_names):
     if side not in ('BUY', 'SELL') or not tx_hash:
         return
     info = keyed_token_info.get(tid)
@@ -584,7 +588,7 @@ def process_trade(conn, keyed_token_info, tid, price, size, side, tx_hash, roste
     # what makes it sub-second instead of gated on wallet resolution.
     ticker_id = None
     if usd >= TICKER_MIN_USD:
-        ticker_id = record_ticker_trade(conn, info, usd, float(price) if price else 0, side, tx_hash)
+        ticker_id = record_ticker_trade(db, info, usd, float(price) if price else 0, side, tx_hash)
         with lock:
             stats['ticker_trades'] += 1
 
@@ -599,9 +603,8 @@ def process_trade(conn, keyed_token_info, tid, price, size, side, tx_hash, roste
     key_probe = (info['conditionId'], info['outcome'])
     if price and float(price) > 0 and key_probe in tiers_hit:
         with lock:
-            conn.execute('UPDATE opportunities SET latest_price=? WHERE condition_id=? AND outcome=?',
-                          (float(price), key_probe[0], key_probe[1]))
-            conn.commit()
+            db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
+                       (float(price), key_probe[0], key_probe[1]))
 
     if usd <= 0:
         return
@@ -613,7 +616,7 @@ def process_trade(conn, keyed_token_info, tid, price, size, side, tx_hash, roste
 
     if ticker_id is not None:
         category = fetch_event_category(info.get('eventId'))
-        update_ticker_wallet(conn, ticker_id, wallet, wallet_name, bool(wallet and wallet in roster), category)
+        update_ticker_wallet(db, ticker_id, wallet, wallet_name, bool(wallet and wallet in roster), category)
 
     if not wallet or wallet not in roster:
         return
@@ -621,7 +624,7 @@ def process_trade(conn, keyed_token_info, tid, price, size, side, tx_hash, roste
         stats['roster_matches'] += 1
 
     if side == 'SELL':
-        result = record_exit(conn, info['conditionId'], info['outcome'], wallet, float(price), usd)
+        result = record_exit(db, info['conditionId'], info['outcome'], wallet, float(price), usd)
         if result:
             hold_seconds, is_scalp = result
             who = wallet_name or f'{wallet[:10]}…'
@@ -650,14 +653,14 @@ def process_trade(conn, keyed_token_info, tid, price, size, side, tx_hash, roste
         if is_first_ever:
             already_hit.add(SOLO_TIER)
 
-    record_contribution(conn, key[0], key[1], wallet, wallet_name, usd, float(price))
+    record_contribution(db, key[0], key[1], wallet, wallet_name, usd, float(price))
     meta_lookup = {key: info}
     if is_first_ever:
-        record_tier_crossed(conn, key[0], key[1], meta_lookup, usd, SOLO_TIER, 1, float(price))
+        record_tier_crossed(db, key[0], key[1], meta_lookup, usd, SOLO_TIER, 1, float(price))
         who = wallet_name or f'{wallet[:10]}…'
         print(f'  [solo pick] {info["title"]!r} -> {info["outcome"]}  {who} bought ${usd:,.0f}')
     for t in newly_crossed:
-        record_tier_crossed(conn, key[0], key[1], meta_lookup, total_usd, t, len(distinct_wallets), float(price))
+        record_tier_crossed(db, key[0], key[1], meta_lookup, total_usd, t, len(distinct_wallets), float(price))
         print(f'  [OPPORTUNITY] {info["title"]!r} -> {info["outcome"]}  '
               f'${total_usd:,.0f} from {len(distinct_wallets)} roster wallets (crossed ${t:,} tier)')
 
@@ -668,9 +671,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--users', default='polymarket_users.json')
     ap.add_argument('--roster-size', type=int, default=ROSTER_SIZE)
-    ap.add_argument('--db', default='venter_signals.db')
+    ap.add_argument('--database-url', default=os.environ.get('DATABASE_URL'))
     ap.add_argument('--workers', type=int, default=16)
     args = ap.parse_args()
+
+    if not args.database_url:
+        raise SystemExit('DATABASE_URL not set — export it or pass --database-url '
+                          '(Supabase Settings > Database > Connection string, session pooler, port 5432)')
 
     all_users = json.load(open(args.users))
     config = load_config()  # venter_config.json wins over --roster-size if present — see Settings page
@@ -680,7 +687,7 @@ def main():
     wallet_names = build_wallet_names(all_users)
     print(f'{len(roster)} roster wallets loaded, {len(wallet_names)} known wallet names available.')
 
-    conn = init_db(args.db)
+    db = Database(args.database_url)
     executor = ThreadPoolExecutor(max_workers=args.workers)
 
     print('Fetching active market/token universe...')
@@ -734,11 +741,11 @@ def main():
                     last_heartbeat = now
 
                 if now - last_prune > 600:  # every 10 min, keep the high-volume ticker table bounded
-                    prune_ticker(conn)
+                    prune_ticker(db)
                     last_prune = now
 
                 if now - last_resolution_sweep > 300:  # every 5 min — catches positions closed out by market resolution, not a sale
-                    executor.submit(sweep_resolved_positions, conn)
+                    executor.submit(sweep_resolved_positions, db)
                     last_resolution_sweep = now
 
                 if now - last_config_reload > 10:  # picks up Settings-page changes without a restart
@@ -760,7 +767,7 @@ def main():
                         for item in items:
                             if item.get('event_type') == 'last_trade_price':
                                 executor.submit(
-                                    process_trade, conn, keyed_token_info,
+                                    process_trade, db, keyed_token_info,
                                     item.get('asset_id'), item.get('price'), item.get('size'),
                                     item.get('side'), item.get('transaction_hash'), roster, wallet_names,
                                 )

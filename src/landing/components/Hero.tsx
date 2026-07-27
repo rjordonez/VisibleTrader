@@ -26,7 +26,7 @@ export default function Hero() {
           </h1>
 
           <p className="hero-sub">
-            Venter watches the top-performing wallets on Polymarket in real time and
+            VisibleTrader watches the top-performing wallets on Polymarket in real time and
             surfaces what they're buying — the moment they buy it.
           </p>
 

@@ -1198,8 +1198,8 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
 interface WalletWatch { wallet: string }
 interface AlertEvent { id: string; text: string; ts: number }
 
-const WATCHED_WALLETS_KEY = 'venter_watched_wallets'
-const WATCHED_TIER_KEY = 'venter_watched_tier'
+const WATCHED_WALLETS_KEY = 'visibletrader_watched_wallets'
+const WATCHED_TIER_KEY = 'visibletrader_watched_tier'
 
 function AlertsPage() {
   const [watchedWallets, setWatchedWallets] = useState<WalletWatch[]>(() => {
@@ -1228,7 +1228,7 @@ function AlertsPage() {
   const fire = (text: string) => {
     setHistory(h => [{ id: `${Date.now()}-${Math.random()}`, text, ts: Date.now() }, ...h].slice(0, 50))
     if (permission === 'granted' && 'Notification' in window) {
-      new Notification('Venter Signals', { body: text })
+      new Notification('VisibleTrader Signals', { body: text })
     }
   }
 
@@ -1662,7 +1662,7 @@ export default function AppShell() {
   return (
     <div className="app-shell">
       <aside className="app-sidebar">
-        <div className="app-sidebar-logo">Venter</div>
+        <div className="app-sidebar-logo">VisibleTrader</div>
         <nav className="app-sidebar-nav">
           {navItems.map(({ id, label, Icon }) => (
             <button

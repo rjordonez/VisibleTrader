@@ -1,5 +1,5 @@
 {
-  "name": "venter",
+  "name": "visibletrader",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -13,6 +13,7 @@
     "@supabase/supabase-js": "^2.110.8",
     "@types/react-router-dom": "^5.3.3",
     "lucide-react": "^1.20.0",
+    "pg": "^8.22.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.17.0"

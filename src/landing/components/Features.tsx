@@ -15,7 +15,7 @@ export default function Features() {
       <div className="section-inner">
         <div style={{ marginBottom: '3rem' }}>
           <span className="section-tag">Tools</span>
-          <h2 style={{ margin: '0 0 0.5rem' }}>Why Venter will<br />work for you</h2>
+          <h2 style={{ margin: '0 0 0.5rem' }}>Why VisibleTrader will<br />work for you</h2>
           <p className="section-sub" style={{ margin: 0 }}>
             Real on-chain trade data from Polymarket's top-performing wallets, surfaced live.
           </p>
@@ -85,7 +85,7 @@ export default function Features() {
               <div className="alert-notif">
                 <div className="alert-app-icon">V</div>
                 <div className="alert-body">
-                  <div className="alert-title-row">Venter Alert</div>
+                  <div className="alert-title-row">VisibleTrader Alert</div>
                   <div className="alert-text">🔥 Watched wallet crossed $20k tier</div>
                 </div>
                 <div className="alert-time">now</div>
@@ -93,7 +93,7 @@ export default function Features() {
               <div className="alert-notif alert-notif-dim">
                 <div className="alert-app-icon">V</div>
                 <div className="alert-body">
-                  <div className="alert-title-row">Venter Alert</div>
+                  <div className="alert-title-row">VisibleTrader Alert</div>
                   <div className="alert-text">New solo pick: US x Iran ceasefire</div>
                 </div>
                 <div className="alert-time">2m</div>

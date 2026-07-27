@@ -2,8 +2,8 @@ import { useState } from 'react'
 
 const faqs = [
   {
-    q: 'How does Venter actually work?',
-    a: 'Venter watches Polymarket\'s trade feed in real time and tracks a roster of top-performing wallets by realized profit. When one or more of those wallets buys into a market, it shows up in your dashboard — ranked by how much capital is behind it, with a live price chart marking exactly where each trader bought in.',
+    q: 'How does VisibleTrader actually work?',
+    a: 'VisibleTrader watches Polymarket\'s trade feed in real time and tracks a roster of top-performing wallets by realized profit. When one or more of those wallets buys into a market, it shows up in your dashboard — ranked by how much capital is behind it, with a live price chart marking exactly where each trader bought in.',
   },
   {
     q: 'Which platform does this cover?',
@@ -11,7 +11,7 @@ const faqs = [
   },
   {
     q: 'Do you place trades for me?',
-    a: "No. Venter is a tracking and analytics tool — it shows you what tracked wallets are doing, it does not execute trades on your behalf or manage funds. You place your own trades directly on Polymarket if you choose to.",
+    a: "No. VisibleTrader is a tracking and analytics tool — it shows you what tracked wallets are doing, it does not execute trades on your behalf or manage funds. You place your own trades directly on Polymarket if you choose to.",
   },
   {
     q: 'Will I make money every single day?',
