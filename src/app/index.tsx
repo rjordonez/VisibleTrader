@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { TrendingUp, BarChart2, Bell, Radar, Settings } from 'lucide-react'
+import { supabase } from '../lib/supabase'
+import type { User } from '@supabase/supabase-js'
 import './app.css'
 
 const navItems = [
@@ -271,6 +274,7 @@ interface Opportunity {
   scalped: number
   closed: number
   category: string | null
+  total_profit: number
 }
 
 interface WalletContribution {
@@ -389,6 +393,22 @@ function signalsTraderStatus(w: WalletContribution) {
   return { label: 'Exited', color: '#ff3b5c' }
 }
 
+interface ChartPoint { t: number; p: number }
+
+// Realized profit if resolved or exited (uses the actual settlement/exit price);
+// unrealized (mark-to-market) if still holding, using the market's current price
+// as a stand-in for "what could I get out right now."
+function walletReturn(w: WalletContribution, currentPrice: number): { profit: number; realized: boolean } {
+  const shares = w.price > 0 ? w.usd / w.price : 0
+  if (w.market_closed) {
+    return { profit: w.resolved_win ? shares * 1 - w.usd : -w.usd, realized: true }
+  }
+  if (w.exit_ts && w.exit_price != null) {
+    return { profit: shares * w.exit_price - w.usd, realized: true }
+  }
+  return { profit: shares * currentPrice - w.usd, realized: false }
+}
+
 function SignalsDemo() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [loading, setLoading]             = useState(true)
@@ -396,10 +416,13 @@ function SignalsDemo() {
   const [expanded, setExpanded]           = useState<string | null>(null)
   const [wallets, setWallets]             = useState<WalletContribution[]>([])
   const [walletsLoading, setWalletsLoading] = useState(false)
+  const [chartHistory, setChartHistory]   = useState<ChartPoint[]>([])
+  const [chartLoading, setChartLoading]   = useState(false)
   const [ticker, setTicker]               = useState<TickerTrade[]>([])
   const [tab, setTab]                     = useState<'ticker' | 'vetted'>('ticker')
   const [category, setCategory]           = useState('all')
   const [todayOnly, setTodayOnly]         = useState(false)
+  const [sortMode, setSortMode]           = useState<'recent' | 'profit'>('recent')
 
   useEffect(() => {
     let cancelled = false
@@ -447,11 +470,17 @@ function SignalsDemo() {
     }
     setExpanded(key)
     setWalletsLoading(true)
+    setChartLoading(true)
     fetch(`${SIGNALS_PROXY}/opportunities/${encodeURIComponent(o.condition_id)}/${encodeURIComponent(o.outcome)}/wallets`)
       .then(res => res.json())
       .then((data: WalletContribution[]) => setWallets(data))
       .catch(() => setWallets([]))
       .finally(() => setWalletsLoading(false))
+    fetch(`${SIGNALS_PROXY}/opportunities/${encodeURIComponent(o.condition_id)}/${encodeURIComponent(o.outcome)}/chart`)
+      .then(res => res.json())
+      .then((data: { history: ChartPoint[] }) => setChartHistory(data.history || []))
+      .catch(() => setChartHistory([]))
+      .finally(() => setChartLoading(false))
   }
 
   // Category chip list: whatever's actually present in live data right now, most common first — not a hardcoded taxonomy.
@@ -470,7 +499,11 @@ function SignalsDemo() {
     category === 'all' ? list : list.filter(x => (x.category ?? 'other') === category)
 
   const filteredTicker = byCategory(ticker).filter(t => !todayOnly || isToday(t.ts))
-  const filteredOpportunities = byCategory(opportunities).filter(o => !todayOnly || isToday(o.first_seen))
+  const filteredOpportunities = byCategory(opportunities)
+    .filter(o => !todayOnly || isToday(o.first_seen))
+    .sort((a, b) => sortMode === 'profit'
+      ? b.total_profit - a.total_profit
+      : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
 
   return (
     <div className="sig-page">
@@ -554,6 +587,11 @@ function SignalsDemo() {
         )}
 
         {tab === 'vetted' && (
+          <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <div className={sortMode === 'recent' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('recent')}>Most recent</div>
+              <div className={sortMode === 'profit' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('profit')}>Most profitable</div>
+            </div>
           <div className="sig-grid">
             {loading && <div className="sig-empty">Connecting to the live signal feed…</div>}
             {!loading && filteredOpportunities.length === 0 && (
@@ -576,9 +614,12 @@ function SignalsDemo() {
                 <div key={key} className="sig-card" onClick={() => toggleExpand(o)}>
                   <div className="sig-card-top">
                     <div className="sig-card-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
-                    <div>
+                    <div style={{ flex: 1 }}>
                       <div className="sig-card-q">{o.title} <span className="sig-out">— {o.outcome}</span></div>
                       <div className="sig-card-meta">{o.wallet_count} top trader{o.wallet_count > 1 ? 's' : ''}</div>
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: o.total_profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+                      {fmtSigned(o.total_profit)}
                     </div>
                   </div>
                   <div className="sig-gauge-row">
@@ -606,6 +647,17 @@ function SignalsDemo() {
 
                   {isOpen && (
                     <div className="sig-drill" onClick={e => e.stopPropagation()}>
+                      <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
+                      {chartLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>Loading chart…</div>}
+                      {!chartLoading && chartHistory.length < 2 && (
+                        <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>No price history available for this market.</div>
+                      )}
+                      {!chartLoading && chartHistory.length >= 2 && (
+                        <div style={{ marginBottom: 16 }}>
+                          <PriceChart history={chartHistory} wallets={wallets} />
+                        </div>
+                      )}
+
                       <div className="sig-drill-label">Contributing traders</div>
                       {walletsLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>Loading contributors…</div>}
                       {!walletsLoading && wallets.length === 0 && (
@@ -613,6 +665,7 @@ function SignalsDemo() {
                       )}
                       {!walletsLoading && wallets.map((w, i) => {
                         const st = signalsTraderStatus(w)
+                        const ret = walletReturn(w, o.latest_price)
                         return (
                           <div key={i} className="sig-drill-row">
                             <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name">
@@ -620,6 +673,9 @@ function SignalsDemo() {
                             </a>
                             <div className="sig-drill-detail">
                               {fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}
+                            </div>
+                            <div style={{ fontSize: 11.5, fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+                              {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
                             </div>
                             <div className="sig-drill-status" style={{ color: st.color, background: st.color + '26' }}>
                               {st.label}
@@ -633,6 +689,7 @@ function SignalsDemo() {
               )
             })}
           </div>
+          </>
         )}
 
         <div className="sig-foot">
@@ -667,6 +724,43 @@ interface ProfitsPosition {
   resolved_win: number
   resolved_ts: string
   profit: number
+}
+
+function PriceChart({ history, wallets }: { history: ChartPoint[]; wallets: WalletContribution[] }) {
+  if (history.length < 2) return null
+  const width = 1000, height = 220, padding = 24
+  const times = history.map(h => h.t)
+  const minT = Math.min(...times)
+  const maxT = Math.max(...times)
+  const tRange = maxT - minT || 1
+  const xFor = (t: number) => padding + ((t - minT) / tRange) * (width - padding * 2)
+  const yFor = (p: number) => height - padding - p * (height - padding * 2) // price is always 0–1, fixed scale so moves aren't exaggerated
+  const points = history.map(h => `${xFor(h.t)},${yFor(h.p)}`).join(' ')
+
+  const markers = wallets
+    .map(w => {
+      const t = new Date(w.ts).getTime() / 1000
+      if (t < minT || t > maxT) return null
+      const st = signalsTraderStatus(w)
+      return { x: xFor(t), y: yFor(w.price), color: st.color, label: `${traderLabel(w.wallet, w.wallet_name)} — ${st.label} — ${fmtFull(w.usd)} at ${Math.round(w.price * 100)}¢` }
+    })
+    .filter((m): m is { x: number; y: number; color: string; label: string } => m !== null)
+
+  return (
+    <svg className="sig-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ height: 220 }}>
+      <line x1={padding} y1={yFor(1)} x2={width - padding} y2={yFor(1)} stroke="var(--border)" strokeWidth={1} />
+      <line x1={padding} y1={yFor(0.5)} x2={width - padding} y2={yFor(0.5)} stroke="var(--border)" strokeWidth={1} strokeDasharray="3 3" />
+      <line x1={padding} y1={yFor(0)} x2={width - padding} y2={yFor(0)} stroke="var(--border)" strokeWidth={1} />
+      <text x={padding} y={yFor(1) - 4} fill="var(--text-faint)" fontSize="9">100¢</text>
+      <text x={padding} y={yFor(0) - 4} fill="var(--text-faint)" fontSize="9">0¢</text>
+      <polyline points={points} fill="none" stroke="#2f6fed" strokeWidth={2} />
+      {markers.map((m, i) => (
+        <circle key={i} cx={m.x} cy={m.y} r={5} fill={m.color} stroke="#0b0d10" strokeWidth={1.5}>
+          <title>{m.label}</title>
+        </circle>
+      ))}
+    </svg>
+  )
 }
 
 function CumulativeChart({ data }: { data: { d: string; cum: number }[] }) {
@@ -825,6 +919,7 @@ interface LeaderboardRow {
   won: number
   lost: number
   deployed: number
+  won_usd: number
   net_profit: number
 }
 
@@ -888,7 +983,8 @@ function LeaderboardPage({ onSelectWallet }: { onSelectWallet: (wallet: string) 
                   <th className="num">#</th>
                   <th>Trader</th>
                   <th className="num">Trades</th>
-                  <th className="num">Win Rate</th>
+                  <th className="num" title="Winning trades ÷ total resolved trades">Win Rate (#)</th>
+                  <th className="num" title="Dollars in winning trades ÷ total dollars deployed — weights by position size, not trade count">Win Rate ($)</th>
                   <th className="num">Deployed</th>
                   <th className="num">Profit</th>
                   <th className="num">ROI</th>
@@ -897,6 +993,7 @@ function LeaderboardPage({ onSelectWallet }: { onSelectWallet: (wallet: string) 
               <tbody>
                 {rows.map((r, i) => {
                   const winRate = r.won + r.lost > 0 ? (r.won / (r.won + r.lost)) * 100 : 0
+                  const usdWinRate = r.deployed > 0 ? (r.won_usd / r.deployed) * 100 : 0
                   const roi = r.deployed > 0 ? (r.net_profit / r.deployed) * 100 : 0
                   return (
                     <tr key={r.wallet}>
@@ -914,6 +1011,7 @@ function LeaderboardPage({ onSelectWallet }: { onSelectWallet: (wallet: string) 
                       </td>
                       <td className="num">{r.n}</td>
                       <td className="num">{winRate.toFixed(0)}%</td>
+                      <td className="num">{usdWinRate.toFixed(0)}%</td>
                       <td className="num">{fmtFull(r.deployed)}</td>
                       <td className="num" style={{ color: r.net_profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(r.net_profit)}</td>
                       <td className="num" style={{ color: roi >= 0 ? 'var(--green)' : 'var(--red)' }}>{roi >= 0 ? '+' : ''}{roi.toFixed(1)}%</td>
@@ -937,6 +1035,7 @@ interface TraderSummary {
   won: number
   lost: number
   deployed: number
+  won_usd: number
   net_profit: number
 }
 
@@ -991,6 +1090,7 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
   }, [wallet])
 
   const winRate = summary && summary.won + summary.lost > 0 ? (summary.won / (summary.won + summary.lost)) * 100 : 0
+  const usdWinRate = summary && summary.deployed > 0 ? (summary.won_usd / summary.deployed) * 100 : 0
   const roi = summary && summary.deployed > 0 ? (summary.net_profit / summary.deployed) * 100 : 0
 
   return (
@@ -1020,8 +1120,12 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
                 <div className={`sig-stat-cell-val ${summary.net_profit >= 0 ? 'g' : 'r'}`}>{fmtSigned(summary.net_profit)}</div>
               </div>
               <div className="sig-stat-cell">
-                <div className="sig-stat-cell-label">Win Rate</div>
+                <div className="sig-stat-cell-label" title="Winning trades ÷ total resolved trades">Win Rate (#)</div>
                 <div className="sig-stat-cell-val">{winRate.toFixed(1)}%</div>
+              </div>
+              <div className="sig-stat-cell">
+                <div className="sig-stat-cell-label" title="Dollars in winning trades ÷ total dollars deployed">Win Rate ($)</div>
+                <div className="sig-stat-cell-val">{usdWinRate.toFixed(1)}%</div>
               </div>
               <div className="sig-stat-cell">
                 <div className="sig-stat-cell-label">ROI</div>
@@ -1527,8 +1631,23 @@ const demos: Record<string, () => JSX.Element> = {
 
 /* ── App Shell ── */
 export default function AppShell() {
+  const navigate = useNavigate()
   const [active, setActive] = useState('signals')
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null))
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+    return () => sub.subscription.unsubscribe()
+  }, [])
+
+  const signOut = async () => {
+    await supabase.auth.signOut()
+    navigate('/login')
+  }
 
   let page: JSX.Element
   if (selectedWallet) {
@@ -1556,6 +1675,16 @@ export default function AppShell() {
             </button>
           ))}
         </nav>
+
+        {user && (
+          <div className="app-sidebar-bottom">
+            <div className="app-user-row">
+              <div className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</div>
+              <div className="app-user-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
+            </div>
+            <button className="app-nav-item" style={{ color: '#f87171' }} onClick={signOut}>Sign out</button>
+          </div>
+        )}
       </aside>
 
       <main className="app-main">

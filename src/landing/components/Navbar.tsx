@@ -20,12 +20,12 @@ const ChevronLeft = () => (
 )
 
 const tools = [
-  { name: 'Market Scanner',    desc: 'Scan every market for mispriced contracts',    href: '/features/market-scanner', color: '#38bdf8' },
-  { name: 'Arbitrage Finder',  desc: 'Lock in guaranteed profit across platforms',   href: '/features/arbitrage',       color: '#10b981' },
-  { name: 'Positive EV',       desc: 'Bet where the crowd is systematically wrong',  href: '/features/ev',              color: '#818cf8' },
-  { name: 'Promo Optimizer',   desc: 'Extract every dollar from platform bonuses',   href: '/features/promo',           color: '#fb923c' },
-  { name: 'Live Alerts',       desc: 'Instant push alerts when edge markets open',   href: '/features/alerts',          color: '#2dd4bf' },
-  { name: 'Portfolio Tracker', desc: 'Track ROI across every platform in one place', href: '/features/portfolio',       color: '#a78bfa' },
+  { name: 'Live Ticker',       desc: 'Every qualifying Polymarket trade, live',      href: '/features/live-ticker', color: '#38bdf8' },
+  { name: 'Vetted Picks',      desc: 'Capital-weighted conviction from top wallets', href: '/features/vetted-picks', color: '#10b981' },
+  { name: 'Leaderboard',       desc: 'Real, verified win rate per wallet',           href: '/features/leaderboard', color: '#a78bfa' },
+  { name: 'Profits',           desc: 'Payout-adjusted P&L, resolved and open',       href: '/features/profits',     color: '#fb923c' },
+  { name: 'Alerts',            desc: 'Browser alerts on your watchlist',             href: '/features/alerts',      color: '#2dd4bf' },
+  { name: 'Settings',          desc: 'Configure roster size and conviction tiers',   href: '/features/settings',    color: '#818cf8' },
 ]
 
 const calculators = [
@@ -34,7 +34,6 @@ const calculators = [
   { name: 'Kelly Criterion',      desc: 'Optimal bet sizing based on your edge',          href: '/calculators', color: '#38bdf8' },
   { name: 'Odds Converter',       desc: 'Convert between decimal, American, and prob',    href: '/calculators', color: '#fb923c' },
   { name: 'No-Vig Calculator',    desc: 'Strip the vig and find true market probability', href: '/calculators', color: '#f472b6' },
-  { name: 'Promo Calculator',     desc: 'Calculate risk-free value of platform bonuses',  href: '/calculators', color: '#2dd4bf' },
 ]
 
 type Menu = 'closed' | 'main' | 'tools' | 'resources'
@@ -109,7 +108,7 @@ export default function Navbar() {
         </div>
 
         <div className="nav-actions">
-          <a href="/app" className="btn-ghost">Log in</a>
+          <Link to="/login" className="btn-ghost">Log in</Link>
           <Link to="/pricing" className="btn-primary">Try for free</Link>
         </div>
 
@@ -140,7 +139,7 @@ export default function Navbar() {
                 <ChevronRight />
               </button>
               <div className="nav-drawer-divider" />
-              <a href="/app" className="nav-drawer-link" onClick={close}>Log in</a>
+              <Link to="/login" className="nav-drawer-link" onClick={close}>Log in</Link>
               <Link to="/pricing" className="nav-drawer-link" style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={close}>Try for free</Link>
             </div>
           </>

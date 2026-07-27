@@ -1,7 +1,7 @@
 const rows = [
-  { market: 'Fed cuts rates in July 2025?', kalshi: '41¢', poly: '37¢', ev: '+9.1%', type: 'ARB', tag: 'Economics' },
-  { market: 'Bitcoin above $120k by Aug?', kalshi: '28¢', poly: '33¢', ev: '+6.4%', type: '+EV', tag: 'Crypto' },
-  { market: 'Trump signs executive order this week?', kalshi: '62¢', poly: '57¢', ev: '+7.8%', type: 'ARB', tag: 'Politics' },
+  { market: 'Arizona Diamondbacks vs. Washington Nationals', wallets: 9, total: '$91,947', price: '53¢', tag: 'Sports' },
+  { market: 'US x Iran Effective Ceasefire by July 24?',     wallets: 5, total: '$2,179',  price: '15¢', tag: 'Politics' },
+  { market: 'Will CF América win on 2026-07-24?',            wallets: 6, total: '$21,160', price: '71¢', tag: 'Sports' },
 ]
 
 export default function DashboardPreview() {
@@ -13,7 +13,7 @@ export default function DashboardPreview() {
         <div className="chrome-dots">
           <span /><span /><span />
         </div>
-        <div className="chrome-bar">app.venter.io/scanner</div>
+        <div className="chrome-bar">app.venter.io/signals</div>
         <div className="chrome-spacer" />
       </div>
 
@@ -21,10 +21,10 @@ export default function DashboardPreview() {
       <div className="dashboard-body">
         {/* Sidebar */}
         <div className="dash-sidebar">
-          {['Scanner', 'Arbitrage', '+EV Feed', 'Portfolio', 'Alerts', 'Promos'].map((item, i) => (
+          {['Signals', 'Profits', 'Leaderboard', 'Alerts', 'Settings'].map((item, i) => (
             <div key={item} className={`dash-nav-item ${i === 0 ? 'active' : ''}`}>
               <span className="dash-nav-icon">
-                {['📡','⚖️','🎯','📊','🔔','💰'][i]}
+                {['📡','📈','🏆','🔔','⚙️'][i]}
               </span>
               {item}
             </div>
@@ -35,13 +35,13 @@ export default function DashboardPreview() {
         <div className="dash-main">
           <div className="dash-topbar">
             <div>
-              <div className="dash-title">Market Scanner</div>
-              <div className="dash-subtitle">247 live opportunities across 15 platforms</div>
+              <div className="dash-title">Top Trader Signals</div>
+              <div className="dash-subtitle">286 live opportunities · capital-weighted conviction from top traders</div>
             </div>
             <div className="dash-filters">
               <span className="dash-filter active">All</span>
-              <span className="dash-filter">ARB</span>
-              <span className="dash-filter">+EV</span>
+              <span className="dash-filter">Sports</span>
+              <span className="dash-filter">Politics</span>
             </div>
           </div>
 
@@ -49,10 +49,9 @@ export default function DashboardPreview() {
             <thead>
               <tr>
                 <th>Market</th>
-                <th>Kalshi</th>
-                <th>Polymarket</th>
-                <th>Edge</th>
-                <th>Type</th>
+                <th>Top Traders</th>
+                <th>Price</th>
+                <th>Total $</th>
                 <th></th>
               </tr>
             </thead>
@@ -63,16 +62,11 @@ export default function DashboardPreview() {
                     <div className="dash-market-name">{r.market}</div>
                     <span className="dash-tag">{r.tag}</span>
                   </td>
-                  <td className="dash-price">{r.kalshi}</td>
-                  <td className="dash-price">{r.poly}</td>
-                  <td className="dash-ev">{r.ev}</td>
+                  <td className="dash-price">{r.wallets}</td>
+                  <td className="dash-price">{r.price}</td>
+                  <td className="dash-ev">{r.total}</td>
                   <td>
-                    <span className={`dash-type-badge ${r.type === 'ARB' ? 'arb' : 'ev'}`}>
-                      {r.type}
-                    </span>
-                  </td>
-                  <td>
-                    <button className="dash-bet-btn">Bet →</button>
+                    <button className="dash-bet-btn">View →</button>
                   </td>
                 </tr>
               ))}

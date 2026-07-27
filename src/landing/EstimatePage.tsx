@@ -4,27 +4,25 @@ import './landing.css'
 
 const questions = [
   {
-    q: 'How many trades can you place per week?',
-    options: ['1–3 trades', '4–10 trades', '10–20 trades', '20+ trades'],
-    multipliers: [1, 2.8, 5.5, 10],
+    q: 'Which markets do you care about most?',
+    options: ['Sports', 'Politics', 'Crypto', 'Everything'],
   },
   {
-    q: "What's your starting bankroll?",
-    options: ['Under $500', '$500 – $2k', '$2k – $10k', '$10k+'],
-    multipliers: [1, 3.2, 9, 22],
+    q: 'What matters most when following a signal?',
+    options: ['Win rate track record', 'How fast it moves', 'Position size', 'All of it'],
   },
   {
-    q: 'Experience with prediction markets?',
-    options: ['Complete beginner', 'Placed a few bets', 'Active trader', 'Full-time trader'],
-    multipliers: [1, 1.2, 1.5, 2],
+    q: 'How familiar are you with Polymarket?',
+    options: ['Brand new', "I've placed a few bets", 'Active trader', 'I trade daily'],
   },
 ]
 
-function calcProfit(answers: number[]) {
-  const base = 48
-  const monthly = Math.round(base * answers[0] * answers[1] * answers[2])
-  return { monthly, annual: monthly * 12 }
-}
+const sampleByInterest = [
+  { cat: 'Sports',     example: '9 tracked wallets converged on one MLB spread within minutes of each other.' },
+  { cat: 'Politics',   example: 'A ceasefire market moved on tracked-wallet volume before headlines caught up.' },
+  { cat: 'Crypto',     example: 'Real-time price history shows exactly where each tracked wallet bought in.' },
+  { cat: 'Everything', example: '286 live opportunities across every category, ranked by real conviction.' },
+]
 
 type Step = 'q0' | 'q1' | 'q2' | 'email' | 'result'
 const nextStep: Record<string, Step> = { q0: 'q1', q1: 'q2', q2: 'email' }
@@ -39,9 +37,9 @@ export default function EstimatePage() {
   const qIndex = step === 'q0' ? 0 : step === 'q1' ? 1 : step === 'q2' ? 2 : -1
   const currentQ = qIndex >= 0 ? questions[qIndex] : null
 
-  function choose(multiplier: number) {
+  function choose(optionIndex: number) {
     setSelected(null)
-    setAnswers(prev => [...prev, multiplier])
+    setAnswers(prev => [...prev, optionIndex])
     setStep(nextStep[step] as Step)
   }
 
@@ -50,7 +48,7 @@ export default function EstimatePage() {
     setStep('result')
   }
 
-  const profit = step === 'result' ? calcProfit(answers) : null
+  const sample = step === 'result' ? sampleByInterest[answers[0] ?? 3] : null
 
   return (
     <div className="ep-root">
@@ -83,7 +81,7 @@ export default function EstimatePage() {
                   className={`ep-option ${selected === i ? 'ep-option-selected' : ''}`}
                   onClick={() => {
                     setSelected(i)
-                    setTimeout(() => choose(currentQ.multipliers[i]), 180)
+                    setTimeout(() => choose(i), 180)
                   }}
                 >
                   <span className="ep-option-letter">{String.fromCharCode(65 + i)}</span>
@@ -106,10 +104,10 @@ export default function EstimatePage() {
 
             <h1 className="ep-headline">
               Drop your email and we'll show you<br />
-              exactly how much you can make.
+              a live example from the dashboard.
             </h1>
 
-            <p className="ep-sub">Plus we'll send your first free picks today.</p>
+            <p className="ep-sub">No spam — just a preview of what you'd see.</p>
 
             <form onSubmit={submitEmail} className="ep-email-form">
               <input
@@ -121,7 +119,7 @@ export default function EstimatePage() {
                 className="ep-input"
                 autoFocus
               />
-              <button type="submit" className="ep-btn">Show me the money →</button>
+              <button type="submit" className="ep-btn">Show me the preview →</button>
             </form>
 
             <p className="ep-fine">No spam. Unsubscribe anytime.</p>
@@ -129,7 +127,7 @@ export default function EstimatePage() {
         )}
 
         {/* ── Result ── */}
-        {step === 'result' && profit && (
+        {step === 'result' && sample && (
           <div className="ep-fade-in">
             <div className="ep-check-badge">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -139,30 +137,28 @@ export default function EstimatePage() {
             </div>
 
             <h1 className="ep-headline">
-              Based on your trades, bankroll,<br />and experience, you can earn:
+              Since you're into {sample.cat.toLowerCase()},<br />here's what you'd see:
             </h1>
 
             <div className="ep-result-line">
-              <span className="ep-result-amount">${profit.monthly.toLocaleString()}</span>
               <span className="ep-result-inline-text">
-                <span className="ep-result-green">in estimated monthly profit</span> from trading mispriced prediction markets
+                {sample.example}
               </span>
             </div>
 
             <div className="ep-platform-logos">
-              <span className="ep-platform-pill">Kalshi</span>
               <span className="ep-platform-pill">Polymarket</span>
             </div>
 
             <p className="ep-plus-line">
-              Plus, make <span className="ep-result-green">${profit.annual.toLocaleString()}/year</span> with consistent Arbitrage and Positive EV trades
+              This is a real example, not a projection of what you'll personally earn — individual results vary and every trade carries risk.
             </p>
 
             <a href="/pricing" className="ep-btn" style={{ display: 'inline-block' }}>Try for free</a>
 
             <div className="ep-links">
-              <button className="ep-link" onClick={() => navigate('/#tools')}>Learn how Positive EV works</button>
-              <button className="ep-link" onClick={() => navigate('/#tools')}>Learn how Arbitrage works</button>
+              <button className="ep-link" onClick={() => navigate('/#tools')}>See how signals are ranked</button>
+              <button className="ep-link" onClick={() => navigate('/#faq')}>Read the FAQ</button>
             </div>
           </div>
         )}

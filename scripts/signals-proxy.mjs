@@ -35,6 +35,28 @@ function readBody(req) {
   })
 }
 
+const UA = { 'User-Agent': 'Mozilla/5.0' }
+const tokenIdCache = new Map() // `${slug}::${outcome}` -> clob token id — outcomes never change once a market exists
+
+async function resolveTokenId(slug, outcome) {
+  const key = `${slug}::${outcome}`
+  if (tokenIdCache.has(key)) return tokenIdCache.get(key)
+  const res = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`, { headers: UA })
+  if (!res.ok) return null
+  const rows = await res.json()
+  if (!rows.length) return null
+  const m = rows[0]
+  let outcomes = m.outcomes
+  let tokenIds = m.clobTokenIds
+  if (typeof outcomes === 'string') outcomes = JSON.parse(outcomes)
+  if (typeof tokenIds === 'string') tokenIds = JSON.parse(tokenIds)
+  const idx = (outcomes || []).indexOf(outcome)
+  if (idx === -1 || !tokenIds || !tokenIds[idx]) return null
+  const tokenId = tokenIds[idx]
+  tokenIdCache.set(key, tokenId)
+  return tokenId
+}
+
 // Escapes a value for safe interpolation inside a single-quoted SQL string
 // literal. execFile (not exec) already avoids shell injection since sqlite3
 // is invoked directly with an args array, not through a shell — this handles
@@ -85,28 +107,59 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (url.pathname === '/opportunities') {
+      // wallet_count/cumulative_usd on `opportunities` are a snapshot frozen at the
+      // moment the row's tier was crossed — they don't update again until the NEXT
+      // tier crossing, so they go stale (sometimes badly) between crossings while
+      // wallets keep contributing. Compute both live from opportunity_wallets instead
+      // of trusting the frozen columns.
+      // total_profit mirrors the per-trader math used in the drill-down chart:
+      // resolved -> exact payout; exited/scalped -> real exit price; still holding ->
+      // mark-to-market against the market's current price (lp.cur_price, looked up
+      // from the same max-tier row `latest_price` used for the card's own Price stat).
       const rows = await runQuery(`
-        SELECT o.*,
+        SELECT o.id, o.condition_id, o.outcome, o.slug, o.title, o.tier, o.first_seen, o.last_updated, o.latest_price, o.category,
+          COALESCE(w.live_wallet_count, o.wallet_count) AS wallet_count,
+          COALESCE(w.live_total_usd, o.cumulative_usd) AS cumulative_usd,
           COALESCE(w.entries, 0) AS entries,
           COALESCE(w.exited, 0) AS exited,
           COALESCE(w.scalped, 0) AS scalped,
           COALESCE(w.closed, 0) AS closed,
           COALESCE(w.won, 0) AS won,
-          COALESCE(w.lost, 0) AS lost
+          COALESCE(w.lost, 0) AS lost,
+          COALESCE(w.total_profit, 0) AS total_profit
         FROM opportunities o
         INNER JOIN (
           SELECT condition_id, outcome, MAX(tier) AS max_tier
           FROM opportunities GROUP BY condition_id, outcome
         ) m ON o.condition_id = m.condition_id AND o.outcome = m.outcome AND o.tier = m.max_tier
         LEFT JOIN (
-          SELECT condition_id, outcome,
+          SELECT ow.condition_id, ow.outcome,
             COUNT(*) AS entries,
-            SUM(CASE WHEN exit_ts IS NOT NULL THEN 1 ELSE 0 END) AS exited,
-            SUM(CASE WHEN is_scalp = 1 THEN 1 ELSE 0 END) AS scalped,
-            SUM(CASE WHEN market_closed = 1 THEN 1 ELSE 0 END) AS closed,
-            SUM(CASE WHEN market_closed = 1 AND resolved_win = 1 THEN 1 ELSE 0 END) AS won,
-            SUM(CASE WHEN market_closed = 1 AND resolved_win = 0 THEN 1 ELSE 0 END) AS lost
-          FROM opportunity_wallets GROUP BY condition_id, outcome
+            COUNT(DISTINCT ow.wallet) AS live_wallet_count,
+            SUM(ow.usd) AS live_total_usd,
+            SUM(CASE WHEN ow.exit_ts IS NOT NULL THEN 1 ELSE 0 END) AS exited,
+            SUM(CASE WHEN ow.is_scalp = 1 THEN 1 ELSE 0 END) AS scalped,
+            SUM(CASE WHEN ow.market_closed = 1 THEN 1 ELSE 0 END) AS closed,
+            SUM(CASE WHEN ow.market_closed = 1 AND ow.resolved_win = 1 THEN 1 ELSE 0 END) AS won,
+            SUM(CASE WHEN ow.market_closed = 1 AND ow.resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
+            SUM(
+              CASE
+                WHEN ow.market_closed = 1 THEN
+                  CASE WHEN ow.resolved_win = 1 THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END
+                WHEN ow.exit_ts IS NOT NULL AND ow.exit_price IS NOT NULL THEN
+                  (ow.usd / ow.price) * ow.exit_price - ow.usd
+                ELSE
+                  (ow.usd / ow.price) * COALESCE(lp.cur_price, ow.price) - ow.usd
+              END
+            ) AS total_profit
+          FROM opportunity_wallets ow
+          LEFT JOIN (
+            SELECT o2.condition_id, o2.outcome, o2.latest_price AS cur_price
+            FROM opportunities o2
+            INNER JOIN (SELECT condition_id, outcome, MAX(tier) AS max_tier FROM opportunities GROUP BY condition_id, outcome) m2
+              ON o2.condition_id = m2.condition_id AND o2.outcome = m2.outcome AND o2.tier = m2.max_tier
+          ) lp ON lp.condition_id = ow.condition_id AND lp.outcome = ow.outcome
+          GROUP BY ow.condition_id, ow.outcome
         ) w ON o.condition_id = w.condition_id AND o.outcome = w.outcome
         ORDER BY o.last_updated DESC
       `)
@@ -161,6 +214,7 @@ const server = http.createServer(async (req, res) => {
           SUM(CASE WHEN resolved_win = 1 THEN 1 ELSE 0 END) AS won,
           SUM(CASE WHEN resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
           SUM(usd) AS deployed,
+          SUM(CASE WHEN resolved_win = 1 THEN usd ELSE 0 END) AS won_usd,
           SUM(CASE WHEN resolved_win = 1 THEN (usd / price) - usd ELSE -usd END) AS net_profit
         FROM opportunity_wallets
         WHERE market_closed = 1 AND wallet IS NOT NULL
@@ -212,6 +266,7 @@ const server = http.createServer(async (req, res) => {
             SUM(CASE WHEN resolved_win = 1 THEN 1 ELSE 0 END) AS won,
             SUM(CASE WHEN resolved_win = 0 THEN 1 ELSE 0 END) AS lost,
             SUM(usd) AS deployed,
+            SUM(CASE WHEN resolved_win = 1 THEN usd ELSE 0 END) AS won_usd,
             SUM(CASE WHEN resolved_win = 1 THEN (usd / price) - usd ELSE -usd END) AS net_profit
           FROM opportunity_wallets
           WHERE market_closed = 1 AND lower(wallet) = lower('${wallet}')
@@ -256,6 +311,30 @@ const server = http.createServer(async (req, res) => {
         ORDER BY ts DESC
       `)
       sendJson(res, 200, rows)
+      return
+    }
+
+    const chartMatch = url.pathname.match(/^\/opportunities\/([^/]+)\/([^/]+)\/chart$/)
+    if (chartMatch) {
+      const conditionId = sqlEscape(decodeURIComponent(chartMatch[1]))
+      const outcome = decodeURIComponent(chartMatch[2])
+      const slugRows = await runQuery(`SELECT slug FROM opportunities WHERE condition_id = '${conditionId}' LIMIT 1`)
+      const slug = slugRows[0]?.slug
+      if (!slug) {
+        sendJson(res, 200, { history: [] })
+        return
+      }
+      const tokenId = await resolveTokenId(slug, outcome)
+      if (!tokenId) {
+        sendJson(res, 200, { history: [] })
+        return
+      }
+      const histRes = await fetch(
+        `https://clob.polymarket.com/prices-history?market=${tokenId}&interval=max&fidelity=30`,
+        { headers: UA }
+      )
+      const histData = histRes.ok ? await histRes.json() : { history: [] }
+      sendJson(res, 200, { history: histData.history || [] })
       return
     }
 

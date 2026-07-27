@@ -1,12 +1,12 @@
 const reviews = [
-  { init: 'JM', name: 'Jake M.', handle: '@jakemarkets', profit: '+$1,240', text: "Venter's arbitrage finder paid for itself in the first week. Found a Kalshi vs Polymarket spread I never would've caught manually." },
-  { init: 'SR', name: 'Sofia R.', handle: '@sofiatrades', profit: '+$870', text: "The +EV scanner is insane. I placed 40 bets last month, ended up $870 ahead. The math just works." },
-  { init: 'DL', name: 'David L.', handle: '@dlcontracts', profit: '+$2,100', text: "I was skeptical but the free coaching call walked me through exactly how to size positions. Haven't had a losing week since." },
-  { init: 'AL', name: 'Aisha L.', handle: '@aishaedge', profit: '+$650', text: "Perfect for someone new to prediction markets. The dashboard makes it obvious what to trade and why." },
-  { init: 'TK', name: 'Tyler K.', handle: '@tylerk_ev', profit: '+$3,500', text: "Full-time job replacement territory for me. The live alerts are the key. I never miss a mispriced market now." },
-  { init: 'MN', name: 'Maya N.', handle: '@mayanumbers', profit: '+$490', text: "Promo optimizer alone recouped three months of subscription. Extracted $490 in bonus value in my first two weeks." },
-  { init: 'RC', name: 'Ryan C.', handle: '@ryancontracts', profit: '+$1,800', text: "The portfolio tracker finally lets me see my true ROI across platforms. Venter is the missing layer for serious traders." },
-  { init: 'EH', name: 'Elena H.', handle: '@elenabets', profit: '+$730', text: "I work full time. I spend maybe 20 mins a day on this. Alerts do the work. This month: +$730." },
+  { init: '⚾', name: 'Diamondbacks vs. Nationals', handle: 'Sports · 9 top wallets', profit: '$91,947', text: "Nine top-tracked wallets independently converged on the same side within the same hour — real capital, real conviction." },
+  { init: '⚽', name: 'CF América win market', handle: 'Sports · 6 top wallets', profit: '$21,160', text: "Six tracked wallets, one side, ranked by dollars deployed — not just headcount." },
+  { init: '🏛️', name: 'US x Iran ceasefire', handle: 'Politics · 5 top wallets', profit: '$2,179', text: "Smaller size, still five independent wallets on the same side — solo picks and small convergence both get surfaced." },
+  { init: '🎮', name: 'LoL: LOUD vs paiN Gaming', handle: 'Esports · 2 top wallets', profit: '$23,346', text: "Esports markets move fast — the live ticker catches size the moment it lands." },
+  { init: '⚾', name: 'Reds vs. Cardinals O/U 7.5', handle: 'Sports · 2 top wallets', profit: '$29,073', text: "Every card includes a price-history chart with exactly where each wallet bought in." },
+  { init: '₿', name: 'Bitcoin above $67,500', handle: 'Crypto · solo pick', profit: '$3,999', text: "Solo picks are tagged separately from multi-wallet convergence — you always know which you're looking at." },
+  { init: '🏆', name: 'Leaderboard', handle: 'Real, verified performance', profit: '64% win ($)', text: "Win rate weighted by dollars deployed, not just trade count — so one lucky small bet can't inflate the record." },
+  { init: '📈', name: 'Profits page', handle: 'Payout-adjusted P&L', profit: 'Live', text: "Resolved P&L accounts for actual payout ratio. Open positions are marked to market against the live price, not frozen at entry." },
 ]
 
 
@@ -17,10 +17,10 @@ export default function Testimonials() {
   return (
     <section className="section testimonials">
       <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-        <span className="section-tag">Social Proof</span>
-        <h2 style={{ margin: '0 0 0.5rem' }}>Real profits, verified.</h2>
+        <span className="section-tag">Real Data</span>
+        <h2 style={{ margin: '0 0 0.5rem' }}>Real trades, verified on-chain.</h2>
         <p style={{ color: 'var(--text-3)', fontSize: '0.9rem', margin: 0 }}>
-          Results tracked by Pikkit, the independent third-party bet tracker.
+          Every example below is pulled from Polymarket's public order book — not backtested, not simulated.
         </p>
       </div>
 
@@ -28,7 +28,6 @@ export default function Testimonials() {
         <div className="marquee-track">
           {row1.map((r, i) => (
             <div key={i} className="testimonial-card">
-              <div className="testimonial-stars">★★★★★</div>
               <p className="testimonial-text">"{r.text}"</p>
               <div className="testimonial-author">
                 <div className="testimonial-avatar">{r.init}</div>
@@ -45,7 +44,6 @@ export default function Testimonials() {
         <div className="marquee-track reverse">
           {row2.map((r, i) => (
             <div key={i} className="testimonial-card">
-              <div className="testimonial-stars">★★★★★</div>
               <p className="testimonial-text">"{r.text}"</p>
               <div className="testimonial-author">
                 <div className="testimonial-avatar">{r.init}</div>

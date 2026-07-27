@@ -2,27 +2,25 @@ import { useState, useEffect } from 'react'
 
 const questions = [
   {
-    q: 'How many trades can you place per week?',
-    options: ['1–3 trades', '4–10 trades', '10–20 trades', '20+ trades'],
-    multipliers: [1, 2.8, 5.5, 10],
+    q: 'Which markets do you care about most?',
+    options: ['Sports', 'Politics', 'Crypto', 'Everything'],
   },
   {
-    q: "What's your starting bankroll?",
-    options: ['Under $500', '$500 – $2k', '$2k – $10k', '$10k+'],
-    multipliers: [1, 3.2, 9, 22],
+    q: 'What matters most when following a signal?',
+    options: ['Win rate track record', 'How fast it moves', 'Position size', 'All of it'],
   },
   {
-    q: 'Experience with prediction markets?',
-    options: ['Complete beginner', 'Placed a few bets', 'Active trader', 'Full-time trader'],
-    multipliers: [1, 1.2, 1.5, 2],
+    q: 'How familiar are you with Polymarket?',
+    options: ['Brand new', "I've placed a few bets", 'Active trader', 'I trade daily'],
   },
 ]
 
-function calcProfit(answers: number[]) {
-  const base = 48
-  const monthly = Math.round(base * answers[0] * answers[1] * answers[2])
-  return { monthly, annual: monthly * 12 }
-}
+const sampleByInterest = [
+  { cat: 'Sports',     example: '9 tracked wallets converged on one MLB spread within minutes of each other.' },
+  { cat: 'Politics',   example: 'A ceasefire market moved on tracked-wallet volume before headlines caught up.' },
+  { cat: 'Crypto',     example: 'Real-time price history shows exactly where each tracked wallet bought in.' },
+  { cat: 'Everything', example: '286 live opportunities across every category, ranked by real conviction.' },
+]
 
 type Step = 'q0' | 'q1' | 'q2' | 'email' | 'result'
 
@@ -45,9 +43,9 @@ export default function ProfitModal({ onClose }: Props) {
   const currentQ = qIndex >= 0 ? questions[qIndex] : null
   const nextStep: Record<string, Step> = { q0: 'q1', q1: 'q2', q2: 'email' }
 
-  function choose(multiplier: number) {
+  function choose(optionIndex: number) {
     setSelected(null)
-    setAnswers(prev => [...prev, multiplier])
+    setAnswers(prev => [...prev, optionIndex])
     setStep(nextStep[step] as Step)
   }
 
@@ -56,7 +54,7 @@ export default function ProfitModal({ onClose }: Props) {
     setStep('result')
   }
 
-  const profit = step === 'result' ? calcProfit(answers) : null
+  const sample = step === 'result' ? sampleByInterest[answers[0] ?? 3] : null
 
   return (
     <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -85,7 +83,7 @@ export default function ProfitModal({ onClose }: Props) {
                   className={`modal-option ${selected === i ? 'selected' : ''}`}
                   onClick={() => {
                     setSelected(i)
-                    setTimeout(() => choose(currentQ.multipliers[i]), 180)
+                    setTimeout(() => choose(i), 180)
                   }}
                 >
                   {opt}
@@ -101,7 +99,7 @@ export default function ProfitModal({ onClose }: Props) {
             <div className="modal-email-icon">✉️</div>
             <h2 className="modal-q-title">One last thing</h2>
             <p className="modal-email-sub">
-              Enter your email and we'll show you exactly how much you can make, plus send your first free picks today.
+              Enter your email and we'll show you a live example from the dashboard.
             </p>
             <form onSubmit={submitEmail} style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
               <input
@@ -114,7 +112,7 @@ export default function ProfitModal({ onClose }: Props) {
                 autoFocus
               />
               <button type="submit" className="btn-primary" style={{ padding: '0.8rem', fontSize: '0.9375rem' }}>
-                Show me the money →
+                Show me the preview →
               </button>
             </form>
             <p className="modal-disclaimer">No spam. Unsubscribe anytime.</p>
@@ -122,22 +120,14 @@ export default function ProfitModal({ onClose }: Props) {
         )}
 
         {/* Result step */}
-        {step === 'result' && profit && (
+        {step === 'result' && sample && (
           <>
-            <div className="modal-result-badge">Your personalized estimate</div>
-            <div className="modal-result-nums">
-              <div className="modal-result-block">
-                <span className="modal-result-num">${profit.monthly.toLocaleString()}</span>
-                <span className="modal-result-period">per month</span>
-              </div>
-              <div className="modal-result-divider" />
-              <div className="modal-result-block">
-                <span className="modal-result-num modal-result-num-lg">${profit.annual.toLocaleString()}</span>
-                <span className="modal-result-period">per year</span>
-              </div>
+            <div className="modal-result-badge">Since you're into {sample.cat.toLowerCase()}</div>
+            <div className="modal-result-nums" style={{ textAlign: 'left' }}>
+              <p style={{ fontSize: '0.95rem', lineHeight: 1.5, margin: 0 }}>{sample.example}</p>
             </div>
             <p className="modal-disclaimer" style={{ marginBottom: '1.25rem' }}>
-              Based on a +6.2% avg. edge across verified Venter picks, scaled to your inputs. Individual results vary.
+              A real example, not a projection of what you'll personally earn — individual results vary and every trade carries risk.
             </p>
             <a href="/app" className="btn-primary" style={{ display: 'block', textAlign: 'center', padding: '0.8rem', fontSize: '0.9375rem' }}>
               Start free trial →

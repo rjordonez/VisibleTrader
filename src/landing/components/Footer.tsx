@@ -10,9 +10,8 @@ export default function Footer() {
               Venter
             </a>
             <p>
-              Data-driven prediction market trading.
-              Find mispriced contracts, trade with an edge,
-              and let math do the work.
+              Real-time tracking of Polymarket's top-performing wallets.
+              See what's actually being bought, by whom, the moment it happens.
             </p>
             <div className="footer-socials">
               <a href="#" className="social-btn" aria-label="X / Twitter">
@@ -27,12 +26,12 @@ export default function Footer() {
           <div className="footer-col">
             <h5>Tools</h5>
             <ul>
-              <li><Link to="/features/market-scanner">Market Scanner</Link></li>
-              <li><Link to="/features/arbitrage">Arbitrage Finder</Link></li>
-              <li><Link to="/features/ev">Positive EV</Link></li>
-              <li><Link to="/features/promo">Promo Optimizer</Link></li>
-              <li><Link to="/features/alerts">Live Alerts</Link></li>
-              <li><Link to="/features/portfolio">Portfolio Tracker</Link></li>
+              <li><Link to="/features/live-ticker">Live Ticker</Link></li>
+              <li><Link to="/features/vetted-picks">Vetted Picks</Link></li>
+              <li><Link to="/features/leaderboard">Leaderboard</Link></li>
+              <li><Link to="/features/profits">Profits</Link></li>
+              <li><Link to="/features/alerts">Alerts</Link></li>
+              <li><Link to="/features/settings">Settings</Link></li>
             </ul>
           </div>
 
@@ -44,7 +43,6 @@ export default function Footer() {
               <li><Link to="/calculators">Kelly Criterion</Link></li>
               <li><Link to="/calculators">Odds Converter</Link></li>
               <li><Link to="/calculators">No-Vig Calculator</Link></li>
-              <li><Link to="/calculators">Promo Calculator</Link></li>
             </ul>
           </div>
 
@@ -66,9 +64,9 @@ export default function Footer() {
         </div>
 
         <p className="footer-legal">
-          Affiliate Disclosure: Venter may receive commissions for referrals to prediction market platforms.
-          Past performance is not indicative of future results. Mathematical edges play out over large sample
-          sizes. Individual outcomes vary. Please trade responsibly.
+          Venter is a trade-tracking and analytics tool. It does not execute trades on your behalf and is not
+          a registered investment or trading adviser. Past performance of tracked wallets is not indicative of
+          future results. Individual outcomes vary. Please trade responsibly.
         </p>
       </div>
     </footer>

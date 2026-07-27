@@ -22,46 +22,38 @@ function LockedPanel({ children, title }: { children: React.ReactNode; title: st
   )
 }
 
-const ArbRows = [
-  { market: 'Fed cuts rates in July?',       k: '62¢', p: '41¢', edge: '+8.0%' },
-  { market: 'Bitcoin above $120k by Aug?',   k: '33¢', p: '28¢', edge: '+5.2%' },
-  { market: 'Trump EO this week?',           k: '57¢', p: '46¢', edge: '+6.6%' },
-  { market: 'S&P 500 above 5800 EOY?',       k: '71¢', p: '62¢', edge: '+4.8%' },
-  { market: 'US recession by Q3?',           k: '29¢', p: '22¢', edge: '+7.1%' },
-  { market: 'Ethereum above $4k?',           k: '44¢', p: '38¢', edge: '+5.9%' },
-  { market: 'CPI below 3% in June?',         k: '68¢', p: '57¢', edge: '+6.3%' },
-  { market: 'Dem wins 2026 Senate?',         k: '51¢', p: '43¢', edge: '+5.5%' },
+const TickerRows = [
+  { market: 'Arizona Diamondbacks vs. Nationals', wallets: 9, price: '53¢', total: '$91,947' },
+  { market: 'Will CF América win on 2026-07-24?', wallets: 6, price: '71¢', total: '$21,160' },
+  { market: 'Atlanta Braves vs. Baltimore Orioles', wallets: 9, price: '33¢', total: '$26,442' },
+  { market: 'US x Iran Effective Ceasefire by July 24?', wallets: 5, price: '15¢', total: '$2,179' },
+  { market: 'LoL: LOUD vs paiN Gaming (BO3)', wallets: 2, price: '72¢', total: '$23,346' },
+  { market: 'Cincinnati Reds vs. St. Louis Cardinals: O/U 7.5', wallets: 2, price: '58¢', total: '$29,073' },
 ]
 
-const EVRows = [
-  { market: 'Fed cuts rates in July?',     ev: '+9.1%', prob: '48%', price: '41¢' },
-  { market: 'Bitcoin above $120k by Aug?', ev: '+6.4%', prob: '36%', price: '28¢' },
-  { market: 'Trump EO this week?',         ev: '+7.8%', prob: '64%', price: '57¢' },
-  { market: 'S&P 500 above 5800 EOY?',     ev: '+5.3%', prob: '71%', price: '62¢' },
-  { market: 'US recession by Q3?',         ev: '+8.2%', prob: '27%', price: '22¢' },
-  { market: 'Ethereum above $4k?',         ev: '+6.1%', prob: '42%', price: '38¢' },
-  { market: 'CPI below 3% in June?',       ev: '+5.7%', prob: '65%', price: '57¢' },
-  { market: 'Dem wins 2026 Senate?',       ev: '+4.9%', prob: '49%', price: '43¢' },
+const VettedRows = [
+  { market: '9 top traders — Diamondbacks', total: '$91.9k', profit: '+$80,533' },
+  { market: '6 top traders — CF América', total: '$21.2k', profit: '+$42,516' },
+  { market: '9 top traders — Braves', total: '$26.4k', profit: '+$42,460' },
+  { market: '2 top traders — Reds/Cardinals U7.5', total: '$29.1k', profit: '+$21,154' },
+  { market: '5 top traders — US x Iran', total: '$2.2k', profit: '+$331' },
+  { market: '2 top traders — LoL: LOUD', total: '$23.3k', profit: '+$13,931' },
 ]
 
 const AlertRows = [
-  { title: '🔥 +11.2% ARB', body: 'Fed July cut: Kalshi vs Polymarket', time: 'just now' },
-  { title: '+9.1% EV',      body: 'Fed cuts rates in July, 41¢ Kalshi', time: '3m' },
-  { title: '+7.8% EV',      body: 'Trump EO this week, 57¢ Kalshi',     time: '8m' },
-  { title: '🔥 +8.4% ARB', body: 'Bitcoin $120k: Kalshi vs Polymarket', time: '14m' },
-  { title: '+6.4% EV',      body: 'Bitcoin above $120k, 28¢ Polymarket', time: '21m' },
-  { title: '+5.3% EV',      body: 'S&P 500 above 5800, 62¢ Kalshi',     time: '35m' },
+  { title: '🔥 Watched wallet crossed $20k tier', body: 'Arizona Diamondbacks vs. Nationals', time: 'just now' },
+  { title: 'New solo pick', body: 'US x Iran ceasefire, 15¢', time: '3m' },
+  { title: 'Watched wallet exited', body: 'Held 4.2h, scalp classified', time: '8m' },
+  { title: '🔥 9 traders converged', body: 'Atlanta Braves vs. Baltimore Orioles', time: '14m' },
+  { title: 'New solo pick', body: 'Bitcoin above $67,500, 93¢', time: '21m' },
+  { title: 'Market resolved', body: 'Won — position settled', time: '35m' },
 ]
 
-const ScannerRows = [
-  { market: 'Fed cuts rates in July?',     ev: '+9.1%', platform: 'Kalshi',     price: '41¢', type: 'EV' },
-  { market: 'Bitcoin above $120k by Aug?', ev: '+8.0%', platform: 'Polymarket', price: '28¢', type: 'ARB' },
-  { market: 'Trump EO this week?',         ev: '+7.8%', platform: 'Kalshi',     price: '57¢', type: 'EV' },
-  { market: 'S&P 500 above 5800 EOY?',     ev: '+5.3%', platform: 'Kalshi',     price: '62¢', type: 'EV' },
-  { market: 'US recession by Q3?',         ev: '+7.1%', platform: 'Polymarket', price: '22¢', type: 'ARB' },
-  { market: 'Ethereum above $4k?',         ev: '+6.1%', platform: 'Manifold',   price: '38¢', type: 'EV' },
-  { market: 'CPI below 3% in June?',       ev: '+5.7%', platform: 'Kalshi',     price: '57¢', type: 'EV' },
-  { market: 'Dem wins 2026 Senate?',       ev: '+4.9%', platform: 'Polymarket', price: '43¢', type: 'EV' },
+const LeaderboardRows = [
+  { name: '0xc2e7…be51', trades: 6,  winPct: '100%', winUsd: '100%', profit: '+$227,889' },
+  { name: '0x5268…0135', trades: 14, winPct: '79%',  winUsd: '71%',  profit: '+$18,204' },
+  { name: '0xfe78…d319', trades: 9,  winPct: '67%',  winUsd: '58%',  profit: '+$9,412' },
+  { name: '0x9a11…7c02', trades: 5,  winPct: '80%',  winUsd: '74%',  profit: '+$6,118' },
 ]
 
 const features: Record<string, {
@@ -73,105 +65,75 @@ const features: Record<string, {
   lockedTitle: string
   panel: React.ReactNode
 }> = {
-  'market-scanner': {
-    label: 'MARKET SCANNER',
+  'live-ticker': {
+    label: 'LIVE TICKER',
     labelClass: 'bento-label-blue',
-    title: 'Find the edge before anyone else',
-    sub: 'Scans every contract across all major platforms in real time. Filter by EV, category, or platform to surface the best opportunities instantly.',
+    title: 'Watch the tape, live',
+    sub: 'Every qualifying trade on Polymarket, streamed the moment it happens — sub-second, straight off the order book.',
     bullets: [
-      'Real-time scan across Kalshi, Polymarket, and more',
-      'Filter by EV %, category, or resolution date',
-      'Sort by edge size or volume',
-      'One-click bet slip from any result',
+      'Real-time trade feed via direct market WebSocket',
+      'Filter by category, size, or wallet',
+      'Every trade traces back to a real on-chain transaction',
+      'No polling delay — sub-second from tick to card',
     ],
-    lockedTitle: 'Sign up to access the live scanner',
+    lockedTitle: 'Sign up to watch the live ticker',
     panel: (
       <>
-        <div className="fp-bg-header">Live Market Scanner</div>
+        <div className="fp-bg-header">Live Ticker</div>
         <div className="fp-bg-table-header">
-          <span style={{ flex: 2 }}>Market</span><span>Platform</span><span>Price</span><span>Edge</span>
+          <span style={{ flex: 2 }}>Market</span><span>Traders</span><span>Price</span><span>Total</span>
         </div>
-        {ScannerRows.map((r, i) => (
+        {TickerRows.map((r, i) => (
           <div key={i} className="profit-bg-row fp-bg-row-border">
             <span className="profit-bg-label" style={{ flex: 2 }}>{r.market}</span>
-            <span className="profit-bg-value" style={{ minWidth: 72, fontSize: '0.75rem' }}>{r.platform}</span>
+            <span className="profit-bg-value" style={{ minWidth: 60, fontSize: '0.75rem' }}>{r.wallets}</span>
             <span className="profit-bg-value" style={{ minWidth: 36 }}>{r.price}</span>
-            <span className="profit-bg-value" style={{ color: '#38bdf8', minWidth: 52 }}>{r.ev}</span>
+            <span className="profit-bg-value" style={{ color: '#38bdf8', minWidth: 60 }}>{r.total}</span>
           </div>
         ))}
       </>
     ),
   },
-  arbitrage: {
-    label: 'ARBITRAGE',
+  'vetted-picks': {
+    label: 'VETTED PICKS',
     labelClass: 'bento-label-green',
-    title: 'Bet both sides and win',
-    sub: 'When Kalshi and Polymarket price the same market differently, you can bet both sides and lock in a guaranteed profit no matter which way it resolves.',
+    title: 'Capital-weighted conviction',
+    sub: 'When multiple top-performing wallets independently pile into the same side of the same market, that convergence gets surfaced and ranked.',
     bullets: [
-      'Live arbitrage scanner across 15+ platforms',
-      'Instant alerts when a spread opens',
-      'Built-in position sizing calculator',
-      'Tracks your guaranteed profit per trade',
+      'Ranked by real dollars deployed, not just trade count',
+      'Price history chart with every buy-in marked',
+      'Per-trader realized and unrealized $ return',
+      'Sort by most recent or most profitable',
     ],
-    lockedTitle: 'Sign up to see live arbitrage opportunities',
+    lockedTitle: 'Sign up to see live vetted picks',
     panel: (
       <>
-        <div className="fp-bg-header">Live Arbitrage Opportunities</div>
+        <div className="fp-bg-header">Vetted Picks</div>
         <div className="fp-bg-table-header">
-          <span>Market</span><span>Kalshi</span><span>Poly</span><span>Edge</span>
+          <span>Market</span><span>Total $</span><span>Profit</span>
         </div>
-        {ArbRows.map((r, i) => (
+        {VettedRows.map((r, i) => (
           <div key={i} className="profit-bg-row fp-bg-row-border">
             <span className="profit-bg-label" style={{ flex: 2 }}>{r.market}</span>
-            <span className="profit-bg-value" style={{ minWidth: 36 }}>{r.k}</span>
-            <span className="profit-bg-value" style={{ minWidth: 36 }}>{r.p}</span>
-            <span className="profit-bg-value green" style={{ minWidth: 48 }}>{r.edge}</span>
-          </div>
-        ))}
-      </>
-    ),
-  },
-  ev: {
-    label: 'POSITIVE EV',
-    labelClass: 'bento-label-purple',
-    title: 'Bet with a real edge',
-    sub: 'We surface contracts where the market price is wrong. Place these consistently and the math works in your favor. Wins outpace losses over time.',
-    bullets: [
-      'Scans millions of contracts daily',
-      'Edge % calculated from true probability models',
-      'Sortable by EV, platform, and category',
-      'Historical accuracy tracked per model',
-    ],
-    lockedTitle: 'Sign up to see your edge feed',
-    panel: (
-      <>
-        <div className="fp-bg-header">+EV Market Feed</div>
-        <div className="fp-bg-table-header">
-          <span>Market</span><span>True prob</span><span>Price</span><span>EV</span>
-        </div>
-        {EVRows.map((r, i) => (
-          <div key={i} className="profit-bg-row fp-bg-row-border">
-            <span className="profit-bg-label" style={{ flex: 2 }}>{r.market}</span>
-            <span className="profit-bg-value" style={{ minWidth: 44 }}>{r.prob}</span>
-            <span className="profit-bg-value" style={{ minWidth: 36 }}>{r.price}</span>
-            <span className="profit-bg-value" style={{ color: '#818cf8', minWidth: 52 }}>{r.ev}</span>
+            <span className="profit-bg-value" style={{ minWidth: 52 }}>{r.total}</span>
+            <span className="profit-bg-value green" style={{ minWidth: 72 }}>{r.profit}</span>
           </div>
         ))}
       </>
     ),
   },
   alerts: {
-    label: 'MOBILE',
+    label: 'ALERTS',
     labelClass: 'bento-label-blue',
     title: 'Never miss a move',
-    sub: "Mispriced markets close in minutes. Our live alert system pushes notifications the instant a high-edge opportunity opens so you can act before it's gone.",
+    sub: 'Build a watchlist of wallets and conviction tiers. Get a browser notification the instant something on your list fires — while the tab is open.',
     bullets: [
-      'Push notifications on iOS and Android',
-      'Filter by EV threshold, platform, or category',
-      'Pre-filled bet slips from the alert',
-      'Alert history with outcome tracking',
+      'Watch specific wallets or a minimum conviction tier',
+      'Browser notifications, no app install required',
+      'Persisted watchlist, saved locally',
+      'Full in-page alert history',
     ],
-    lockedTitle: 'Sign up to enable live alerts',
+    lockedTitle: 'Sign up to enable alerts',
     panel: (
       <>
         <div className="fp-bg-header">Recent Alerts</div>
@@ -188,45 +150,65 @@ const features: Record<string, {
       </>
     ),
   },
-  portfolio: {
-    label: 'PORTFOLIO',
+  leaderboard: {
+    label: 'LEADERBOARD',
     labelClass: 'bento-label-teal',
-    title: 'See your full edge',
-    sub: 'Track every open position, realized profit, and your true ROI across all platforms in a single dashboard. Know exactly how your edge is compounding.',
+    title: 'Real, verified track records',
+    sub: "Win rate by trade count, and win rate weighted by dollars deployed — not a platform's claimed all-time PnL, and not cherry-picked.",
     bullets: [
-      'Syncs with Kalshi, Polymarket, and more',
-      'Real-time P&L and ROI calculations',
-      'Win rate and EV accuracy over time',
-      'Export reports for tax purposes',
+      'Win rate (#) and win rate ($) side by side',
+      'Payout-adjusted net profit, not just win/loss count',
+      'Per-trader detail page with full resolved history',
+      'Ranked by real observed performance since tracked',
     ],
-    lockedTitle: 'Connect your accounts to see your dashboard',
+    lockedTitle: 'Sign up to see the full leaderboard',
     panel: (
       <>
-        <div className="fp-bg-header">Portfolio Overview</div>
+        <div className="fp-bg-header">Leaderboard</div>
+        <div className="fp-bg-table-header">
+          <span style={{ flex: 2 }}>Wallet</span><span>Win % ($)</span><span>Profit</span>
+        </div>
+        {LeaderboardRows.map((r, i) => (
+          <div key={i} className="profit-bg-row fp-bg-row-border">
+            <span className="profit-bg-label" style={{ flex: 2 }}>{r.name}</span>
+            <span className="profit-bg-value" style={{ minWidth: 52 }}>{r.winUsd}</span>
+            <span className="profit-bg-value green" style={{ minWidth: 80 }}>{r.profit}</span>
+          </div>
+        ))}
+      </>
+    ),
+  },
+  profits: {
+    label: 'PROFITS',
+    labelClass: 'bento-label-orange',
+    title: 'Payout-adjusted P&L',
+    sub: 'Real resolved profit and loss across every tracked position — accounts for actual payout ratio, not just a win/loss count. Open positions are marked to market against the live price.',
+    bullets: [
+      'Net P&L, win rate, and ROI on resolved positions',
+      'Daily cumulative P&L chart',
+      'Unrealized profit on every still-open position',
+      'Full position-level detail table',
+    ],
+    lockedTitle: 'Sign up to see real resolved P&L',
+    panel: (
+      <>
+        <div className="fp-bg-header">Profits Overview</div>
         <div className="profit-bg-row">
-          <span className="profit-bg-label">Est. monthly profit</span>
-          <span className="profit-bg-value green">$1,240</span>
+          <span className="profit-bg-label">Net P&L (resolved)</span>
+          <span className="profit-bg-value green">payout-adjusted</span>
         </div>
         <div className="profit-bg-row">
-          <span className="profit-bg-label">Est. annual profit</span>
-          <span className="profit-bg-value green large">$14,880</span>
+          <span className="profit-bg-label">Win rate ($)</span>
+          <span className="profit-bg-value">weighted by size</span>
         </div>
         <div className="profit-bg-divider" />
         <div className="profit-bg-row">
-          <span className="profit-bg-label">ROI this month</span>
-          <span className="profit-bg-value">+18.4%</span>
+          <span className="profit-bg-label">Open positions</span>
+          <span className="profit-bg-value">marked to market</span>
         </div>
         <div className="profit-bg-row">
-          <span className="profit-bg-label">Win rate</span>
-          <span className="profit-bg-value">71%</span>
-        </div>
-        <div className="profit-bg-row">
-          <span className="profit-bg-label">Trades placed</span>
-          <span className="profit-bg-value">38</span>
-        </div>
-        <div className="profit-bg-row">
-          <span className="profit-bg-label">Avg. edge per trade</span>
-          <span className="profit-bg-value">+6.2%</span>
+          <span className="profit-bg-label">Price source</span>
+          <span className="profit-bg-value">live, tick-by-tick</span>
         </div>
         <div className="profit-bg-divider" />
         <div className="profit-bg-bar-group">
@@ -240,37 +222,36 @@ const features: Record<string, {
       </>
     ),
   },
-  promo: {
-    label: 'PROMO OPTIMIZER',
-    labelClass: 'bento-label-orange',
-    title: 'Maximize your bonuses',
-    sub: 'Every prediction market platform offers sign-up bonuses and deposit matches. We tell you exactly which trades to make to extract the full dollar value.',
+  settings: {
+    label: 'CONFIGURABLE',
+    labelClass: 'bento-label-gray',
+    title: 'Tune it to your risk appetite',
+    sub: 'Set how many wallets get tracked, where conviction tiers sit, and what counts as a scalp — changes apply live, no restart needed.',
     bullets: [
-      'Tracks all active platform promotions',
-      'Step-by-step bonus extraction instructions',
-      'Calculates risk-free value per bonus',
-      'Notifies you when new promos go live',
+      'Roster size — how many top wallets get tracked',
+      'Conviction tiers — the $ thresholds that define a signal',
+      'Ticker minimum — the size floor for the live feed',
+      'Scalp window — how fast a round-trip counts as a scalp',
     ],
-    lockedTitle: 'Sign up to unlock your bonuses',
+    lockedTitle: 'Sign up to configure your roster',
     panel: (
       <>
-        <div className="fp-bg-header">Available Promotions</div>
+        <div className="fp-bg-header">Settings</div>
         {[
-          { platform: 'Kalshi',     bonus: '$200', label: 'Welcome Bonus',   logo: '/kalshi.png',     status: 'Extractable' },
-          { platform: 'Polymarket', bonus: '$150', label: 'Deposit Match',   logo: '/polymarket.png', status: 'In progress' },
-          { platform: 'Manifold',   bonus: '$50',  label: 'Referral Bonus',  logo: '/manifold.jpg',   status: 'Available' },
-          { platform: 'Limitless',  bonus: '$100', label: 'New User Promo',  logo: '/limitless-logo.png', status: 'Available' },
-        ].map((p, i) => (
-          <div key={i} className="profit-bg-row fp-bg-row-border" style={{ gap: '0.75rem' }}>
-            <img src={p.logo} alt={p.platform} style={{ width: 22, height: 22, borderRadius: 5, objectFit: 'contain' }} />
-            <span className="profit-bg-label" style={{ flex: 1 }}>{p.platform}: {p.label}</span>
-            <span className="profit-bg-value green">{p.bonus}</span>
+          { label: 'Roster size', value: '500 wallets' },
+          { label: 'Conviction tiers', value: '$1k / $5k / $20k / $50k / $100k' },
+          { label: 'Ticker minimum', value: '$100' },
+          { label: 'Scalp window', value: '30 minutes' },
+        ].map((s, i) => (
+          <div key={i} className="profit-bg-row fp-bg-row-border">
+            <span className="profit-bg-label" style={{ flex: 1 }}>{s.label}</span>
+            <span className="profit-bg-value">{s.value}</span>
           </div>
         ))}
         <div className="profit-bg-divider" />
         <div className="profit-bg-row">
-          <span className="profit-bg-label">Total extractable value</span>
-          <span className="profit-bg-value green large">$500</span>
+          <span className="profit-bg-label">Applies live</span>
+          <span className="profit-bg-value green large">No restart</span>
         </div>
       </>
     ),

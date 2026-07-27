@@ -588,6 +588,21 @@ def process_trade(conn, keyed_token_info, tid, price, size, side, tx_hash, roste
         with lock:
             stats['ticker_trades'] += 1
 
+    # Mark-to-market: keep latest_price tracking the real market, not just
+    # the price at the last top-trader tier crossing. Previously latest_price
+    # only got written inside record_tier_crossed, so a market's displayed
+    # price/unrealized-profit went stale the moment top traders stopped
+    # entering — even while the real price kept moving (e.g. a live sports
+    # game swinging to 99% on ordinary market activity). Every trade tick on
+    # a market we already track is a free, sub-second price update — no
+    # extra network call, since we already receive it over the WS.
+    key_probe = (info['conditionId'], info['outcome'])
+    if price and float(price) > 0 and key_probe in tiers_hit:
+        with lock:
+            conn.execute('UPDATE opportunities SET latest_price=? WHERE condition_id=? AND outcome=?',
+                          (float(price), key_probe[0], key_probe[1]))
+            conn.commit()
+
     if usd <= 0:
         return
 

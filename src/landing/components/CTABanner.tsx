@@ -6,8 +6,8 @@ export default function CTABanner() {
   return (
     <div style={{ padding: '0 1.5rem 5rem' }}>
       <div className="cta-banner">
-        <h2>Want free, profitable<br />picks sent to your inbox?</h2>
-        <p>Join 10k+ traders getting daily +EV prediction market picks, free forever.</p>
+        <h2>Want to see what<br />top traders are buying?</h2>
+        <p>Start free — track real Polymarket wallet activity, live, no credit card required.</p>
         <form
           className="cta-form"
           onSubmit={e => { e.preventDefault(); setEmail('') }}
@@ -19,7 +19,7 @@ export default function CTABanner() {
             onChange={e => setEmail(e.target.value)}
             required
           />
-          <button type="submit" className="btn-primary">Send me picks</button>
+          <button type="submit" className="btn-primary">Get started free</button>
         </form>
       </div>
     </div>

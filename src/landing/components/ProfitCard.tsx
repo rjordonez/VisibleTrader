@@ -6,9 +6,8 @@ export default function ProfitCard() {
   return (
     <div className="profit-card-outer">
 
-    {/* ── Platform logos – floating top-right corner ── */}
+    {/* ── Platform logo – floating top-right corner ── */}
     <div className="profit-platform-logos">
-      <img src="/kalshi.png"     alt="Kalshi"      className="profit-logo profit-logo-kalshi" />
       <img src="/polymarket.png" alt="Polymarket"  className="profit-logo profit-logo-poly"   />
     </div>
 
@@ -16,21 +15,21 @@ export default function ProfitCard() {
       {/* Blurred background content */}
       <div className="profit-bg-content" aria-hidden>
         <div className="profit-bg-row">
-          <span className="profit-bg-label">Est. monthly profit</span>
-          <span className="profit-bg-value green">$1,240</span>
+          <span className="profit-bg-label">Top trader win rate ($)</span>
+          <span className="profit-bg-value green">64%</span>
         </div>
         <div className="profit-bg-row">
-          <span className="profit-bg-label">Est. annual profit</span>
-          <span className="profit-bg-value green large">$14,880</span>
+          <span className="profit-bg-label">Wallets tracked</span>
+          <span className="profit-bg-value green large">500</span>
         </div>
         <div className="profit-bg-divider" />
         <div className="profit-bg-row">
-          <span className="profit-bg-label">Avg. edge per trade</span>
-          <span className="profit-bg-value">+6.2%</span>
+          <span className="profit-bg-label">Live opportunities now</span>
+          <span className="profit-bg-value">286</span>
         </div>
         <div className="profit-bg-row">
-          <span className="profit-bg-label">Trades per month</span>
-          <span className="profit-bg-value">38</span>
+          <span className="profit-bg-label">Signal latency</span>
+          <span className="profit-bg-value">&lt;1s</span>
         </div>
         <div className="profit-bg-bar-group">
           <div className="profit-bg-bar" style={{ height: 32, background: 'rgba(99,102,241,0.6)' }} />
@@ -49,9 +48,9 @@ export default function ProfitCard() {
           <path d="M6 12V8.5a7 7 0 0114 0V12" stroke="white" strokeWidth="1.75" strokeLinecap="round"/>
           <circle cx="13" cy="20.5" r="2.5" fill="white"/>
         </svg>
-        <h3 className="profit-glass-title">See how much money<br />you can make with Venter</h3>
+        <h3 className="profit-glass-title">See real, tracked performance<br />before you sign up</h3>
         <button className="profit-glass-btn" onClick={() => navigate('/estimate')}>
-          Estimate your profit
+          See a live example
         </button>
       </div>
     </div>

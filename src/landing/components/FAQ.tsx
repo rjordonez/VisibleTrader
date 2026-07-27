@@ -3,27 +3,27 @@ import { useState } from 'react'
 const faqs = [
   {
     q: 'How does Venter actually work?',
-    a: 'Venter continuously scans prediction market platforms and compares contract prices against our probability models and cross-platform prices. When a market is mispriced we surface it in your dashboard with the expected value clearly shown.',
+    a: 'Venter watches Polymarket\'s trade feed in real time and tracks a roster of top-performing wallets by realized profit. When one or more of those wallets buys into a market, it shows up in your dashboard — ranked by how much capital is behind it, with a live price chart marking exactly where each trader bought in.',
   },
   {
-    q: 'Which prediction market platforms do you support?',
-    a: "Currently we support Kalshi, Polymarket, Manifold Markets, PredictIt, Metaculus, and Limitless. We're adding new platforms every quarter. You only need accounts on the platforms you want to trade.",
+    q: 'Which platform does this cover?',
+    a: "Polymarket only, right now. We'd rather do one platform well — with real wallet resolution, real trade attribution, and real price history — than claim broad coverage we can't back up.",
   },
   {
-    q: 'How much time does this take per day?',
-    a: "Most users spend 15-30 minutes per day. Our alerts notify you when high-edge markets open. You review the opportunity, decide to take it, and move on.",
+    q: 'Do you place trades for me?',
+    a: "No. Venter is a tracking and analytics tool — it shows you what tracked wallets are doing, it does not execute trades on your behalf or manage funds. You place your own trades directly on Polymarket if you choose to.",
   },
   {
     q: 'Will I make money every single day?',
-    a: "No, and anyone who says otherwise is lying. Individual markets are uncertain. What Venter guarantees is a mathematical edge: over enough trades, positive expected value adds up to real profit.",
+    a: "No, and anyone who tells you that is lying. Following a tracked wallet's activity is not a guarantee of profit — individual markets are uncertain, tracked wallets lose trades too, and past performance doesn't predict future results.",
   },
   {
     q: "How do I know this isn't a scam?",
-    a: 'Our results are verified by Pikkit, an independent third-party bet tracker. We publish real user P&L, not cherry-picked screenshots. We also offer a 7-day free trial with no credit card required.',
+    a: "Every number on the dashboard traces back to a real, public, on-chain Polymarket transaction — you can verify any of it yourself on Polygon. We don't publish fabricated results or cherry-picked screenshots.",
   },
   {
     q: 'What if I want to cancel?',
-    a: "Cancel any time, no questions asked. We don't lock you into annual plans or charge cancellation fees. Your subscription stops at the end of your billing period.",
+    a: "Cancel any time, no questions asked. We don't lock you into annual plans or charge cancellation fees.",
   },
 ]
 

@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.local
 
 # Generated data dumps (scripts/*.py output)
 polymarket_users.json

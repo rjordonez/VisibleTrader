@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react'
 
 const stats = [
-  { value: '+7.2%',  label: 'Average edge per trade' },
-  { value: '$1,240', label: 'Avg. monthly profit' },
-  { value: '10k+',  label: 'Active traders' },
+  { value: '500',   label: 'Wallets tracked by default' },
+  { value: '<1s',   label: 'Signal latency, tick to card' },
+  { value: '100%',  label: 'On-chain, verifiable trades' },
 ]
 
 export default function HowItWorks() {
@@ -55,13 +55,10 @@ export default function HowItWorks() {
         </div>
 
         <div className="platforms-wrap">
-          <p className="platforms-label">Works on all major prediction market platforms</p>
+          <p className="platforms-label">Built on Polymarket</p>
           <div className="platforms">
             {[
-              { name: 'Kalshi',     src: '/kalshi.png' },
               { name: 'Polymarket', src: '/polymarket.png' },
-              { name: 'Manifold',   src: '/manifold.jpg' },
-              { name: 'Limitless',  src: '/limitless-logo.png' },
             ].map(p => (
               <img key={p.name} src={p.src} alt={p.name} className="platform-logo-sq" />
             ))}

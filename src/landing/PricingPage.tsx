@@ -2,10 +2,7 @@ import './landing.css'
 import { useState } from 'react'
 
 const platformLogos = [
-  { name: 'Kalshi',     src: '/kalshi.png' },
   { name: 'Polymarket', src: '/polymarket.png' },
-  { name: 'Manifold',   src: '/manifold.jpg' },
-  { name: 'Limitless',  src: '/limitless-logo.png' },
 ]
 
 const plans = [
@@ -14,15 +11,15 @@ const plans = [
     dayMonthly: null,
     dayYearly: null,
     fullMonthly: null,
-    desc: 'Get started with daily picks and see the edge for yourself.',
+    desc: 'Get started and see real tracked-wallet activity for yourself.',
     features: [
-      'Daily +EV picks via email',
-      'Market Scanner (3 markets/day)',
-      'Basic EV calculator',
+      'Live Ticker (delayed)',
+      'Vetted Picks (top 3/day)',
+      'Leaderboard, read-only',
       'Discord community access',
     ],
     cta: 'Get started free',
-    href: '/app',
+    href: '/signup',
     highlighted: false,
   },
   {
@@ -30,19 +27,18 @@ const plans = [
     dayMonthly: '1.63',
     dayYearly: '1.30',
     fullMonthly: '1.63',
-    desc: 'Everything you need to trade consistently with a real edge.',
+    desc: 'Everything you need to follow real trading activity, live.',
     features: [
-      'Unlimited Market Scanner',
-      'Real-time Arbitrage Finder',
-      'Positive EV feed (live)',
-      'Promo Optimizer',
-      'Live push alerts',
-      'Portfolio Tracker',
-      'Free 1:1 coaching call',
+      'Unlimited Live Ticker',
+      'Full Vetted Picks with price charts',
+      'Full Leaderboard + trader detail pages',
+      'Profits page — real, payout-adjusted P&L',
+      'Browser alerts on your watchlist',
+      'Configurable roster size & conviction tiers',
       '24/7 live chat support',
     ],
     cta: 'Start 7-day free trial',
-    href: '/app',
+    href: '/signup',
     highlighted: true,
   },
   {
@@ -50,14 +46,13 @@ const plans = [
     dayMonthly: '4.97',
     dayYearly: '3.97',
     fullMonthly: '4.97',
-    desc: 'For serious traders who want every edge on every platform.',
+    desc: 'For serious traders who want the fastest, most granular access.',
     features: [
       'Everything in Pro',
       'API access',
-      'Priority alerts (sub-1s)',
-      'Custom market filters',
+      'Sub-second alert delivery',
+      'Custom watchlists & conviction filters',
       'Dedicated account manager',
-      'Weekly strategy calls',
     ],
     cta: 'Contact us',
     href: 'mailto:hello@venter.io',

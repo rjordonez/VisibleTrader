@@ -2,12 +2,6 @@ import { useState } from 'react'
 import ProfitCard from './ProfitCard'
 import DashboardPreview from './DashboardPreview'
 
-const avatars = [
-  'https://randomuser.me/api/portraits/men/32.jpg',
-  'https://randomuser.me/api/portraits/women/29.jpg',
-  'https://randomuser.me/api/portraits/men/52.jpg',
-]
-
 export default function Hero() {
   const [email, setEmail] = useState('')
 
@@ -18,32 +12,22 @@ export default function Hero() {
       <div className="hero-cols">
         {/* Left */}
         <div className="hero-copy">
-          {/* Avatars + trust — top */}
+          {/* Trust row — top */}
           <div className="hero-trust-row" style={{ marginBottom: '1.25rem' }}>
-            <div className="hero-avatars">
-              {avatars.map((src, i) => (
-                <img
-                  key={i}
-                  src={src}
-                  alt="trader"
-                  className="hero-avatar"
-                  style={{ zIndex: avatars.length - i, marginLeft: i === 0 ? 0 : -10 }}
-                />
-              ))}
-            </div>
             <p className="hero-trust-text">
-              Trusted by <strong>10k+</strong> traders worldwide
+              Built on <strong>100% on-chain</strong> Polymarket trade data
             </p>
           </div>
 
           <h1>
-            Make <span>$500–$1000+</span><br />
-            weekly. Use math,<br />
-            not gut feelings.
+            See what<br />
+            <span>proven winners</span><br />
+            are trading, live.
           </h1>
 
           <p className="hero-sub">
-            Get data-backed prediction market picks sent daily, free.
+            Venter watches the top-performing wallets on Polymarket in real time and
+            surfaces what they're buying — the moment they buy it.
           </p>
 
           <form
@@ -59,13 +43,13 @@ export default function Hero() {
                 required
               />
               <button type="submit" className="btn-primary">
-                Send me free picks
+                Get started free
               </button>
             </div>
           </form>
         </div>
 
-        {/* Right — Profit estimator card */}
+        {/* Right — live signal preview card */}
         <div className="hero-card-wrap">
           <ProfitCard />
         </div>
@@ -78,9 +62,9 @@ export default function Hero() {
       <div className="hero-trust-bar">
         {[
           '7-Day Free Trial',
-          'Free 1:1 Coaching',
-          '15+ Platforms',
-          "Industry's Fastest Data",
+          'Real Wallets, Real Trades',
+          'Polymarket',
+          'Sub-Second Signal Latency',
         ].map(item => (
           <div key={item} className="hero-trust-item">
             <span className="hero-trust-check">✓</span>
