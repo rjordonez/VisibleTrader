@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import type { ReactElement } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, BarChart2, Bell, Radar, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -12,249 +13,6 @@ const navItems = [
   { id: 'alerts',      label: 'Alerts',      Icon: Bell       },
   { id: 'settings',    label: 'Settings',    Icon: Settings   },
 ]
-
-/* ── Types ── */
-interface ScanMarket {
-  id: string
-  title: string
-  platform: 'Kalshi' | 'Polymarket'
-  yes: number
-  no: number
-  volume: number
-}
-
-/* ── Fetchers ── */
-async function fetchKalshi(): Promise<ScanMarket[]> {
-  const res = await fetch('http://localhost:5199/events?limit=100&status=open&with_nested_markets=true')
-  if (!res.ok) throw new Error('Kalshi fetch failed')
-  const data = await res.json()
-  const out: ScanMarket[] = []
-  for (const event of (data.events ?? [])) {
-    // Pick only the single most liquid market per event
-    const markets = (event.markets ?? []) as Record<string, string>[]
-    const best = markets
-      .map(m => ({ m, vol: parseFloat(m.volume_fp ?? '0') }))
-      .sort((a, b) => b.vol - a.vol)[0]
-    if (!best) continue
-    const { m } = best
-    const yes = Math.round(parseFloat(m.yes_ask_dollars ?? '0') * 100)
-    const no  = Math.round(parseFloat(m.no_ask_dollars  ?? '0') * 100)
-    if (yes >= 2 && yes <= 98 && best.vol > 0) {
-      out.push({ id: m.ticker, title: event.title ?? m.title, platform: 'Kalshi', yes, no, volume: best.vol })
-    }
-  }
-  return out
-}
-
-async function fetchPolymarket(): Promise<ScanMarket[]> {
-  // Fetch two pages to get ~200 markets
-  const [r1, r2] = await Promise.all([
-    fetch('/api/polymarket/markets/keyset?limit=100&active=true&closed=false'),
-    fetch('/api/polymarket/markets/keyset?limit=100&active=true&closed=false&offset=100'),
-  ])
-  if (!r1.ok) throw new Error('Polymarket fetch failed')
-  const [d1, d2] = await Promise.all([r1.json(), r2.ok ? r2.json() : { markets: [] }])
-  const all = [...(d1.markets ?? []), ...(d2.markets ?? [])]
-  const out: ScanMarket[] = []
-  for (const m of all) {
-    try {
-      const prices = JSON.parse(m.outcomePrices)
-      const yes = Math.round(parseFloat(prices[0]) * 100)
-      const no  = Math.round(parseFloat(prices[1]) * 100)
-      const vol = m.volumeNum ?? 0
-      if (yes >= 2 && yes <= 98 && vol > 0) {
-        out.push({ id: m.id, title: m.question, platform: 'Polymarket', yes, no, volume: vol })
-      }
-    } catch {}
-  }
-  return out
-}
-
-/* ── Demos ── */
-
-function ScannerDemo() {
-  const [markets, setMarkets]   = useState<ScanMarket[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState<string | null>(null)
-  const [filter, setFilter]     = useState<'All' | 'Kalshi' | 'Polymarket'>('All')
-
-  useEffect(() => {
-    Promise.all([fetchKalshi(), fetchPolymarket()])
-      .then(([k, p]) => {
-        setMarkets([...k, ...p].sort((a, b) => b.volume - a.volume))
-        setLoading(false)
-      })
-      .catch(e => { setError(e.message); setLoading(false) })
-  }, [])
-
-  const filtered = filter === 'All' ? markets : markets.filter(m => m.platform === filter)
-
-  return (
-    <>
-      <div className="app-section-header">
-        <div>
-          <h1 className="app-section-title">Market Scanner</h1>
-          <p className="app-section-sub">
-            {loading ? 'Loading live markets…' : error ? 'Could not load markets' : `${markets.length} live markets · sorted by volume`}
-          </p>
-        </div>
-        <div className="app-filter-row">
-          {(['All', 'Kalshi', 'Polymarket'] as const).map(f => (
-            <button key={f} className={`app-filter ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f}</button>
-          ))}
-        </div>
-      </div>
-
-      {loading && (
-        <div style={{ color: 'var(--text-3)', padding: '3rem', textAlign: 'center', fontSize: '0.875rem' }}>
-          Fetching live markets from Kalshi &amp; Polymarket…
-        </div>
-      )}
-
-      {error && (
-        <div style={{ color: '#ef4444', padding: '1rem', fontSize: '0.875rem' }}>
-          {error} — make sure the dev server is running (proxy required).
-        </div>
-      )}
-
-      {!loading && !error && (
-        <div className="app-table-wrap">
-          <table className="app-table">
-            <thead>
-              <tr>
-                <th>Market</th>
-                <th>Platform</th>
-                <th>YES</th>
-                <th>NO</th>
-                <th>Volume</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(m => (
-                <tr key={m.id}>
-                  <td><div className="app-market-name">{m.title}</div></td>
-                  <td><span className={`app-type-badge ${m.platform === 'Kalshi' ? 'arb' : 'ev'}`}>{m.platform}</span></td>
-                  <td><span className="app-price">{m.yes}¢</span></td>
-                  <td><span className="app-price">{m.no}¢</span></td>
-                  <td><span style={{ color: 'var(--text-3)', fontSize: '0.8rem' }}>${m.volume.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></td>
-                  <td><button className="app-trade-btn">Trade →</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </>
-  )
-}
-
-function ArbitrageDemo() {
-  const opps = [
-    { market: 'US recession in 2025?',           polyNo: '73¢', kalshiYes: '34¢', profit: '+4.2%' },
-    { market: 'Nvidia above $200 by Dec?',        polyNo: '48¢', kalshiYes: '58¢', profit: '+2.8%' },
-    { market: 'UK general election before Sep?',  polyNo: '83¢', kalshiYes: '22¢', profit: '+3.7%' },
-  ]
-  return (
-    <>
-      <div className="app-section-header">
-        <div>
-          <h1 className="app-section-title">Arbitrage Finder</h1>
-          <p className="app-section-sub">12 guaranteed-profit opportunities right now</p>
-        </div>
-      </div>
-      <div className="app-arb-platforms">
-        <div className="app-platform-card">
-          <div className="app-platform-name">Kalshi</div>
-          <div className="app-platform-prices">
-            <div className="app-platform-price-item">
-              <div className="app-platform-price-label">YES</div>
-              <div className="app-platform-price-val yes">34¢</div>
-            </div>
-            <div className="app-platform-price-item">
-              <div className="app-platform-price-label">NO</div>
-              <div className="app-platform-price-val no">68¢</div>
-            </div>
-          </div>
-        </div>
-        <div className="app-platform-card">
-          <div className="app-platform-name">Polymarket</div>
-          <div className="app-platform-prices">
-            <div className="app-platform-price-item">
-              <div className="app-platform-price-label">YES</div>
-              <div className="app-platform-price-val yes">29¢</div>
-            </div>
-            <div className="app-platform-price-item">
-              <div className="app-platform-price-label">NO</div>
-              <div className="app-platform-price-val no">73¢</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="app-arb-result">
-        <div className="app-arb-result-profit">+4.2% guaranteed</div>
-        <div className="app-arb-result-detail">Bet $48.20 on Kalshi YES · $51.80 on Polymarket NO · Profit: $4.20 per $100</div>
-      </div>
-      <div className="app-table-wrap">
-        <table className="app-table">
-          <thead>
-            <tr><th>Market</th><th>Kalshi YES</th><th>Poly NO</th><th>Profit</th><th></th></tr>
-          </thead>
-          <tbody>
-            {opps.map((o, i) => (
-              <tr key={i}>
-                <td><div className="app-market-name">{o.market}</div></td>
-                <td><span className="app-price">{o.kalshiYes}</span></td>
-                <td><span className="app-price">{o.polyNo}</span></td>
-                <td><span className="app-ev">{o.profit}</span></td>
-                <td><button className="app-trade-btn">Trade →</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  )
-}
-
-function EVFeedDemo() {
-  const feed = [
-    { market: 'Fed holds rates at May meeting?',      platform: 'Kalshi',     price: '67¢', edge: '+11.2%' },
-    { market: 'ETH above $4k by end of July?',        platform: 'Polymarket', price: '31¢', edge: '+8.9%'  },
-    { market: 'Democrats win Senate in 2026?',         platform: 'Kalshi',     price: '44¢', edge: '+7.3%'  },
-    { market: 'Meta releases new VR headset in 2025?', platform: 'Manifold',   price: '58¢', edge: '+6.1%'  },
-    { market: 'US CPI below 3% by August?',            platform: 'Kalshi',     price: '52¢', edge: '+5.4%'  },
-    { market: 'OpenAI raises at $300B+ valuation?',    platform: 'Polymarket', price: '39¢', edge: '+4.8%'  },
-  ]
-  return (
-    <>
-      <div className="app-section-header">
-        <div>
-          <h1 className="app-section-title">+EV Feed</h1>
-          <p className="app-section-sub">Markets where the crowd is systematically wrong</p>
-        </div>
-      </div>
-      <div className="app-ev-feed">
-        {feed.map((f, i) => (
-          <div key={i} className="app-ev-card">
-            <div className="app-ev-card-left">
-              <div className="app-ev-market">{f.market}</div>
-              <div className="app-ev-meta">
-                <span className="app-platform-badge">{f.platform}</span>
-              </div>
-            </div>
-            <div className="app-ev-card-right">
-              <span className="app-ev-price">{f.price}</span>
-              <span className="app-ev-edge">{f.edge}</span>
-              <span className="app-ev-badge">+EV</span>
-              <button className="app-trade-btn">Trade →</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </>
-  )
-}
 
 /* ── Signals (live top-trader conviction feed) ── */
 interface Opportunity {
@@ -287,9 +45,9 @@ interface WalletContribution {
   exit_price: number | null
   exit_usd: number | null
   hold_seconds: number | null
-  is_scalp: number | null
-  market_closed: number | null
-  resolved_win: number | null
+  is_scalp: boolean | null
+  market_closed: boolean | null
+  resolved_win: boolean | null
   resolved_ts: string | null
 }
 
@@ -304,12 +62,10 @@ interface TickerTrade {
   side: string
   wallet: string | null
   wallet_name: string | null
-  roster_tagged: number
+  roster_tagged: boolean
   category: string | null
   ts: string
 }
-
-const SIGNALS_PROXY = 'http://localhost:5201'
 
 function timeAgo(iso: string) {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
@@ -427,18 +183,15 @@ function SignalsDemo() {
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      fetch(`${SIGNALS_PROXY}/opportunities`)
-        .then(res => {
-          if (!res.ok) throw new Error('Signals backend unreachable')
-          return res.json()
-        })
-        .then((data: Opportunity[]) => {
+      Promise.resolve(supabase.from('opportunities_live').select('*').order('last_updated', { ascending: false }))
+        .then(({ data, error }) => {
           if (cancelled) return
-          setOpportunities(data)
+          if (error) throw error
+          setOpportunities((data ?? []) as Opportunity[])
           setLoading(false)
           setError(null)
         })
-        .catch(e => {
+        .catch((e: Error) => {
           if (cancelled) return
           setError(e.message)
           setLoading(false)
@@ -452,9 +205,8 @@ function SignalsDemo() {
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      fetch(`${SIGNALS_PROXY}/ticker`)
-        .then(res => res.ok ? res.json() : [])
-        .then((data: TickerTrade[]) => { if (!cancelled) setTicker(data) })
+      Promise.resolve(supabase.from('ticker').select('*').order('epoch', { ascending: false }).limit(200))
+        .then(({ data }) => { if (!cancelled) setTicker((data ?? []) as TickerTrade[]) })
         .catch(() => {})
     }
     load()
@@ -471,14 +223,16 @@ function SignalsDemo() {
     setExpanded(key)
     setWalletsLoading(true)
     setChartLoading(true)
-    fetch(`${SIGNALS_PROXY}/opportunities/${encodeURIComponent(o.condition_id)}/${encodeURIComponent(o.outcome)}/wallets`)
-      .then(res => res.json())
-      .then((data: WalletContribution[]) => setWallets(data))
+    Promise.resolve(
+      supabase.from('wallet_positions').select('*')
+        .eq('condition_id', o.condition_id).eq('outcome', o.outcome)
+        .order('ts', { ascending: false })
+    )
+      .then(({ data }) => setWallets((data ?? []) as WalletContribution[]))
       .catch(() => setWallets([]))
       .finally(() => setWalletsLoading(false))
-    fetch(`${SIGNALS_PROXY}/opportunities/${encodeURIComponent(o.condition_id)}/${encodeURIComponent(o.outcome)}/chart`)
-      .then(res => res.json())
-      .then((data: { history: ChartPoint[] }) => setChartHistory(data.history || []))
+    supabase.functions.invoke('price-chart', { body: { condition_id: o.condition_id, outcome: o.outcome } })
+      .then(({ data }) => setChartHistory((data as { history: ChartPoint[] } | null)?.history || []))
       .catch(() => setChartHistory([]))
       .finally(() => setChartLoading(false))
   }
@@ -721,7 +475,7 @@ interface ProfitsPosition {
   outcome: string
   usd: number
   price: number
-  resolved_win: number
+  resolved_win: boolean
   resolved_ts: string
   profit: number
 }
@@ -792,20 +546,23 @@ function ProfitsPage() {
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      fetch(`${SIGNALS_PROXY}/profits`)
-        .then(res => {
-          if (!res.ok) throw new Error('Signals backend unreachable')
-          return res.json()
-        })
-        .then((data: { summary: ProfitsSummary | null; daily: ProfitsDaily[]; positions: ProfitsPosition[] }) => {
+      Promise.all([
+        supabase.from('profits_summary').select('*').single(),
+        supabase.from('profits_daily').select('*').order('d', { ascending: true }),
+        supabase.from('wallet_positions').select('*').eq('market_closed', true).order('resolved_ts', { ascending: false }).limit(200),
+      ])
+        .then(([summaryRes, dailyRes, positionsRes]) => {
           if (cancelled) return
-          setSummary(data.summary)
-          setDaily(data.daily)
-          setPositions(data.positions)
+          if (summaryRes.error) throw summaryRes.error
+          if (dailyRes.error) throw dailyRes.error
+          if (positionsRes.error) throw positionsRes.error
+          setSummary((summaryRes.data ?? null) as ProfitsSummary | null)
+          setDaily((dailyRes.data ?? []) as ProfitsDaily[])
+          setPositions((positionsRes.data ?? []) as ProfitsPosition[])
           setLoading(false)
           setError(null)
         })
-        .catch(e => {
+        .catch((e: Error) => {
           if (cancelled) return
           setError(e.message)
           setLoading(false)
@@ -931,18 +688,15 @@ function LeaderboardPage({ onSelectWallet }: { onSelectWallet: (wallet: string) 
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      fetch(`${SIGNALS_PROXY}/leaderboard`)
-        .then(res => {
-          if (!res.ok) throw new Error('Signals backend unreachable')
-          return res.json()
-        })
-        .then((data: LeaderboardRow[]) => {
+      Promise.resolve(supabase.from('leaderboard').select('*').order('net_profit', { ascending: false }))
+        .then(({ data, error }) => {
           if (cancelled) return
-          setRows(data)
+          if (error) throw error
+          setRows((data ?? []) as LeaderboardRow[])
           setLoading(false)
           setError(null)
         })
-        .catch(e => {
+        .catch((e: Error) => {
           if (cancelled) return
           setError(e.message)
           setLoading(false)
@@ -1045,7 +799,7 @@ interface TraderPosition {
   category: string | null
   usd: number
   price: number
-  resolved_win: number
+  resolved_win: boolean
   resolved_ts: string
   profit: number
 }
@@ -1068,20 +822,23 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    fetch(`${SIGNALS_PROXY}/trader/${encodeURIComponent(wallet)}`)
-      .then(res => {
-        if (!res.ok) throw new Error('Signals backend unreachable')
-        return res.json()
-      })
-      .then((data: { summary: TraderSummary | null; positions: TraderPosition[]; by_category: TraderCategoryStat[] }) => {
+    Promise.all([
+      supabase.from('leaderboard').select('*').ilike('wallet', wallet).maybeSingle(),
+      supabase.from('wallet_positions').select('*').ilike('wallet', wallet).eq('market_closed', true).order('resolved_ts', { ascending: false }),
+      supabase.from('wallet_category_breakdown').select('*').ilike('wallet', wallet).order('profit', { ascending: false }),
+    ])
+      .then(([summaryRes, positionsRes, categoryRes]) => {
         if (cancelled) return
-        setSummary(data.summary)
-        setPositions(data.positions)
-        setByCategory(data.by_category)
+        if (summaryRes.error) throw summaryRes.error
+        if (positionsRes.error) throw positionsRes.error
+        if (categoryRes.error) throw categoryRes.error
+        setSummary((summaryRes.data ?? null) as TraderSummary | null)
+        setPositions((positionsRes.data ?? []) as TraderPosition[])
+        setByCategory((categoryRes.data ?? []) as TraderCategoryStat[])
         setLoading(false)
         setError(null)
       })
-      .catch(e => {
+      .catch((e: Error) => {
         if (cancelled) return
         setError(e.message)
         setLoading(false)
@@ -1236,11 +993,10 @@ function AlertsPage() {
     if (watchedWallets.length === 0) return
     let cancelled = false
     const load = () => {
-      fetch(`${SIGNALS_PROXY}/ticker`)
-        .then(res => (res.ok ? res.json() : []))
-        .then((data: TickerTrade[]) => {
+      Promise.resolve(supabase.from('ticker').select('*').order('epoch', { ascending: false }).limit(200))
+        .then(({ data }) => {
           if (cancelled) return
-          for (const t of data) {
+          for (const t of (data ?? []) as TickerTrade[]) {
             if (!t.wallet || seenTicker.current.has(t.id)) continue
             const watched = watchedWallets.find(w => w.wallet.toLowerCase() === t.wallet!.toLowerCase())
             if (!watched) continue
@@ -1258,11 +1014,10 @@ function AlertsPage() {
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      fetch(`${SIGNALS_PROXY}/opportunities`)
-        .then(res => (res.ok ? res.json() : []))
-        .then((data: Opportunity[]) => {
+      Promise.resolve(supabase.from('opportunities_live').select('*').order('last_updated', { ascending: false }))
+        .then(({ data }) => {
           if (cancelled) return
-          for (const o of data) {
+          for (const o of (data ?? []) as Opportunity[]) {
             if (o.tier < minTier) continue
             const key = `${o.condition_id}::${o.outcome}::${o.tier}`
             if (seenTier.current.has(key)) continue
@@ -1360,129 +1115,6 @@ function AlertsPage() {
   )
 }
 
-function PortfolioDemo() {
-  const positions = [
-    { market: 'Fed cuts rates in July?',      platform: 'Kalshi',     entry: '38¢', current: '45¢', pnl: '+$18.40', win: true  },
-    { market: 'Bitcoin above $120k by Aug?',  platform: 'Polymarket', entry: '25¢', current: '33¢', pnl: '+$32.00', win: true  },
-    { market: 'US recession in 2025?',         platform: 'Kalshi',     entry: '42¢', current: '34¢', pnl: '-$16.00', win: false },
-    { market: 'SpaceX orbital flight Q3?',     platform: 'Manifold',   entry: '60¢', current: '71¢', pnl: '+$22.00', win: true  },
-    { market: 'Apple M4 MacBook by October?', platform: 'Kalshi',     entry: '55¢', current: '52¢', pnl: '-$6.00',  win: false },
-  ]
-  return (
-    <>
-      <div className="app-section-header">
-        <div>
-          <h1 className="app-section-title">Portfolio</h1>
-          <p className="app-section-sub">Your positions and performance across all platforms</p>
-        </div>
-      </div>
-      <div className="app-stats-row">
-        <div className="app-stat-card">
-          <div className="app-stat-label">Total P&amp;L</div>
-          <div className="app-stat-value green">+$1,240</div>
-        </div>
-        <div className="app-stat-card">
-          <div className="app-stat-label">Win Rate</div>
-          <div className="app-stat-value accent">61%</div>
-        </div>
-        <div className="app-stat-card">
-          <div className="app-stat-label">Open Positions</div>
-          <div className="app-stat-value">12</div>
-        </div>
-        <div className="app-stat-card">
-          <div className="app-stat-label">ROI</div>
-          <div className="app-stat-value green">+18.4%</div>
-        </div>
-      </div>
-      <div className="app-table-wrap">
-        <table className="app-table">
-          <thead>
-            <tr><th>Market</th><th>Platform</th><th>Entry</th><th>Current</th><th>P&amp;L</th></tr>
-          </thead>
-          <tbody>
-            {positions.map((p, i) => (
-              <tr key={i}>
-                <td><div className="app-market-name">{p.market}</div></td>
-                <td><span className="app-tag">{p.platform}</span></td>
-                <td><span className="app-price">{p.entry}</span></td>
-                <td><span className="app-price">{p.current}</span></td>
-                <td><span style={{ fontWeight: 700, color: p.win ? '#10b981' : '#ef4444' }}>{p.pnl}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
-  )
-}
-
-function AlertsDemo() {
-  const [alerts, setAlerts] = useState([
-    { name: 'ARB ≥ 5%',          cond: 'Any platform — min 5% guaranteed profit', on: true  },
-    { name: '+EV ≥ 10%',         cond: 'Any market — min 10% expected value',      on: true  },
-    { name: 'Kalshi Politics',    cond: 'New political market opens on Kalshi',     on: false },
-    { name: 'Polymarket Crypto',  cond: 'Crypto market price moves > 5¢',          on: true  },
-    { name: 'Promo Available',    cond: 'New platform bonus detected',              on: false },
-    { name: 'Portfolio down 10%', cond: 'Open positions drop 10% in 24h',          on: true  },
-  ])
-  const toggle = (i: number) => setAlerts(prev => prev.map((a, idx) => idx === i ? { ...a, on: !a.on } : a))
-  return (
-    <>
-      <div className="app-section-header">
-        <div>
-          <h1 className="app-section-title">Live Alerts</h1>
-          <p className="app-section-sub">Get notified the moment an edge opens</p>
-        </div>
-        <button className="app-add-btn">+ Add Alert</button>
-      </div>
-      <div className="app-alerts-list">
-        {alerts.map((a, i) => (
-          <div key={i} className="app-alert-row">
-            <div>
-              <div className="app-alert-name">{a.name}</div>
-              <div className="app-alert-cond">{a.cond}</div>
-            </div>
-            <div className={`app-toggle ${a.on ? 'on' : ''}`} onClick={() => toggle(i)} style={{ cursor: 'pointer' }}>
-              <div className="app-toggle-track" />
-              <div className="app-toggle-thumb" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </>
-  )
-}
-
-function PromosDemo() {
-  const promos = [
-    { platform: 'Kalshi',     name: 'Welcome Deposit Match', value: '$200', expiry: 'Expires Jul 31' },
-    { platform: 'Polymarket', name: 'First Trade Bonus',      value: '$50',  expiry: 'Expires Aug 15' },
-    { platform: 'Manifold',   name: 'Refer a Friend',         value: '$25',  expiry: 'Ongoing'        },
-    { platform: 'Limitless',  name: 'New User Bonus',         value: '$100', expiry: 'Expires Jul 20' },
-  ]
-  return (
-    <>
-      <div className="app-section-header">
-        <div>
-          <h1 className="app-section-title">Promos</h1>
-          <p className="app-section-sub">Available platform bonuses and how to extract them</p>
-        </div>
-      </div>
-      <div className="app-promos-grid">
-        {promos.map((p, i) => (
-          <div key={i} className="app-promo-card">
-            <div className="app-promo-platform">{p.platform}</div>
-            <div className="app-promo-name">{p.name}</div>
-            <div className="app-promo-value">{p.value}</div>
-            <div className="app-promo-expiry">{p.expiry}</div>
-            <button className="app-claim-btn">Claim Bonus →</button>
-          </div>
-        ))}
-      </div>
-    </>
-  )
-}
-
 /* ── Settings ── */
 interface AppSettings {
   roster_size: number
@@ -1505,16 +1137,15 @@ function SettingsPage() {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   useEffect(() => {
-    fetch(`${SIGNALS_PROXY}/settings`)
-      .then(res => {
-        if (!res.ok) throw new Error('Signals backend unreachable')
-        return res.json()
-      })
-      .then((data: AppSettings) => {
-        setSettings(data)
+    Promise.resolve(
+      supabase.from('app_settings').select('roster_size, tiers, ticker_min_usd, scalp_window_minutes').eq('id', 1).single()
+    )
+      .then(({ data, error }) => {
+        if (error) throw error
+        setSettings(data as AppSettings)
         setLoading(false)
       })
-      .catch(e => {
+      .catch((e: Error) => {
         setError(e.message)
         setLoading(false)
       })
@@ -1526,17 +1157,22 @@ function SettingsPage() {
 
   const save = () => {
     setSaveState('saving')
-    fetch(`${SIGNALS_PROXY}/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    })
-      .then(res => {
-        if (!res.ok) throw new Error('Save failed')
-        return res.json()
-      })
-      .then((data: AppSettings) => {
-        setSettings(data)
+    // No server in the loop anymore to sanitize this before it hits the table
+    // the Python service trusts — same clamping the old proxy did, now here.
+    const tiers = [...new Set(settings.tiers.map(Number).filter(n => Number.isFinite(n) && n >= 0))].sort((a, b) => a - b)
+    const cfg: AppSettings = {
+      roster_size: Math.max(1, Math.min(2000, Math.round(Number(settings.roster_size)) || SETTINGS_DEFAULT.roster_size)),
+      tiers: tiers.length > 0 ? tiers : SETTINGS_DEFAULT.tiers,
+      ticker_min_usd: Math.max(1, Math.round(Number(settings.ticker_min_usd)) || SETTINGS_DEFAULT.ticker_min_usd),
+      scalp_window_minutes: Math.max(1, Math.round(Number(settings.scalp_window_minutes)) || SETTINGS_DEFAULT.scalp_window_minutes),
+    }
+    Promise.resolve(
+      supabase.from('app_settings').update(cfg).eq('id', 1)
+        .select('roster_size, tiers, ticker_min_usd, scalp_window_minutes').single()
+    )
+      .then(({ data, error }) => {
+        if (error) throw error
+        setSettings(data as AppSettings)
         setSaveState('saved')
         setTimeout(() => setSaveState('idle'), 2500)
       })
@@ -1621,10 +1257,9 @@ function SettingsPage() {
   )
 }
 
-const demos: Record<string, () => JSX.Element> = {
+const demos: Record<string, () => ReactElement> = {
   signals:     SignalsDemo,
   profits:     ProfitsPage,
-  leaderboard: LeaderboardPage,
   alerts:      AlertsPage,
   settings:    SettingsPage,
 }
@@ -1649,7 +1284,7 @@ export default function AppShell() {
     navigate('/login')
   }
 
-  let page: JSX.Element
+  let page: ReactElement
   if (selectedWallet) {
     page = <TraderDetailPage wallet={selectedWallet} onBack={() => setSelectedWallet(null)} />
   } else if (active === 'leaderboard') {

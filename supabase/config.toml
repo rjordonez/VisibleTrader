@@ -1,0 +1,4 @@
+project_id = "vohtqodprqpobvvcdypy"
+
+[functions.price-chart]
+verify_jwt = false

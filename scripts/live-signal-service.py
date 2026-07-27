@@ -42,7 +42,6 @@ KNOWN_CATEGORY_SLUGS = {
     'politics', 'sports', 'esports', 'crypto', 'culture',
     'mentions', 'weather', 'economics', 'tech', 'finance',
 }  # Polymarket's own top-level taxonomy (same list the leaderboard scraper uses)
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'venter_config.json')
 ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
 
 
@@ -237,10 +236,11 @@ def build_roster(all_users, size=ROSTER_SIZE):
     return {u['wallet'].lower() for u in ranked}
 
 
-def load_config():
-    """venter_config.json — written by the Settings page (via signals-proxy.mjs),
-    read here on a short timer. Missing/invalid file just falls back to the
-    hardcoded defaults, so this is safe even if the UI has never been used."""
+def load_config(db):
+    """app_settings table — written by the Settings page (direct Supabase
+    write from the browser now, not through a local proxy), read here on a
+    short timer. Any failure just falls back to the hardcoded defaults, so
+    this is safe even if the row is missing or the UI has never been used."""
     defaults = {
         'roster_size': ROSTER_SIZE,
         'tiers': list(TIERS),
@@ -248,11 +248,15 @@ def load_config():
         'scalp_window_minutes': SCALP_WINDOW_SECONDS // 60,
     }
     try:
-        with open(CONFIG_PATH) as f:
-            data = json.load(f)
-        for k in defaults:
-            if k in data:
-                defaults[k] = data[k]
+        row = db.execute(
+            'SELECT roster_size, tiers, ticker_min_usd, scalp_window_minutes FROM app_settings WHERE id = 1'
+        ).fetchone()
+        if row:
+            roster_size, tiers, ticker_min_usd, scalp_window_minutes = row
+            defaults['roster_size'] = roster_size
+            defaults['tiers'] = list(tiers)
+            defaults['ticker_min_usd'] = ticker_min_usd
+            defaults['scalp_window_minutes'] = scalp_window_minutes
     except Exception:
         pass
     return defaults
@@ -679,15 +683,16 @@ def main():
         raise SystemExit('DATABASE_URL not set — export it or pass --database-url '
                           '(Supabase Settings > Database > Connection string, session pooler, port 5432)')
 
+    db = Database(args.database_url)
+
     all_users = json.load(open(args.users))
-    config = load_config()  # venter_config.json wins over --roster-size if present — see Settings page
+    config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page
     print(f'Loading roster (top {config["roster_size"]} by best_pnl)...')
     roster = set()
     apply_config(config, roster, all_users)  # populates roster + sets TIERS/TICKER_MIN_USD/SCALP_WINDOW_SECONDS
     wallet_names = build_wallet_names(all_users)
     print(f'{len(roster)} roster wallets loaded, {len(wallet_names)} known wallet names available.')
 
-    db = Database(args.database_url)
     executor = ThreadPoolExecutor(max_workers=args.workers)
 
     print('Fetching active market/token universe...')
@@ -749,7 +754,7 @@ def main():
                     last_resolution_sweep = now
 
                 if now - last_config_reload > 10:  # picks up Settings-page changes without a restart
-                    apply_config(load_config(), roster, all_users)
+                    apply_config(load_config(db), roster, all_users)
                     last_config_reload = now
 
                 # recv_frames already swallows socket.timeout internally (expected,
