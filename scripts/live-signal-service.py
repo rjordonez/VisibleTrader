@@ -246,6 +246,7 @@ def load_config(db):
         'tiers': list(TIERS),
         'ticker_min_usd': TICKER_MIN_USD,
         'scalp_window_minutes': SCALP_WINDOW_SECONDS // 60,
+        'tracked_wallets': set(),
     }
     try:
         row = db.execute(
@@ -257,6 +258,16 @@ def load_config(db):
             defaults['tiers'] = list(tiers)
             defaults['ticker_min_usd'] = ticker_min_usd
             defaults['scalp_window_minutes'] = scalp_window_minutes
+    except Exception:
+        pass
+    try:
+        # Manually-tracked wallets (added via the Lookup page) — expire after
+        # 30 days of inactivity by just dropping out of this query, not by
+        # deleting the row, so a wallet that trades again later resumes being
+        # tracked automatically without needing to be re-added.
+        rows = db.execute('''SELECT wallet FROM tracked_wallets
+            WHERE COALESCE(last_active_at, added_at) > now() - interval '30 days' ''').fetchall()
+        defaults['tracked_wallets'] = {r[0].lower() for r in rows}
     except Exception:
         pass
     return defaults
@@ -273,7 +284,7 @@ def apply_config(cfg, roster_set, all_users):
     TIERS = sorted(float(t) if not float(t).is_integer() else int(t) for t in cfg['tiers'])
     TICKER_MIN_USD = cfg['ticker_min_usd']
     SCALP_WINDOW_SECONDS = cfg['scalp_window_minutes'] * 60
-    new_roster = build_roster(all_users, cfg['roster_size'])
+    new_roster = build_roster(all_users, cfg['roster_size']) | cfg.get('tracked_wallets', set())
     if new_roster != roster_set:
         roster_set.clear()
         roster_set.update(new_roster)
@@ -471,6 +482,16 @@ def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, pri
             VALUES (%s,%s,%s,%s,%s,%s,%s)''', (condition_id, outcome, wallet, wallet_name, usd, price, now))
 
 
+def touch_tracked_wallet(db, wallet):
+    """No-op for wallets that are only in the top-N-by-pnl roster (not in
+    tracked_wallets at all) — the UPDATE just affects zero rows for those.
+    For a manually-tracked wallet, this is what keeps it from expiring out
+    of load_config()'s 30-day-inactivity filter."""
+    with lock:
+        db.execute('UPDATE tracked_wallets SET last_active_at = %s WHERE wallet = %s',
+                    (datetime.now(timezone.utc), wallet))
+
+
 def record_exit(db, condition_id, outcome, wallet, price, usd):
     """Closes the oldest still-open contribution row for this wallet+market
     (FIFO — this is a best-effort signal classifier, not real accounting) and
@@ -629,6 +650,7 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
 
     if side == 'SELL':
         result = record_exit(db, info['conditionId'], info['outcome'], wallet, float(price), usd)
+        touch_tracked_wallet(db, wallet)
         if result:
             hold_seconds, is_scalp = result
             who = wallet_name or f'{wallet[:10]}…'
@@ -658,6 +680,7 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
             already_hit.add(SOLO_TIER)
 
     record_contribution(db, key[0], key[1], wallet, wallet_name, usd, float(price))
+    touch_tracked_wallet(db, wallet)
     meta_lookup = {key: info}
     if is_first_ever:
         record_tier_crossed(db, key[0], key[1], meta_lookup, usd, SOLO_TIER, 1, float(price))
