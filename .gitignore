@@ -28,6 +28,9 @@ venter_signals.db
 # Not for the public repo — real-money order-execution script, kept local only
 scripts/copy-trader.py
 
+# Supabase CLI local cache
+supabase/.temp/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
