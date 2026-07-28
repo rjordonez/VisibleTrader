@@ -813,16 +813,41 @@ interface TraderCategoryStat {
   profit: number
 }
 
+interface LivePosition {
+  title: string
+  outcome: string
+  curPrice: number
+  avgPrice: number
+  cashPnl: number
+  realizedPnl: number
+  redeemable: boolean
+}
+
+interface LiveActivity {
+  timestamp: number
+  type: string
+  title: string
+  outcome: string
+  side: string
+  usdcSize: number
+  price: number
+}
+
 function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => void }) {
   const [summary, setSummary] = useState<TraderSummary | null>(null)
   const [positions, setPositions] = useState<TraderPosition[]>([])
   const [byCategory, setByCategory] = useState<TraderCategoryStat[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [livePositions, setLivePositions] = useState<LivePosition[]>([])
+  const [liveActivity, setLiveActivity] = useState<LiveActivity[]>([])
+  const [liveLoading, setLiveLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setLivePositions([])
+    setLiveActivity([])
     Promise.all([
       supabase.from('leaderboard').select('*').ilike('wallet', wallet).maybeSingle(),
       supabase.from('wallet_positions').select('*').ilike('wallet', wallet).eq('market_closed', true).order('resolved_ts', { ascending: false }),
@@ -833,11 +858,31 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
         if (summaryRes.error) throw summaryRes.error
         if (positionsRes.error) throw positionsRes.error
         if (categoryRes.error) throw categoryRes.error
-        setSummary((summaryRes.data ?? null) as TraderSummary | null)
+        const summaryData = (summaryRes.data ?? null) as TraderSummary | null
+        setSummary(summaryData)
         setPositions((positionsRes.data ?? []) as TraderPosition[])
         setByCategory((categoryRes.data ?? []) as TraderCategoryStat[])
         setLoading(false)
         setError(null)
+
+        // We only have history for wallets we've tracked ourselves — for
+        // everyone else, fall back to Polymarket's own public (CORS-open,
+        // no auth needed) data API so "no tracked history" doesn't mean
+        // "we can't show you anything real about this wallet."
+        if (!summaryData) {
+          setLiveLoading(true)
+          Promise.all([
+            fetch(`https://data-api.polymarket.com/positions?user=${wallet}&limit=50`).then(r => r.ok ? r.json() : []),
+            fetch(`https://data-api.polymarket.com/activity?user=${wallet}&limit=50`).then(r => r.ok ? r.json() : []),
+          ])
+            .then(([pos, act]) => {
+              if (cancelled) return
+              setLivePositions((pos ?? []) as LivePosition[])
+              setLiveActivity((act ?? []) as LiveActivity[])
+            })
+            .catch(() => {})
+            .finally(() => { if (!cancelled) setLiveLoading(false) })
+        }
       })
       .catch((e: Error) => {
         if (cancelled) return
@@ -945,7 +990,63 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
         )}
 
         {!loading && !error && !summary && (
-          <div className="sig-empty">No resolved positions for this wallet yet.</div>
+          <>
+            <div className="sig-empty" style={{ marginBottom: 20 }}>
+              Not in our tracked history yet — showing live data straight from Polymarket instead.
+            </div>
+
+            {liveLoading && <div className="sig-empty">Loading from Polymarket…</div>}
+
+            {!liveLoading && livePositions.length > 0 && (
+              <>
+                <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Current positions (live from Polymarket)</div>
+                <div className="sig-table-wrap" style={{ marginBottom: 24 }}>
+                  <table className="sig-table">
+                    <thead>
+                      <tr><th>Market</th><th className="num">Avg Price</th><th className="num">Current Price</th><th className="num">Unrealized P&L</th></tr>
+                    </thead>
+                    <tbody>
+                      {livePositions.map((p, i) => (
+                        <tr key={i}>
+                          <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
+                          <td className="num">{Math.round(p.avgPrice * 100)}¢</td>
+                          <td className="num">{Math.round(p.curPrice * 100)}¢</td>
+                          <td className="num" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.cashPnl)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {!liveLoading && liveActivity.length > 0 && (
+              <>
+                <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Recent activity (live from Polymarket)</div>
+                <div className="sig-table-wrap">
+                  <table className="sig-table">
+                    <thead>
+                      <tr><th>Market</th><th>Type</th><th className="num">Amount</th><th className="num">When</th></tr>
+                    </thead>
+                    <tbody>
+                      {liveActivity.filter(a => a.title).map((a, i) => (
+                        <tr key={i}>
+                          <td>{a.title} {a.outcome && <span style={{ color: 'var(--text-dim)' }}>— {a.outcome}</span>}</td>
+                          <td>{a.side || a.type}</td>
+                          <td className="num">{fmtFull(a.usdcSize)}</td>
+                          <td className="num" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(a.timestamp * 1000).toISOString())}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {!liveLoading && livePositions.length === 0 && liveActivity.length === 0 && (
+              <div className="sig-empty">Nothing found for this wallet on Polymarket either.</div>
+            )}
+          </>
         )}
       </div>
     </div>
