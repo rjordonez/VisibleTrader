@@ -16,7 +16,11 @@
   font-family: 'Inter', system-ui, sans-serif;
 }
 
-/* ── Top header ── */
+/* ── Top header ──
+   Bar itself stays edge-to-edge (background/border read as one continuous
+   strip); the actual content is inset into a centered max-width column so
+   large screens get real side margins instead of the nav stretching wall
+   to wall — matches how much breathing room Polymarket leaves on the sides. */
 .app-header {
   position: fixed;
   top: 0;
@@ -25,11 +29,17 @@
   height: 60px;
   background: var(--shell-surface);
   border-bottom: 1px solid var(--shell-border);
+  z-index: 50;
+}
+
+.app-header-inner {
+  max-width: 1600px;
+  margin: 0 auto;
+  height: 100%;
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  padding: 0 1.5rem;
-  z-index: 50;
+  padding: 0 2.5rem;
 }
 
 .app-header-logo {
@@ -88,6 +98,25 @@
   font-weight: 600;
 }
 
+/* Market-category segment appended after the primary sections — a single
+   continuous scrollable row, same pattern Polymarket uses (site nav | a
+   divider | market categories) instead of a second header row. */
+.app-nav-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--shell-border);
+  flex-shrink: 0;
+  margin: 0 4px;
+}
+
+.app-nav-cat {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  opacity: 0.8;
+}
+.app-nav-cat:hover { opacity: 1; }
+.app-nav-cat.active { opacity: 1; }
+
 .app-header-user {
   display: flex;
   align-items: center;
@@ -131,6 +160,9 @@
   flex: 1;
   min-height: calc(100vh - 60px);
   background: var(--shell-bg);
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
   padding: 2rem 2.5rem;
 }
 

@@ -167,7 +167,7 @@ function walletReturn(w: WalletContribution, currentPrice: number): { profit: nu
   return { profit: shares * currentPrice - w.usd, realized: false }
 }
 
-function SignalsDemo() {
+function SignalsDemo({ category }: { category: string }) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [loading, setLoading]             = useState(true)
   const [error, setError]                 = useState<string | null>(null)
@@ -178,7 +178,6 @@ function SignalsDemo() {
   const [chartLoading, setChartLoading]   = useState(false)
   const [ticker, setTicker]               = useState<TickerTrade[]>([])
   const [tab, setTab]                     = useState<'ticker' | 'vetted'>('ticker')
-  const [category, setCategory]           = useState('all')
   const [todayOnly, setTodayOnly]         = useState(false)
   const [sortMode, setSortMode]           = useState<'recent' | 'profit'>('recent')
 
@@ -241,18 +240,6 @@ function SignalsDemo() {
     fetchChart(o.condition_id, o.outcome).then(setChartHistory).finally(() => setChartLoading(false))
   }
 
-  // Category chip list: whatever's actually present in live data right now, most common first — not a hardcoded taxonomy.
-  const categoryCounts = new Map<string, number>()
-  for (const t of ticker) {
-    const c = t.category ?? 'other'
-    categoryCounts.set(c, (categoryCounts.get(c) ?? 0) + 1)
-  }
-  for (const o of opportunities) {
-    const c = o.category ?? 'other'
-    categoryCounts.set(c, (categoryCounts.get(c) ?? 0) + 1)
-  }
-  const chipCategories = ['all', ...[...categoryCounts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c)]
-
   const byCategory = <T extends { category: string | null }>(list: T[]) =>
     category === 'all' ? list : list.filter(x => (x.category ?? 'other') === category)
 
@@ -297,15 +284,6 @@ function SignalsDemo() {
             >
               Today only
             </div>
-            {chipCategories.map(c => (
-              <div
-                key={c}
-                className={category === c ? 'sig-chip active' : 'sig-chip'}
-                onClick={() => setCategory(c)}
-              >
-                {c === 'all' ? 'All' : categoryLabel(c)}
-              </div>
-            ))}
           </div>
         </div>
 
@@ -459,7 +437,7 @@ function SignalsDemo() {
 }
 
 /* ── Home (Polymarket-homepage-style overview: hero + top movers + grid) ── */
-function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
+function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; category: string }) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -467,7 +445,6 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
   const [heroChartHistory, setHeroChartHistory] = useState<ChartPoint[]>([])
   const [heroLoading, setHeroLoading] = useState(false)
   const [heroIndex, setHeroIndex] = useState(0)
-  const [category, setCategory] = useState('all')
 
   useEffect(() => {
     let cancelled = false
@@ -493,13 +470,6 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
 
   const byCategory = <T extends { category: string | null }>(list: T[]) =>
     category === 'all' ? list : list.filter(x => (x.category ?? 'other') === category)
-
-  const categoryCounts = new Map<string, number>()
-  for (const o of opportunities) {
-    const c = o.category ?? 'other'
-    categoryCounts.set(c, (categoryCounts.get(c) ?? 0) + 1)
-  }
-  const chipCategories = ['all', ...[...categoryCounts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c)]
 
   const rankedByConviction = byCategory([...opportunities].sort((a, b) => b.cumulative_usd - a.cumulative_usd))
   // Hero rotates through the top 5 signals every few seconds (matching the
@@ -682,18 +652,6 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
             <h1 className="app-section-title" style={{ fontSize: '1.05rem' }}>All signals</h1>
           </div>
           <button className="sig-btn secondary" onClick={onOpenSignals}>Open full Signals page →</button>
-        </div>
-
-        <div className="sig-chips" style={{ marginBottom: 16 }}>
-          {chipCategories.map(c => (
-            <div
-              key={c}
-              className={category === c ? 'sig-chip active' : 'sig-chip'}
-              onClick={() => setCategory(c)}
-            >
-              {c === 'all' ? 'All' : categoryLabel(c)}
-            </div>
-          ))}
         </div>
 
         {loading && <div className="sig-empty">Connecting to the live signal feed…</div>}
@@ -1895,11 +1853,14 @@ function LookupPage({ onSelectWallet }: { onSelectWallet: (wallet: string) => vo
 }
 
 const demos: Record<string, () => ReactElement> = {
-  signals:     SignalsDemo,
   profits:     ProfitsPage,
   alerts:      AlertsPage,
   settings:    SettingsPage,
 }
+
+// Fixed taxonomy (not derived from live data) since this now lives in the
+// header nav, rendered before any page has fetched its own category counts.
+const NAV_CATEGORIES = ['politics', 'sports', 'crypto', 'esports', 'finance', 'economics', 'tech', 'culture', 'weather', 'mentions']
 
 /* ── App Shell ── */
 export default function AppShell() {
@@ -1907,6 +1868,7 @@ export default function AppShell() {
   const [active, setActive] = useState('home')
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
+  const [category, setCategory] = useState('all')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null))
@@ -1925,7 +1887,9 @@ export default function AppShell() {
   if (selectedWallet) {
     page = <TraderDetailPage wallet={selectedWallet} onBack={() => setSelectedWallet(null)} />
   } else if (active === 'home') {
-    page = <HomePage onOpenSignals={() => setActive('signals')} />
+    page = <HomePage onOpenSignals={() => setActive('signals')} category={category} />
+  } else if (active === 'signals') {
+    page = <SignalsDemo category={category} />
   } else if (active === 'leaderboard') {
     page = <LeaderboardPage onSelectWallet={setSelectedWallet} />
   } else if (active === 'lookup') {
@@ -1938,29 +1902,52 @@ export default function AppShell() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="app-header-logo">VisibleTrader</div>
-        <nav className="app-header-nav">
-          {navItems.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              className={`app-nav-item ${active === id && !selectedWallet ? 'active' : ''}`}
-              onClick={() => { setActive(id); setSelectedWallet(null) }}
-            >
-              <span className="app-nav-icon"><Icon size={15} strokeWidth={1.6} /></span>
-              {label}
-            </button>
-          ))}
-        </nav>
+        <div className="app-header-inner">
+          <div className="app-header-logo">VisibleTrader</div>
+          <nav className="app-header-nav">
+            {navItems.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                className={`app-nav-item ${active === id && !selectedWallet ? 'active' : ''}`}
+                onClick={() => { setActive(id); setSelectedWallet(null) }}
+              >
+                <span className="app-nav-icon"><Icon size={15} strokeWidth={1.6} /></span>
+                {label}
+              </button>
+            ))}
 
-        {user && (
-          <div className="app-header-user">
-            <div className="app-user-row">
-              <div className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</div>
-              <div className="app-user-name">{user.email}</div>
+            <span className="app-nav-divider" />
+
+            <button
+              className={`app-nav-item app-nav-cat ${category === 'all' ? 'active' : ''}`}
+              onClick={() => setCategory('all')}
+            >
+              All
+            </button>
+            {NAV_CATEGORIES.map(c => (
+              <button
+                key={c}
+                className={`app-nav-item app-nav-cat ${category === c ? 'active' : ''}`}
+                onClick={() => {
+                  setCategory(c)
+                  if (active !== 'home' && active !== 'signals') { setActive('home'); setSelectedWallet(null) }
+                }}
+              >
+                {categoryLabel(c)}
+              </button>
+            ))}
+          </nav>
+
+          {user && (
+            <div className="app-header-user">
+              <div className="app-user-row">
+                <div className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</div>
+                <div className="app-user-name">{user.email}</div>
+              </div>
+              <button className="app-nav-item" style={{ color: '#f87171' }} onClick={signOut}>Sign out</button>
             </div>
-            <button className="app-nav-item" style={{ color: '#f87171' }} onClick={signOut}>Sign out</button>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       <main className="app-main">
