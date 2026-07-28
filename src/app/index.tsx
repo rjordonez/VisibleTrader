@@ -215,6 +215,18 @@ function SignalsDemo() {
     return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
+  const fetchWallets = (conditionId: string, outcome: string) =>
+    Promise.resolve(
+      supabase.from('wallet_positions').select('*')
+        .eq('condition_id', conditionId).eq('outcome', outcome)
+        .order('ts', { ascending: false })
+    ).then(({ data }) => (data ?? []) as WalletContribution[]).catch(() => [] as WalletContribution[])
+
+  const fetchChart = (conditionId: string, outcome: string) =>
+    supabase.functions.invoke('price-chart', { body: { condition_id: conditionId, outcome } })
+      .then(({ data }) => (data as { history: ChartPoint[] } | null)?.history || [])
+      .catch(() => [] as ChartPoint[])
+
   const toggleExpand = (o: Opportunity) => {
     const key = `${o.condition_id}::${o.outcome}`
     if (expanded === key) {
@@ -224,19 +236,36 @@ function SignalsDemo() {
     setExpanded(key)
     setWalletsLoading(true)
     setChartLoading(true)
-    Promise.resolve(
-      supabase.from('wallet_positions').select('*')
-        .eq('condition_id', o.condition_id).eq('outcome', o.outcome)
-        .order('ts', { ascending: false })
-    )
-      .then(({ data }) => setWallets((data ?? []) as WalletContribution[]))
-      .catch(() => setWallets([]))
-      .finally(() => setWalletsLoading(false))
-    supabase.functions.invoke('price-chart', { body: { condition_id: o.condition_id, outcome: o.outcome } })
-      .then(({ data }) => setChartHistory((data as { history: ChartPoint[] } | null)?.history || []))
-      .catch(() => setChartHistory([]))
-      .finally(() => setChartLoading(false))
+    fetchWallets(o.condition_id, o.outcome).then(setWallets).finally(() => setWalletsLoading(false))
+    fetchChart(o.condition_id, o.outcome).then(setChartHistory).finally(() => setChartLoading(false))
   }
+
+  // Featured hero — the single highest-conviction signal right now, kept
+  // decoupled from the grid's own expand/collapse state so clicking a card
+  // below never interferes with what the hero shows.
+  const [heroWallets, setHeroWallets] = useState<WalletContribution[]>([])
+  const [heroChartHistory, setHeroChartHistory] = useState<ChartPoint[]>([])
+  const [heroLoading, setHeroLoading] = useState(false)
+  const rankedByConviction = [...opportunities].sort((a, b) => b.cumulative_usd - a.cumulative_usd)
+  const heroSignal = rankedByConviction[0] ?? null
+  const heroKey = heroSignal ? `${heroSignal.condition_id}::${heroSignal.outcome}` : null
+  const topMovers = rankedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 7)
+
+  useEffect(() => {
+    if (!heroSignal) return
+    let cancelled = false
+    setHeroLoading(true)
+    Promise.all([
+      fetchWallets(heroSignal.condition_id, heroSignal.outcome),
+      fetchChart(heroSignal.condition_id, heroSignal.outcome),
+    ]).then(([w, c]) => {
+      if (cancelled) return
+      setHeroWallets(w)
+      setHeroChartHistory(c)
+      setHeroLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [heroKey])
 
   // Category chip list: whatever's actually present in live data right now, most common first — not a hardcoded taxonomy.
   const categoryCounts = new Map<string, number>()
@@ -273,6 +302,97 @@ function SignalsDemo() {
         </div>
         {!error && <div className="sig-live">LIVE</div>}
       </div>
+
+      {!loading && !error && heroSignal && (
+        <div className="sig-hero-row">
+          <div className="sig-hero">
+            {(() => {
+              const ic = categoryIcon(heroSignal.category)
+              const tag = signalsTag(heroSignal.tier, heroSignal.cumulative_usd)
+              return (
+                <>
+                  <div className="sig-hero-top">
+                    <div className="sig-card-icon" style={{ background: ic.bg, width: 44, height: 44, fontSize: 20 }}>{ic.emoji}</div>
+                    <div style={{ flex: 1 }}>
+                      <div className="sig-hero-q">{heroSignal.title} <span className="sig-out">— {heroSignal.outcome}</span></div>
+                      <div className="sig-card-meta">{heroSignal.wallet_count} top trader{heroSignal.wallet_count > 1 ? 's' : ''} · <span className={`sig-tag ${tag.cls}`} style={{ marginTop: 0 }}>{tag.label}</span></div>
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: heroSignal.total_profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+                      {fmtSigned(heroSignal.total_profit)}
+                    </div>
+                  </div>
+
+                  <div className="sig-stats-row" style={{ margin: '16px 0' }}>
+                    <div className="sig-stat-cell">
+                      <div className="sig-stat-cell-label">Price</div>
+                      <div className="sig-stat-cell-val">{Math.round(heroSignal.latest_price * 100)}¢</div>
+                    </div>
+                    <div className="sig-stat-cell">
+                      <div className="sig-stat-cell-label">Total Deployed</div>
+                      <div className="sig-stat-cell-val g">{fmtFull(heroSignal.cumulative_usd)}</div>
+                    </div>
+                    <div className="sig-stat-cell">
+                      <div className="sig-stat-cell-label">Traders</div>
+                      <div className="sig-stat-cell-val">{heroSignal.wallet_count}</div>
+                    </div>
+                    <div className="sig-stat-cell">
+                      <div className="sig-stat-cell-label">Total Profit</div>
+                      <div className={`sig-stat-cell-val ${heroSignal.total_profit >= 0 ? 'g' : 'r'}`}>{fmtSigned(heroSignal.total_profit)}</div>
+                    </div>
+                  </div>
+
+                  <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
+                  {heroLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>Loading chart…</div>}
+                  {!heroLoading && heroChartHistory.length < 2 && (
+                    <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>No price history available for this market.</div>
+                  )}
+                  {!heroLoading && heroChartHistory.length >= 2 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <PriceChart history={heroChartHistory} wallets={heroWallets} />
+                    </div>
+                  )}
+
+                  <div className="sig-drill-label">Contributing traders</div>
+                  {heroLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>Loading contributors…</div>}
+                  {!heroLoading && heroWallets.length === 0 && (
+                    <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
+                  )}
+                  {!heroLoading && heroWallets.slice(0, 5).map((w, i) => {
+                    const st = signalsTraderStatus(w)
+                    const ret = walletReturn(w, heroSignal.latest_price)
+                    return (
+                      <div key={i} className="sig-drill-row">
+                        <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name">
+                          {traderLabel(w.wallet, w.wallet_name)}
+                        </a>
+                        <div className="sig-drill-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}</div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+                          {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
+                        </div>
+                        <div className="sig-drill-status" style={{ color: st.color, background: st.color + '26' }}>{st.label}</div>
+                      </div>
+                    )
+                  })}
+                </>
+              )
+            })()}
+          </div>
+
+          <div className="sig-movers">
+            <div className="sig-movers-label">Top movers by conviction $</div>
+            {topMovers.map(o => {
+              const ic = categoryIcon(o.category)
+              return (
+                <div key={`${o.condition_id}::${o.outcome}`} className="sig-mover-row">
+                  <div className="sig-card-icon" style={{ background: ic.bg, width: 28, height: 28, fontSize: 13, flexShrink: 0 }}>{ic.emoji}</div>
+                  <div className="sig-mover-title">{o.title} <span className="sig-out">— {o.outcome}</span></div>
+                  <div className="sig-mover-amt">{fmtFull(o.cumulative_usd)}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="sig-panel">
         <div className="sig-head">
