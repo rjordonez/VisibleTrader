@@ -11,19 +11,29 @@ const corsHeaders = {
   'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-async function resolveTokenId(slug: string, outcome: string): Promise<string | null> {
+async function lookupMarket(slug: string): Promise<Record<string, unknown> | null> {
   const res = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`, { headers: UA })
-  if (!res.ok) return null
-  const rows = await res.json()
-  if (!rows.length) return null
-  const m = rows[0]
+  const rows = res.ok ? await res.json() : []
+  if (rows.length) return rows[0]
+  // gamma-api's default markets lookup only returns *open* markets — a
+  // resolved market (very often exactly what ends up as the highest-
+  // conviction signal, since resolved games accumulate the most historical
+  // volume) returns empty here and needs the explicit closed=true lookup.
+  const closedRes = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}&closed=true`, { headers: UA })
+  const closedRows = closedRes.ok ? await closedRes.json() : []
+  return closedRows[0] ?? null
+}
+
+async function resolveTokenId(slug: string, outcome: string): Promise<string | null> {
+  const m = await lookupMarket(slug)
+  if (!m) return null
   let outcomes = m.outcomes
   let tokenIds = m.clobTokenIds
   if (typeof outcomes === 'string') outcomes = JSON.parse(outcomes)
   if (typeof tokenIds === 'string') tokenIds = JSON.parse(tokenIds)
-  const idx = (outcomes || []).indexOf(outcome)
-  if (idx === -1 || !tokenIds || !tokenIds[idx]) return null
-  return tokenIds[idx]
+  const idx = ((outcomes as string[]) || []).indexOf(outcome)
+  if (idx === -1 || !tokenIds || !(tokenIds as string[])[idx]) return null
+  return (tokenIds as string[])[idx]
 }
 
 Deno.serve(async (req) => {

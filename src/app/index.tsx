@@ -1891,9 +1891,9 @@ export default function AppShell() {
 
   return (
     <div className="app-shell">
-      <aside className="app-sidebar">
-        <div className="app-sidebar-logo">VisibleTrader</div>
-        <nav className="app-sidebar-nav">
+      <header className="app-header">
+        <div className="app-header-logo">VisibleTrader</div>
+        <nav className="app-header-nav">
           {navItems.map(({ id, label, Icon }) => (
             <button
               key={id}
@@ -1907,15 +1907,15 @@ export default function AppShell() {
         </nav>
 
         {user && (
-          <div className="app-sidebar-bottom">
+          <div className="app-header-user">
             <div className="app-user-row">
               <div className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</div>
-              <div className="app-user-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
+              <div className="app-user-name">{user.email}</div>
             </div>
             <button className="app-nav-item" style={{ color: '#f87171' }} onClick={signOut}>Sign out</button>
           </div>
         )}
-      </aside>
+      </header>
 
       <main className="app-main">
         {page}
