@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { TrendingUp, BarChart2, Bell, Radar, Settings, Search } from 'lucide-react'
+import { TrendingUp, BarChart2, Bell, Radar, Settings, Search, Home } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import './app.css'
 
 const navItems = [
+  { id: 'home',        label: 'Home',         Icon: Home       },
   { id: 'signals',     label: 'Signals',     Icon: Radar      },
   { id: 'profits',     label: 'Profits',     Icon: TrendingUp },
   { id: 'leaderboard', label: 'Leaderboard', Icon: BarChart2  },
@@ -240,33 +241,6 @@ function SignalsDemo() {
     fetchChart(o.condition_id, o.outcome).then(setChartHistory).finally(() => setChartLoading(false))
   }
 
-  // Featured hero — the single highest-conviction signal right now, kept
-  // decoupled from the grid's own expand/collapse state so clicking a card
-  // below never interferes with what the hero shows.
-  const [heroWallets, setHeroWallets] = useState<WalletContribution[]>([])
-  const [heroChartHistory, setHeroChartHistory] = useState<ChartPoint[]>([])
-  const [heroLoading, setHeroLoading] = useState(false)
-  const rankedByConviction = [...opportunities].sort((a, b) => b.cumulative_usd - a.cumulative_usd)
-  const heroSignal = rankedByConviction[0] ?? null
-  const heroKey = heroSignal ? `${heroSignal.condition_id}::${heroSignal.outcome}` : null
-  const topMovers = rankedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 7)
-
-  useEffect(() => {
-    if (!heroSignal) return
-    let cancelled = false
-    setHeroLoading(true)
-    Promise.all([
-      fetchWallets(heroSignal.condition_id, heroSignal.outcome),
-      fetchChart(heroSignal.condition_id, heroSignal.outcome),
-    ]).then(([w, c]) => {
-      if (cancelled) return
-      setHeroWallets(w)
-      setHeroChartHistory(c)
-      setHeroLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [heroKey])
-
   // Category chip list: whatever's actually present in live data right now, most common first — not a hardcoded taxonomy.
   const categoryCounts = new Map<string, number>()
   for (const t of ticker) {
@@ -302,97 +276,6 @@ function SignalsDemo() {
         </div>
         {!error && <div className="sig-live">LIVE</div>}
       </div>
-
-      {!loading && !error && heroSignal && (
-        <div className="sig-hero-row">
-          <div className="sig-hero">
-            {(() => {
-              const ic = categoryIcon(heroSignal.category)
-              const tag = signalsTag(heroSignal.tier, heroSignal.cumulative_usd)
-              return (
-                <>
-                  <div className="sig-hero-top">
-                    <div className="sig-card-icon" style={{ background: ic.bg, width: 44, height: 44, fontSize: 20 }}>{ic.emoji}</div>
-                    <div style={{ flex: 1 }}>
-                      <div className="sig-hero-q">{heroSignal.title} <span className="sig-out">— {heroSignal.outcome}</span></div>
-                      <div className="sig-card-meta">{heroSignal.wallet_count} top trader{heroSignal.wallet_count > 1 ? 's' : ''} · <span className={`sig-tag ${tag.cls}`} style={{ marginTop: 0 }}>{tag.label}</span></div>
-                    </div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: heroSignal.total_profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
-                      {fmtSigned(heroSignal.total_profit)}
-                    </div>
-                  </div>
-
-                  <div className="sig-stats-row" style={{ margin: '16px 0' }}>
-                    <div className="sig-stat-cell">
-                      <div className="sig-stat-cell-label">Price</div>
-                      <div className="sig-stat-cell-val">{Math.round(heroSignal.latest_price * 100)}¢</div>
-                    </div>
-                    <div className="sig-stat-cell">
-                      <div className="sig-stat-cell-label">Total Deployed</div>
-                      <div className="sig-stat-cell-val g">{fmtFull(heroSignal.cumulative_usd)}</div>
-                    </div>
-                    <div className="sig-stat-cell">
-                      <div className="sig-stat-cell-label">Traders</div>
-                      <div className="sig-stat-cell-val">{heroSignal.wallet_count}</div>
-                    </div>
-                    <div className="sig-stat-cell">
-                      <div className="sig-stat-cell-label">Total Profit</div>
-                      <div className={`sig-stat-cell-val ${heroSignal.total_profit >= 0 ? 'g' : 'r'}`}>{fmtSigned(heroSignal.total_profit)}</div>
-                    </div>
-                  </div>
-
-                  <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
-                  {heroLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>Loading chart…</div>}
-                  {!heroLoading && heroChartHistory.length < 2 && (
-                    <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>No price history available for this market.</div>
-                  )}
-                  {!heroLoading && heroChartHistory.length >= 2 && (
-                    <div style={{ marginBottom: 16 }}>
-                      <PriceChart history={heroChartHistory} wallets={heroWallets} />
-                    </div>
-                  )}
-
-                  <div className="sig-drill-label">Contributing traders</div>
-                  {heroLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>Loading contributors…</div>}
-                  {!heroLoading && heroWallets.length === 0 && (
-                    <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
-                  )}
-                  {!heroLoading && heroWallets.slice(0, 5).map((w, i) => {
-                    const st = signalsTraderStatus(w)
-                    const ret = walletReturn(w, heroSignal.latest_price)
-                    return (
-                      <div key={i} className="sig-drill-row">
-                        <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name">
-                          {traderLabel(w.wallet, w.wallet_name)}
-                        </a>
-                        <div className="sig-drill-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}</div>
-                        <div style={{ fontSize: 11.5, fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
-                          {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
-                        </div>
-                        <div className="sig-drill-status" style={{ color: st.color, background: st.color + '26' }}>{st.label}</div>
-                      </div>
-                    )
-                  })}
-                </>
-              )
-            })()}
-          </div>
-
-          <div className="sig-movers">
-            <div className="sig-movers-label">Top movers by conviction $</div>
-            {topMovers.map(o => {
-              const ic = categoryIcon(o.category)
-              return (
-                <div key={`${o.condition_id}::${o.outcome}`} className="sig-mover-row">
-                  <div className="sig-card-icon" style={{ background: ic.bg, width: 28, height: 28, fontSize: 13, flexShrink: 0 }}>{ic.emoji}</div>
-                  <div className="sig-mover-title">{o.title} <span className="sig-out">— {o.outcome}</span></div>
-                  <div className="sig-mover-amt">{fmtFull(o.cumulative_usd)}</div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       <div className="sig-panel">
         <div className="sig-head">
@@ -569,6 +452,229 @@ function SignalsDemo() {
 
         <div className="sig-foot">
           {tab === 'ticker' ? 'Raw trade activity, $100+ · not a recommendation' : 'Positions still open, weighted by trader conviction'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Home (Polymarket-homepage-style overview: hero + top movers + grid) ── */
+function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [heroWallets, setHeroWallets] = useState<WalletContribution[]>([])
+  const [heroChartHistory, setHeroChartHistory] = useState<ChartPoint[]>([])
+  const [heroLoading, setHeroLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      Promise.resolve(supabase.from('opportunities_live').select('*').order('last_updated', { ascending: false }))
+        .then(({ data, error: err }) => {
+          if (cancelled) return
+          if (err) throw err
+          setOpportunities((data ?? []) as Opportunity[])
+          setLoading(false)
+          setError(null)
+        })
+        .catch((e: Error) => {
+          if (cancelled) return
+          setError(e.message)
+          setLoading(false)
+        })
+    }
+    load()
+    const interval = setInterval(load, 5000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [])
+
+  const rankedByConviction = [...opportunities].sort((a, b) => b.cumulative_usd - a.cumulative_usd)
+  const heroSignal = rankedByConviction[0] ?? null
+  const heroKey = heroSignal ? `${heroSignal.condition_id}::${heroSignal.outcome}` : null
+  const topMovers = rankedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 7)
+  const gridItems = rankedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 16)
+
+  useEffect(() => {
+    if (!heroSignal) return
+    let cancelled = false
+    setHeroLoading(true)
+    Promise.all([
+      Promise.resolve(
+        supabase.from('wallet_positions').select('*')
+          .eq('condition_id', heroSignal.condition_id).eq('outcome', heroSignal.outcome)
+          .order('ts', { ascending: false })
+      ).then(({ data }) => (data ?? []) as WalletContribution[]).catch(() => [] as WalletContribution[]),
+      supabase.functions.invoke('price-chart', { body: { condition_id: heroSignal.condition_id, outcome: heroSignal.outcome } })
+        .then(({ data }) => (data as { history: ChartPoint[] } | null)?.history || [])
+        .catch(() => [] as ChartPoint[]),
+    ]).then(([w, c]) => {
+      if (cancelled) return
+      setHeroWallets(w)
+      setHeroChartHistory(c)
+      setHeroLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [heroKey])
+
+  return (
+    <div className="sig-page">
+      <div className="app-section-header">
+        <div>
+          <h1 className="app-section-title">Home</h1>
+          <p className="app-section-sub">
+            {loading ? 'Loading…' : error ? 'Could not reach the signals backend' : 'Live overview — the biggest conviction signals right now'}
+          </p>
+        </div>
+        {!error && <div className="sig-live">LIVE</div>}
+      </div>
+
+      {!loading && !error && heroSignal && (
+        <div className="sig-hero-row">
+          <div className="sig-hero">
+            {(() => {
+              const ic = categoryIcon(heroSignal.category)
+              const tag = signalsTag(heroSignal.tier, heroSignal.cumulative_usd)
+              return (
+                <>
+                  <div className="sig-hero-top">
+                    <div className="sig-card-icon" style={{ background: ic.bg, width: 44, height: 44, fontSize: 20 }}>{ic.emoji}</div>
+                    <div style={{ flex: 1 }}>
+                      <div className="sig-hero-q">{heroSignal.title} <span className="sig-out">— {heroSignal.outcome}</span></div>
+                      <div className="sig-card-meta">{heroSignal.wallet_count} top trader{heroSignal.wallet_count > 1 ? 's' : ''} · <span className={`sig-tag ${tag.cls}`} style={{ marginTop: 0 }}>{tag.label}</span></div>
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: heroSignal.total_profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+                      {fmtSigned(heroSignal.total_profit)}
+                    </div>
+                  </div>
+
+                  <div className="sig-stats-row" style={{ margin: '16px 0' }}>
+                    <div className="sig-stat-cell">
+                      <div className="sig-stat-cell-label">Price</div>
+                      <div className="sig-stat-cell-val">{Math.round(heroSignal.latest_price * 100)}¢</div>
+                    </div>
+                    <div className="sig-stat-cell">
+                      <div className="sig-stat-cell-label">Total Deployed</div>
+                      <div className="sig-stat-cell-val g">{fmtFull(heroSignal.cumulative_usd)}</div>
+                    </div>
+                    <div className="sig-stat-cell">
+                      <div className="sig-stat-cell-label">Traders</div>
+                      <div className="sig-stat-cell-val">{heroSignal.wallet_count}</div>
+                    </div>
+                    <div className="sig-stat-cell">
+                      <div className="sig-stat-cell-label">Total Profit</div>
+                      <div className={`sig-stat-cell-val ${heroSignal.total_profit >= 0 ? 'g' : 'r'}`}>{fmtSigned(heroSignal.total_profit)}</div>
+                    </div>
+                  </div>
+
+                  <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
+                  {heroLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>Loading chart…</div>}
+                  {!heroLoading && heroChartHistory.length < 2 && (
+                    <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>No price history available for this market.</div>
+                  )}
+                  {!heroLoading && heroChartHistory.length >= 2 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <PriceChart history={heroChartHistory} wallets={heroWallets} />
+                    </div>
+                  )}
+
+                  <div className="sig-drill-label">Contributing traders</div>
+                  {heroLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>Loading contributors…</div>}
+                  {!heroLoading && heroWallets.length === 0 && (
+                    <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
+                  )}
+                  {!heroLoading && heroWallets.slice(0, 5).map((w, i) => {
+                    const st = signalsTraderStatus(w)
+                    const ret = walletReturn(w, heroSignal.latest_price)
+                    return (
+                      <div key={i} className="sig-drill-row">
+                        <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name">
+                          {traderLabel(w.wallet, w.wallet_name)}
+                        </a>
+                        <div className="sig-drill-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}</div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+                          {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
+                        </div>
+                        <div className="sig-drill-status" style={{ color: st.color, background: st.color + '26' }}>{st.label}</div>
+                      </div>
+                    )
+                  })}
+                </>
+              )
+            })()}
+          </div>
+
+          <div className="sig-movers">
+            <div className="sig-movers-label">Top movers by conviction $</div>
+            {topMovers.map(o => {
+              const ic = categoryIcon(o.category)
+              return (
+                <div key={`${o.condition_id}::${o.outcome}`} className="sig-mover-row">
+                  <div className="sig-card-icon" style={{ background: ic.bg, width: 28, height: 28, fontSize: 13, flexShrink: 0 }}>{ic.emoji}</div>
+                  <div className="sig-mover-title">{o.title} <span className="sig-out">— {o.outcome}</span></div>
+                  <div className="sig-mover-amt">{fmtFull(o.cumulative_usd)}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="sig-panel" style={{ maxWidth: 1040 }}>
+        <div className="app-section-header" style={{ marginBottom: 14 }}>
+          <div>
+            <h1 className="app-section-title" style={{ fontSize: '1.05rem' }}>All signals</h1>
+          </div>
+          <button className="sig-btn secondary" onClick={onOpenSignals}>Open full Signals page →</button>
+        </div>
+
+        {loading && <div className="sig-empty">Connecting to the live signal feed…</div>}
+        {!loading && !error && gridItems.length === 0 && (
+          <div className="sig-empty">No opportunities detected yet.</div>
+        )}
+        <div className="sig-grid">
+          {gridItems.map(o => {
+            const ic = categoryIcon(o.category)
+            const pct = gaugePct(o.entries, o.exited, o.closed)
+            const color = gaugeColor(pct)
+            const r = 32, c = 2 * Math.PI * r
+            const arcLen = c * 0.5
+            const dash = (pct / 100) * arcLen
+            const tag = signalsTag(o.tier, o.cumulative_usd)
+            return (
+              <div key={`${o.condition_id}::${o.outcome}`} className="sig-card" onClick={onOpenSignals} style={{ cursor: 'pointer' }}>
+                <div className="sig-card-top">
+                  <div className="sig-card-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
+                  <div style={{ flex: 1 }}>
+                    <div className="sig-card-q">{o.title} <span className="sig-out">— {o.outcome}</span></div>
+                    <div className="sig-card-meta">{o.wallet_count} top trader{o.wallet_count > 1 ? 's' : ''}</div>
+                  </div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: o.total_profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+                    {fmtSigned(o.total_profit)}
+                  </div>
+                </div>
+                <div className="sig-gauge-row">
+                  <div className="sig-gauge">
+                    <svg width="80" height="80" viewBox="0 0 80 80">
+                      <circle cx="40" cy="40" r={r} fill="none" stroke="#33363d" strokeWidth="7"
+                        strokeDasharray={`${arcLen} ${c}`} strokeLinecap="round" />
+                      <circle cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="7"
+                        strokeDasharray={`${dash} ${c}`} strokeLinecap="round" />
+                    </svg>
+                    <div className="sig-gauge-label">
+                      <div className="sig-gauge-pct">{pct}%</div>
+                      <div className="sig-gauge-sub">in</div>
+                    </div>
+                  </div>
+                  <div className="sig-stat-col">
+                    <div className="sig-stat"><span className="sig-stat-label">Price</span><span className="sig-stat-val">{Math.round(o.latest_price * 100)}¢</span></div>
+                    <div className="sig-stat"><span className="sig-stat-label">Total</span><span className="sig-stat-val g">{fmtFull(o.cumulative_usd)}</span></div>
+                  </div>
+                </div>
+                <div className={`sig-tag ${tag.cls}`}>{tag.label}</div>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
@@ -1752,7 +1858,7 @@ const demos: Record<string, () => ReactElement> = {
 /* ── App Shell ── */
 export default function AppShell() {
   const navigate = useNavigate()
-  const [active, setActive] = useState('signals')
+  const [active, setActive] = useState('home')
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
 
@@ -1772,6 +1878,8 @@ export default function AppShell() {
   let page: ReactElement
   if (selectedWallet) {
     page = <TraderDetailPage wallet={selectedWallet} onBack={() => setSelectedWallet(null)} />
+  } else if (active === 'home') {
+    page = <HomePage onOpenSignals={() => setActive('signals')} />
   } else if (active === 'leaderboard') {
     page = <LeaderboardPage onSelectWallet={setSelectedWallet} />
   } else if (active === 'lookup') {
