@@ -466,8 +466,6 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
   const [heroWallets, setHeroWallets] = useState<WalletContribution[]>([])
   const [heroChartHistory, setHeroChartHistory] = useState<ChartPoint[]>([])
   const [heroLoading, setHeroLoading] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
-  const [nowTick, setNowTick] = useState(Date.now())
   const [heroIndex, setHeroIndex] = useState(0)
   const [category, setCategory] = useState('all')
 
@@ -481,7 +479,6 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
           setOpportunities((data ?? []) as Opportunity[])
           setLoading(false)
           setError(null)
-          setLastUpdated(Date.now())
         })
         .catch((e: Error) => {
           if (cancelled) return
@@ -492,13 +489,6 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
     load()
     const interval = setInterval(load, 5000)
     return () => { cancelled = true; clearInterval(interval) }
-  }, [])
-
-  // A real "this page is alive" cue: a ticking freshness label (not a fake
-  // animation) that counts up every second since the last successful poll.
-  useEffect(() => {
-    const t = setInterval(() => setNowTick(Date.now()), 1000)
-    return () => clearInterval(t)
   }, [])
 
   const byCategory = <T extends { category: string | null }>(list: T[]) =>
@@ -519,6 +509,12 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
   const heroKey = heroSignal ? `${heroSignal.condition_id}::${heroSignal.outcome}` : null
   const topMovers = rankedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 7)
   const gridItems = rankedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 24)
+  // Smart Plays: not just biggest $ (that's Top Movers) — multiple traders
+  // converging on the same side AND actually in the green right now.
+  const smartPlays = rankedByConviction
+    .filter(o => `${o.condition_id}::${o.outcome}` !== heroKey && o.wallet_count >= 2 && o.total_profit > 0)
+    .sort((a, b) => b.total_profit - a.total_profit)
+    .slice(0, 5)
 
   useEffect(() => {
     if (heroPool.length < 2) return
@@ -550,24 +546,6 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
 
   return (
     <div className="sig-page">
-      <div className="app-section-header">
-        <div>
-          <h1 className="app-section-title">Home</h1>
-          <p className="app-section-sub">
-            {loading ? 'Loading…' : error ? 'Could not reach the signals backend' : 'Live overview — the biggest conviction signals right now'}
-          </p>
-        </div>
-        {!error && (
-          <div style={{ textAlign: 'right' }}>
-            <div className="sig-live">LIVE</div>
-            {lastUpdated && (
-              <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 4 }}>
-                Updated {Math.max(0, Math.round((nowTick - lastUpdated) / 1000))}s ago
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {!loading && !error && heroSignal && (
         <div className="sig-hero-row">
@@ -664,18 +642,36 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
             )}
           </div>
 
-          <div className="sig-movers">
-            <div className="sig-movers-label">Top movers by conviction $</div>
-            {topMovers.map(o => {
-              const ic = categoryIcon(o.category)
-              return (
-                <div key={`${o.condition_id}::${o.outcome}`} className="sig-mover-row">
-                  <div className="sig-card-icon" style={{ background: ic.bg, width: 28, height: 28, fontSize: 13, flexShrink: 0 }}>{ic.emoji}</div>
-                  <div className="sig-mover-title">{o.title} <span className="sig-out">— {o.outcome}</span></div>
-                  <div className="sig-mover-amt">{fmtFull(o.cumulative_usd)}</div>
-                </div>
-              )
-            })}
+          <div className="sig-sidebar-col">
+            <div className="sig-movers">
+              <div className="sig-movers-label">Top movers by conviction $</div>
+              {topMovers.map(o => {
+                const ic = categoryIcon(o.category)
+                return (
+                  <div key={`${o.condition_id}::${o.outcome}`} className="sig-mover-row">
+                    <div className="sig-card-icon" style={{ background: ic.bg, width: 28, height: 28, fontSize: 13, flexShrink: 0 }}>{ic.emoji}</div>
+                    <div className="sig-mover-title">{o.title} <span className="sig-out">— {o.outcome}</span></div>
+                    <div className="sig-mover-amt">{fmtFull(o.cumulative_usd)}</div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {smartPlays.length > 0 && (
+              <div className="sig-movers" style={{ flex: 1 }}>
+                <div className="sig-movers-label">Smart plays — multiple traders, in the green</div>
+                {smartPlays.map(o => {
+                  const ic = categoryIcon(o.category)
+                  return (
+                    <div key={`${o.condition_id}::${o.outcome}`} className="sig-mover-row">
+                      <div className="sig-card-icon" style={{ background: ic.bg, width: 28, height: 28, fontSize: 13, flexShrink: 0 }}>{ic.emoji}</div>
+                      <div className="sig-mover-title">{o.title} <span className="sig-out">— {o.outcome}</span></div>
+                      <div className="sig-mover-amt">{fmtSigned(o.total_profit)}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
