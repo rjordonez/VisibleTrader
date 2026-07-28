@@ -823,13 +823,21 @@ interface LivePosition {
   redeemable: boolean
 }
 
-interface LiveActivity {
-  timestamp: number
-  type: string
+interface LiveClosedPosition {
   title: string
   outcome: string
+  avgPrice: number
+  curPrice: number
+  realizedPnl: number
+  timestamp: number
+}
+
+interface LiveTrade {
+  timestamp: number
   side: string
-  usdcSize: number
+  title: string
+  outcome: string
+  size: number
   price: number
 }
 
@@ -840,14 +848,16 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [livePositions, setLivePositions] = useState<LivePosition[]>([])
-  const [liveActivity, setLiveActivity] = useState<LiveActivity[]>([])
+  const [liveClosed, setLiveClosed] = useState<LiveClosedPosition[]>([])
+  const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([])
   const [liveLoading, setLiveLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setLivePositions([])
-    setLiveActivity([])
+    setLiveClosed([])
+    setLiveTrades([])
     Promise.all([
       supabase.from('leaderboard').select('*').ilike('wallet', wallet).maybeSingle(),
       supabase.from('wallet_positions').select('*').ilike('wallet', wallet).eq('market_closed', true).order('resolved_ts', { ascending: false }),
@@ -873,12 +883,14 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
           setLiveLoading(true)
           Promise.all([
             fetch(`https://data-api.polymarket.com/positions?user=${wallet}&limit=50`).then(r => r.ok ? r.json() : []),
-            fetch(`https://data-api.polymarket.com/activity?user=${wallet}&limit=50`).then(r => r.ok ? r.json() : []),
+            fetch(`https://data-api.polymarket.com/closed-positions?user=${wallet}&limit=200`).then(r => r.ok ? r.json() : []),
+            fetch(`https://data-api.polymarket.com/trades?user=${wallet}&limit=30`).then(r => r.ok ? r.json() : []),
           ])
-            .then(([pos, act]) => {
+            .then(([pos, closed, trades]) => {
               if (cancelled) return
               setLivePositions((pos ?? []) as LivePosition[])
-              setLiveActivity((act ?? []) as LiveActivity[])
+              setLiveClosed((closed ?? []) as LiveClosedPosition[])
+              setLiveTrades((trades ?? []) as LiveTrade[])
             })
             .catch(() => {})
             .finally(() => { if (!cancelled) setLiveLoading(false) })
@@ -895,6 +907,20 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
   const winRate = summary && summary.won + summary.lost > 0 ? (summary.won / (summary.won + summary.lost)) * 100 : 0
   const usdWinRate = summary && summary.deployed > 0 ? (summary.won_usd / summary.deployed) * 100 : 0
   const roi = summary && summary.deployed > 0 ? (summary.net_profit / summary.deployed) * 100 : 0
+
+  // Live-fallback stats, computed the same way check_market_closed already
+  // does server-side: a resolved outcome settles at 0 or 1, so curPrice >= 0.5
+  // means that side won.
+  const liveWon = liveClosed.filter(p => p.curPrice >= 0.5).length
+  const liveWinRate = liveClosed.length > 0 ? (liveWon / liveClosed.length) * 100 : 0
+  const liveRealizedPnl = liveClosed.reduce((sum, p) => sum + p.realizedPnl, 0)
+  const liveCumulative = [...liveClosed]
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .reduce<{ d: string; cum: number }[]>((acc, p) => {
+      const prevCum = acc.length > 0 ? acc[acc.length - 1].cum : 0
+      acc.push({ d: String(p.timestamp), cum: prevCum + p.realizedPnl })
+      return acc
+    }, [])
 
   return (
     <div className="sig-page">
@@ -997,6 +1023,38 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
 
             {liveLoading && <div className="sig-empty">Loading from Polymarket…</div>}
 
+            {!liveLoading && (livePositions.length > 0 || liveClosed.length > 0) && (
+              <>
+                <div className="sig-stats-row">
+                  <div className="sig-stat-cell">
+                    <div className="sig-stat-cell-label">Realized P&L</div>
+                    <div className={`sig-stat-cell-val ${liveRealizedPnl >= 0 ? 'g' : 'r'}`}>{fmtSigned(liveRealizedPnl)}</div>
+                  </div>
+                  <div className="sig-stat-cell">
+                    <div className="sig-stat-cell-label" title="Winning closed positions ÷ total closed positions">Win Rate</div>
+                    <div className="sig-stat-cell-val">{liveWinRate.toFixed(0)}%</div>
+                  </div>
+                  <div className="sig-stat-cell">
+                    <div className="sig-stat-cell-label">Current Positions</div>
+                    <div className="sig-stat-cell-val">{livePositions.length}</div>
+                  </div>
+                  <div className="sig-stat-cell">
+                    <div className="sig-stat-cell-label">Total Positions</div>
+                    <div className="sig-stat-cell-val">{livePositions.length + liveClosed.length}</div>
+                  </div>
+                </div>
+
+                {liveCumulative.length > 1 && (
+                  <>
+                    <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Realized P&L over time (live from Polymarket)</div>
+                    <div style={{ marginBottom: 24 }}>
+                      <CumulativeChart data={liveCumulative} />
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
             {!liveLoading && livePositions.length > 0 && (
               <>
                 <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Current positions (live from Polymarket)</div>
@@ -1020,21 +1078,21 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
               </>
             )}
 
-            {!liveLoading && liveActivity.length > 0 && (
+            {!liveLoading && liveClosed.length > 0 && (
               <>
-                <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Recent activity (live from Polymarket)</div>
-                <div className="sig-table-wrap">
+                <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Closed positions (live from Polymarket)</div>
+                <div className="sig-table-wrap" style={{ marginBottom: 24 }}>
                   <table className="sig-table">
                     <thead>
-                      <tr><th>Market</th><th>Type</th><th className="num">Amount</th><th className="num">When</th></tr>
+                      <tr><th>Market</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
                     </thead>
                     <tbody>
-                      {liveActivity.filter(a => a.title).map((a, i) => (
+                      {[...liveClosed].sort((a, b) => b.timestamp - a.timestamp).map((p, i) => (
                         <tr key={i}>
-                          <td>{a.title} {a.outcome && <span style={{ color: 'var(--text-dim)' }}>— {a.outcome}</span>}</td>
-                          <td>{a.side || a.type}</td>
-                          <td className="num">{fmtFull(a.usdcSize)}</td>
-                          <td className="num" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(a.timestamp * 1000).toISOString())}</td>
+                          <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
+                          <td style={{ color: p.curPrice >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{p.curPrice >= 0.5 ? 'Won' : 'Lost'}</td>
+                          <td className="num" style={{ color: p.realizedPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.realizedPnl)}</td>
+                          <td className="num" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(p.timestamp * 1000).toISOString())}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1043,7 +1101,31 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
               </>
             )}
 
-            {!liveLoading && livePositions.length === 0 && liveActivity.length === 0 && (
+            {!liveLoading && liveTrades.length > 0 && (
+              <>
+                <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Recent trades (live from Polymarket)</div>
+                <div className="sig-table-wrap">
+                  <table className="sig-table">
+                    <thead>
+                      <tr><th>Market</th><th>Side</th><th className="num">Size</th><th className="num">Price</th><th className="num">When</th></tr>
+                    </thead>
+                    <tbody>
+                      {liveTrades.map((t, i) => (
+                        <tr key={i}>
+                          <td>{t.title} <span style={{ color: 'var(--text-dim)' }}>— {t.outcome}</span></td>
+                          <td style={{ color: t.side === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.side}</td>
+                          <td className="num">{t.size.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                          <td className="num">{Math.round(t.price * 100)}¢</td>
+                          <td className="num" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(t.timestamp * 1000).toISOString())}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {!liveLoading && livePositions.length === 0 && liveClosed.length === 0 && liveTrades.length === 0 && (
               <div className="sig-empty">Nothing found for this wallet on Polymarket either.</div>
             )}
           </>
