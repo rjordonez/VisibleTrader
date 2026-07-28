@@ -466,6 +466,10 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
   const [heroWallets, setHeroWallets] = useState<WalletContribution[]>([])
   const [heroChartHistory, setHeroChartHistory] = useState<ChartPoint[]>([])
   const [heroLoading, setHeroLoading] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+  const [nowTick, setNowTick] = useState(Date.now())
+  const [heroIndex, setHeroIndex] = useState(0)
+  const [category, setCategory] = useState('all')
 
   useEffect(() => {
     let cancelled = false
@@ -477,6 +481,7 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
           setOpportunities((data ?? []) as Opportunity[])
           setLoading(false)
           setError(null)
+          setLastUpdated(Date.now())
         })
         .catch((e: Error) => {
           if (cancelled) return
@@ -489,11 +494,37 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
     return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
-  const rankedByConviction = [...opportunities].sort((a, b) => b.cumulative_usd - a.cumulative_usd)
-  const heroSignal = rankedByConviction[0] ?? null
+  // A real "this page is alive" cue: a ticking freshness label (not a fake
+  // animation) that counts up every second since the last successful poll.
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  const byCategory = <T extends { category: string | null }>(list: T[]) =>
+    category === 'all' ? list : list.filter(x => (x.category ?? 'other') === category)
+
+  const categoryCounts = new Map<string, number>()
+  for (const o of opportunities) {
+    const c = o.category ?? 'other'
+    categoryCounts.set(c, (categoryCounts.get(c) ?? 0) + 1)
+  }
+  const chipCategories = ['all', ...[...categoryCounts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c)]
+
+  const rankedByConviction = byCategory([...opportunities].sort((a, b) => b.cumulative_usd - a.cumulative_usd))
+  // Hero rotates through the top 5 signals every few seconds (matching the
+  // reference's carousel) instead of sitting on one static market forever.
+  const heroPool = rankedByConviction.slice(0, 5)
+  const heroSignal = heroPool[heroIndex % Math.max(1, heroPool.length)] ?? null
   const heroKey = heroSignal ? `${heroSignal.condition_id}::${heroSignal.outcome}` : null
   const topMovers = rankedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 7)
-  const gridItems = rankedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 16)
+  const gridItems = rankedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 24)
+
+  useEffect(() => {
+    if (heroPool.length < 2) return
+    const t = setInterval(() => setHeroIndex(i => (i + 1) % heroPool.length), 6000)
+    return () => clearInterval(t)
+  }, [heroPool.length])
 
   useEffect(() => {
     if (!heroSignal) return
@@ -526,7 +557,16 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
             {loading ? 'Loading…' : error ? 'Could not reach the signals backend' : 'Live overview — the biggest conviction signals right now'}
           </p>
         </div>
-        {!error && <div className="sig-live">LIVE</div>}
+        {!error && (
+          <div style={{ textAlign: 'right' }}>
+            <div className="sig-live">LIVE</div>
+            {lastUpdated && (
+              <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 4 }}>
+                Updated {Math.max(0, Math.round((nowTick - lastUpdated) / 1000))}s ago
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {!loading && !error && heroSignal && (
@@ -602,6 +642,18 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
                 </>
               )
             })()}
+
+            {heroPool.length > 1 && (
+              <div className="sig-hero-dots">
+                {heroPool.map((o, i) => (
+                  <span
+                    key={`${o.condition_id}::${o.outcome}`}
+                    className={i === heroIndex % heroPool.length ? 'active' : ''}
+                    onClick={() => setHeroIndex(i)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="sig-movers">
@@ -620,58 +672,48 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
         </div>
       )}
 
-      <div className="sig-panel" style={{ maxWidth: 1040 }}>
-        <div className="app-section-header" style={{ marginBottom: 14 }}>
+      <div className="sig-panel" style={{ maxWidth: 'none' }}>
+        <div className="app-section-header" style={{ marginBottom: 12 }}>
           <div>
             <h1 className="app-section-title" style={{ fontSize: '1.05rem' }}>All signals</h1>
           </div>
           <button className="sig-btn secondary" onClick={onOpenSignals}>Open full Signals page →</button>
         </div>
 
+        <div className="sig-chips" style={{ marginBottom: 16 }}>
+          {chipCategories.map(c => (
+            <div
+              key={c}
+              className={category === c ? 'sig-chip active' : 'sig-chip'}
+              onClick={() => setCategory(c)}
+            >
+              {c === 'all' ? 'All' : categoryLabel(c)}
+            </div>
+          ))}
+        </div>
+
         {loading && <div className="sig-empty">Connecting to the live signal feed…</div>}
         {!loading && !error && gridItems.length === 0 && (
           <div className="sig-empty">No opportunities detected yet.</div>
         )}
-        <div className="sig-grid">
+        <div className="sig-grid-dense">
           {gridItems.map(o => {
             const ic = categoryIcon(o.category)
-            const pct = gaugePct(o.entries, o.exited, o.closed)
-            const color = gaugeColor(pct)
-            const r = 32, c = 2 * Math.PI * r
-            const arcLen = c * 0.5
-            const dash = (pct / 100) * arcLen
             const tag = signalsTag(o.tier, o.cumulative_usd)
             return (
-              <div key={`${o.condition_id}::${o.outcome}`} className="sig-card" onClick={onOpenSignals} style={{ cursor: 'pointer' }}>
-                <div className="sig-card-top">
-                  <div className="sig-card-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
-                  <div style={{ flex: 1 }}>
-                    <div className="sig-card-q">{o.title} <span className="sig-out">— {o.outcome}</span></div>
-                    <div className="sig-card-meta">{o.wallet_count} top trader{o.wallet_count > 1 ? 's' : ''}</div>
-                  </div>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: o.total_profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
-                    {fmtSigned(o.total_profit)}
-                  </div>
-                </div>
-                <div className="sig-gauge-row">
-                  <div className="sig-gauge">
-                    <svg width="80" height="80" viewBox="0 0 80 80">
-                      <circle cx="40" cy="40" r={r} fill="none" stroke="#33363d" strokeWidth="7"
-                        strokeDasharray={`${arcLen} ${c}`} strokeLinecap="round" />
-                      <circle cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="7"
-                        strokeDasharray={`${dash} ${c}`} strokeLinecap="round" />
-                    </svg>
-                    <div className="sig-gauge-label">
-                      <div className="sig-gauge-pct">{pct}%</div>
-                      <div className="sig-gauge-sub">in</div>
+              <div key={`${o.condition_id}::${o.outcome}`} className="sig-card sig-card-dense" onClick={onOpenSignals}>
+                <div className="sig-card-top" style={{ marginBottom: 10 }}>
+                  <div className="sig-card-icon" style={{ background: ic.bg, width: 28, height: 28, fontSize: 13 }}>{ic.emoji}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="sig-card-q" style={{ fontSize: 12.5, WebkitLineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      {o.title} <span className="sig-out">— {o.outcome}</span>
                     </div>
                   </div>
-                  <div className="sig-stat-col">
-                    <div className="sig-stat"><span className="sig-stat-label">Price</span><span className="sig-stat-val">{Math.round(o.latest_price * 100)}¢</span></div>
-                    <div className="sig-stat"><span className="sig-stat-label">Total</span><span className="sig-stat-val g">{fmtFull(o.cumulative_usd)}</span></div>
-                  </div>
                 </div>
-                <div className={`sig-tag ${tag.cls}`}>{tag.label}</div>
+                <div className="sig-stat"><span className="sig-stat-label">Price</span><span className="sig-stat-val">{Math.round(o.latest_price * 100)}¢</span></div>
+                <div className="sig-stat"><span className="sig-stat-label">Total</span><span className="sig-stat-val g">{fmtFull(o.cumulative_usd)}</span></div>
+                <div className="sig-stat"><span className="sig-stat-label">Profit</span><span className={`sig-stat-val ${o.total_profit >= 0 ? 'g' : 'r'}`}>{fmtSigned(o.total_profit)}</span></div>
+                <div className={`sig-tag ${tag.cls}`} style={{ marginTop: 10 }}>{tag.label}</div>
               </div>
             )
           })}

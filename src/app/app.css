@@ -453,7 +453,7 @@
 .sig-head { margin-top: 4px; }
 
 /* ── Featured hero + top movers sidebar ── */
-.sig-hero-row { max-width: 1040px; display: grid; grid-template-columns: 1.8fr 1fr; gap: 16px; margin-bottom: 24px; }
+.sig-hero-row { display: grid; grid-template-columns: 1.8fr 1fr; gap: 16px; margin-bottom: 24px; }
 @media (max-width: 860px) { .sig-hero-row { grid-template-columns: 1fr; } }
 
 .sig-hero {
@@ -463,6 +463,13 @@
 .sig-hero-top { display: flex; gap: 12px; align-items: flex-start; }
 .sig-hero-q { font-size: 17px; font-weight: 700; line-height: 1.35; }
 .sig-hero-q .sig-out { color: var(--text-dim); font-weight: 500; }
+
+.sig-hero-dots { display: flex; gap: 6px; justify-content: center; margin-top: 18px; }
+.sig-hero-dots span {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--border);
+  cursor: pointer; transition: background 0.2s, width 0.2s;
+}
+.sig-hero-dots span.active { background: var(--blue); width: 18px; border-radius: 3px; }
 
 .sig-movers {
   background: var(--surface-2); border: 1px solid var(--border);
@@ -474,6 +481,11 @@
 .sig-mover-title { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sig-mover-title .sig-out { color: var(--text-dim); font-weight: 500; }
 .sig-mover-amt { font-size: 12.5px; font-weight: 700; color: var(--green); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+/* ── Dense grid (Home's "All signals" section — more, smaller cards) ── */
+.sig-grid-dense { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; padding: 4px 0; }
+.sig-card-dense { padding: 14px; }
+.sig-card-dense .sig-stat { margin-bottom: 5px; }
 
 .sig-live {
   display: flex; align-items: center; gap: 6px;
