@@ -1270,7 +1270,7 @@ interface LookupStatus {
   pnlRank: number | null
 }
 
-function LookupPage() {
+function LookupPage({ onSelectWallet }: { onSelectWallet: (wallet: string) => void }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<DirectoryResult[]>([])
   const [status, setStatus] = useState<Record<string, LookupStatus>>({})
@@ -1395,7 +1395,17 @@ function LookupPage() {
                   const tracked = inRoster || s?.manuallyTracked
                   return (
                     <tr key={r.wallet}>
-                      <td>{traderLabel(r.wallet, r.username)}</td>
+                      <td>
+                        <a href="#" onClick={e => { e.preventDefault(); onSelectWallet(r.wallet) }}>
+                          {traderLabel(r.wallet, r.username)}
+                        </a>
+                        <a
+                          href={profileUrl(r.wallet)!} target="_blank" rel="noopener noreferrer"
+                          style={{ marginLeft: 6, color: 'var(--text-faint)', fontSize: 11 }}
+                        >
+                          ↗
+                        </a>
+                      </td>
                       <td className="num">{r.best_pnl != null ? fmtFull(r.best_pnl) : '—'}</td>
                       <td>
                         {!s ? '…' :
@@ -1433,7 +1443,6 @@ const demos: Record<string, () => ReactElement> = {
   signals:     SignalsDemo,
   profits:     ProfitsPage,
   alerts:      AlertsPage,
-  lookup:      LookupPage,
   settings:    SettingsPage,
 }
 
@@ -1462,6 +1471,8 @@ export default function AppShell() {
     page = <TraderDetailPage wallet={selectedWallet} onBack={() => setSelectedWallet(null)} />
   } else if (active === 'leaderboard') {
     page = <LeaderboardPage onSelectWallet={setSelectedWallet} />
+  } else if (active === 'lookup') {
+    page = <LookupPage onSelectWallet={setSelectedWallet} />
   } else {
     const Demo = demos[active]
     page = <Demo />
