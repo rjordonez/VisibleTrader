@@ -608,22 +608,29 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
                   </div>
 
                   <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
-                  {heroLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>Loading chart…</div>}
-                  {!heroLoading && heroChartHistory.length < 2 && (
-                    <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>No price history available for this market.</div>
-                  )}
-                  {!heroLoading && heroChartHistory.length >= 2 && (
-                    <div style={{ marginBottom: 16 }}>
+                  <div style={{ minHeight: 220, marginBottom: 16 }}>
+                    {heroLoading && <div className="sig-skel" style={{ height: 220 }} />}
+                    {!heroLoading && heroChartHistory.length < 2 && (
+                      <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No price history available for this market.</div>
+                    )}
+                    {!heroLoading && heroChartHistory.length >= 2 && (
                       <PriceChart history={heroChartHistory} wallets={heroWallets} />
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   <div className="sig-drill-label">Contributing traders</div>
-                  {heroLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>Loading contributors…</div>}
-                  {!heroLoading && heroWallets.length === 0 && (
-                    <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
-                  )}
-                  {!heroLoading && heroWallets.slice(0, 5).map((w, i) => {
+                  <div style={{ minHeight: 5 * 36 }}>
+                    {heroLoading && [0, 1, 2, 3, 4].map(i => (
+                      <div key={i} className="sig-skel-row">
+                        <div className="sig-skel" style={{ width: 100, height: 12 }} />
+                        <div className="sig-skel" style={{ flex: 1, height: 12 }} />
+                        <div className="sig-skel" style={{ width: 60, height: 12 }} />
+                      </div>
+                    ))}
+                    {!heroLoading && heroWallets.length === 0 && (
+                      <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
+                    )}
+                    {!heroLoading && heroWallets.slice(0, 5).map((w, i) => {
                     const st = signalsTraderStatus(w)
                     const ret = walletReturn(w, heroSignal.latest_price)
                     return (
@@ -639,6 +646,7 @@ function HomePage({ onOpenSignals }: { onOpenSignals: () => void }) {
                       </div>
                     )
                   })}
+                  </div>
                 </>
               )
             })()}

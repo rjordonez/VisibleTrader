@@ -1,12 +1,13 @@
 /* ── App Shell Layout ──
    Scopes its own (softer) dark theme instead of inheriting the landing
    page's near-pure-black :root tokens (--bg: #06070f) — those are tuned for
-   the marketing page's mood, not a dashboard you stare at all day. Matches
-   the tone .sig-page already independently settled on. */
+   the marketing page's mood, not a dashboard you stare at all day. #0b0d10
+   was only ~4% lighter than pure black and read as indistinguishable —
+   this is a real, visible step up (RGB ~20 vs ~11). */
 .app-shell {
-  --shell-bg: #0b0d10;
-  --shell-surface: #111318;
-  --shell-border: rgba(255,255,255,0.07);
+  --shell-bg: #15181f;
+  --shell-surface: #1c202a;
+  --shell-border: rgba(255,255,255,0.08);
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -432,11 +433,11 @@
    no border-radius:99px anywhere, borders instead of filled pill backgrounds,
    underline tabs instead of a segmented pill control. ── */
 .sig-page {
-  --bg: #0b0d10;
-  --surface: #111318;
-  --surface-2: #171a20;
-  --chip: #1c1f26;
-  --border: rgba(255,255,255,0.06);
+  --bg: #15181f;
+  --surface: #1c202a;
+  --surface-2: #242834;
+  --chip: #2a2f3c;
+  --border: rgba(255,255,255,0.08);
   --text: #f2f3f5;
   --text-dim: #8f97a3;
   --text-faint: #5a6169;
@@ -589,6 +590,13 @@
 .sig-drill-label { font-size: 10px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 10px; }
 .sig-drill-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
 .sig-drill-row:first-child { border-top: none; }
+
+/* ── Loading skeletons — reserve real content's footprint so nothing
+   resizes when async data (hero chart / contributors) lands ── */
+@keyframes sig-shimmer { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.9; } }
+.sig-skel { background: var(--surface-2); border-radius: 6px; animation: sig-shimmer 1.4s ease-in-out infinite; }
+.sig-skel-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+.sig-skel-row:not(:first-child) { border-top: 1px solid var(--border); }
 .sig-drill-name { font-weight: 700; width: 100px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--blue); text-decoration: none; }
 .sig-drill-name:hover { text-decoration: underline; }
 .sig-drill-detail { flex: 1; color: var(--text-dim); }
