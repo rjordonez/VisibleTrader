@@ -1803,12 +1803,20 @@
 .dashboard-container::before {
   content: '';
   position: absolute;
-  inset: -80px;
-  /* Centered + wide falloff so the halo wraps the card's left/right edges
-     too, not just a blob sitting above the top (the card itself is a very
-     wide, short strip, so the ellipse needs to match that shape). */
-  background: radial-gradient(ellipse 75% 75% at 50% 50%, rgba(99,102,241,0.5), transparent 85%);
-  filter: blur(50px);
+  /* Fixed size instead of a % of .dashboard-container's own box — that box
+     is taller than the card looks (the mask on .dashboard-wrap fades its
+     last ~20% to invisible, but that invisible slice still occupies real
+     layout height), which was throwing off percentage-based ellipse math
+     and starving the bottom edge of any visible falloff. A generously
+     oversized fixed blob sidesteps that entirely. */
+  top: 50%;
+  left: 50%;
+  width: 1400px;
+  max-width: 160%;
+  height: 700px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(ellipse at center, rgba(99,102,241,0.55), transparent 70%);
+  filter: blur(60px);
   z-index: -1;
   pointer-events: none;
   animation: dash-glow-pulse 4s ease-in-out infinite;
