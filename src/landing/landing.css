@@ -1794,6 +1794,7 @@
 
 /* ── Dashboard Preview ── */
 .dashboard-container {
+  position: relative;
   margin-bottom: 2rem;
   margin-left:  -2rem;   /* ← bleed past hero padding */
   margin-right: -2rem;
@@ -1801,11 +1802,28 @@
   mask-image: linear-gradient(to bottom, black 35%, transparent 80%);
 }
 
+.dashboard-container::before {
+  content: '';
+  position: absolute;
+  inset: -80px;
+  background: radial-gradient(ellipse 55% 50% at 50% 35%, rgba(99,102,241,0.45), transparent 70%);
+  filter: blur(50px);
+  z-index: -1;
+  pointer-events: none;
+  animation: dash-glow-pulse 4s ease-in-out infinite;
+}
+
+@keyframes dash-glow-pulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
 .dashboard-wrap {
+  position: relative;
   border-radius: var(--radius);
   overflow: hidden;
   border: 1px solid var(--border);
-  box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+  box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 60px rgba(99,102,241,0.25);
   user-select: none;
   pointer-events: none;
   cursor: default;
