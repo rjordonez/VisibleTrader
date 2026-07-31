@@ -1798,8 +1798,6 @@
   margin-bottom: 2rem;
   margin-left:  -2rem;   /* ← bleed past hero padding */
   margin-right: -2rem;
-  -webkit-mask-image: linear-gradient(to bottom, black 35%, transparent 80%);
-  mask-image: linear-gradient(to bottom, black 35%, transparent 80%);
 }
 
 .dashboard-container::before {
@@ -1822,8 +1820,14 @@
   position: relative;
   border-radius: var(--radius);
   overflow: hidden;
+  /* Card's own fade — moved here (off .dashboard-container) so it doesn't
+     also mask the ambient glow sitting behind it: CSS mask gradients tile
+     past the masked element's own box, which was silently clipping the
+     glow to fully transparent everywhere outside the card. */
+  -webkit-mask-image: linear-gradient(to bottom, black 35%, transparent 80%);
+  mask-image: linear-gradient(to bottom, black 35%, transparent 80%);
   border: 1px solid var(--border);
-  box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 60px rgba(99,102,241,0.25);
+  box-shadow: 0 32px 80px rgba(0,0,0,0.6);
   user-select: none;
   pointer-events: none;
   cursor: default;
