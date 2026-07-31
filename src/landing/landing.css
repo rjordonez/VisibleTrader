@@ -1805,14 +1805,14 @@
   position: absolute;
   /* Sized via inset from the container's own real edges, not a guessed
      absolute width/height — self-correcting regardless of the card's real
-     rendered height. Bottom is pulled up to the container's own vertical
-     midpoint (not flush with 0): .dashboard-wrap's mask fades the card to
-     transparent over its bottom ~20%, and this glow sits right behind it —
-     if the glow's box extended down to the card's real bottom, it would
-     shine straight through that transparent region even with the bleed
-     outside the box clipped off. Keeping the glow entirely out of the
-     lower half means there's nothing back there to show through. */
-  inset: -90px -180px 50% -180px;
+     rendered height. Bottom is pulled up to 65% (i.e. the box's bottom
+     edge sits at the 35%-down line) instead of flush with 0: .dashboard-
+     wrap's mask starts fading the card to transparent at that same 35%
+     line, and this glow sits right behind it — any glow color present at
+     or below that line shines straight through the transparent card
+     regardless of how the bleed outside the box is clipped. 35% is the
+     deepest the box can go on the sides without reintroducing that. */
+  inset: -90px -180px 65% -180px;
   background: radial-gradient(ellipse at center, rgba(99,102,241,0.55), transparent 70%);
   filter: blur(55px);
   /* blur bleeds past its own box on every side by default — clip-path
