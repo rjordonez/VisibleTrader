@@ -1803,20 +1803,20 @@
 .dashboard-container::before {
   content: '';
   position: absolute;
-  /* Fixed size instead of a % of .dashboard-container's own box — that box
-     is taller than the card looks (the mask on .dashboard-wrap fades its
-     last ~20% to invisible, but that invisible slice still occupies real
-     layout height), which was throwing off percentage-based ellipse math
-     and starving the bottom edge of any visible falloff. A generously
-     oversized fixed blob sidesteps that entirely. */
-  top: 50%;
+  /* Anchored to the container's bottom edge (not centered) and hard-clipped
+     there — glow should wrap the top and sides only, never bleed below the
+     card. clip-path trims the blur's own smear at that edge too (filter
+     blur bleeds past its box on its own; a plain box position wouldn't
+     stop it), while still allowing bleed on the other three sides. */
   left: 50%;
+  bottom: 0;
   width: 1400px;
   max-width: 160%;
-  height: 700px;
-  transform: translate(-50%, -50%);
+  height: 650px;
+  transform: translateX(-50%);
   background: radial-gradient(ellipse at center, rgba(99,102,241,0.55), transparent 70%);
   filter: blur(60px);
+  clip-path: inset(-120px -400px 0 -400px);
   z-index: -1;
   pointer-events: none;
   animation: dash-glow-pulse 4s ease-in-out infinite;
