@@ -1803,28 +1803,21 @@
 .dashboard-container::before {
   content: '';
   position: absolute;
-  /* Anchored to the container's bottom edge (not centered) and hard-clipped
-     there — glow should wrap the top and sides only, never bleed below the
-     card. clip-path trims the blur's own smear at that edge too (filter
-     blur bleeds past its box on its own; a plain box position wouldn't
-     stop it), while still allowing bleed on the other three sides. */
-  left: 50%;
-  bottom: 0;
-  width: 1400px;
-  max-width: 160%;
-  height: 650px;
-  transform: translateX(-50%);
+  /* Sized via inset from the container's own real edges, not a guessed
+     absolute width/height — top/left/right bleed a fixed amount past the
+     true edges, bottom is flush (0), so this is correct regardless of the
+     card's actual rendered height instead of depending on getting a pixel
+     guess right. */
+  inset: -90px -180px 0 -180px;
   background: radial-gradient(ellipse at center, rgba(99,102,241,0.55), transparent 70%);
-  filter: blur(60px);
-  clip-path: inset(-120px -400px 0 -400px);
+  filter: blur(55px);
+  /* blur bleeds past its own box on every side by default — clip-path is
+     what actually enforces "nothing below the card." These values are more
+     negative than the inset above so the blur's natural smear isn't itself
+     clipped on the three allowed sides, while bottom stays exactly 0. */
+  clip-path: inset(-150px -250px 0 -250px);
   z-index: -1;
   pointer-events: none;
-  animation: dash-glow-pulse 4s ease-in-out infinite;
-}
-
-@keyframes dash-glow-pulse {
-  0%, 100% { opacity: 0.75; }
-  50% { opacity: 1; }
 }
 
 .dashboard-wrap {
