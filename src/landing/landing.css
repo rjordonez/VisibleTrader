@@ -1804,7 +1804,10 @@
   content: '';
   position: absolute;
   inset: -80px;
-  background: radial-gradient(ellipse 55% 50% at 50% 35%, rgba(99,102,241,0.45), transparent 70%);
+  /* Centered + wide falloff so the halo wraps the card's left/right edges
+     too, not just a blob sitting above the top (the card itself is a very
+     wide, short strip, so the ellipse needs to match that shape). */
+  background: radial-gradient(ellipse 75% 75% at 50% 50%, rgba(99,102,241,0.5), transparent 85%);
   filter: blur(50px);
   z-index: -1;
   pointer-events: none;
