@@ -236,6 +236,17 @@ def fetch_event_category(event_id):
 
 # ---------------- roster ----------------
 
+def load_all_users(db):
+    """Wallet roster data — pulled from wallet_directory (Supabase) instead
+    of the local polymarket_users.json file. That file is ~240MB raw, which
+    parses into well over 1GB of Python objects once loaded — too much for
+    a 1GB-RAM box, and the actual cause of a VM going unresponsive under
+    memory pressure. wallet_directory already holds the same data (synced by
+    scripts/sync_wallet_directory.py) and is a normal bounded query instead."""
+    rows = db.execute('SELECT wallet, username, best_pnl FROM wallet_directory').fetchall()
+    return [{'wallet': w, 'username': u, 'best_pnl': float(p) if p is not None else None} for w, u, p in rows]
+
+
 def build_roster(all_users, size=ROSTER_SIZE):
     ranked = sorted(all_users, key=lambda u: -(u['best_pnl'] if u['best_pnl'] is not None else -1e18))[:size]
     return {u['wallet'].lower() for u in ranked}
@@ -758,7 +769,6 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--users', default='polymarket_users.json')
     ap.add_argument('--roster-size', type=int, default=ROSTER_SIZE)
     ap.add_argument('--database-url', default=os.environ.get('DATABASE_URL'))
     ap.add_argument('--workers', type=int, default=16)
@@ -770,7 +780,7 @@ def main():
 
     db = Database(args.database_url)
 
-    all_users = json.load(open(args.users))
+    all_users = load_all_users(db)
     config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page
     print(f'Loading roster (top {config["roster_size"]} by best_pnl)...')
     roster = set()
