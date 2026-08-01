@@ -306,35 +306,37 @@ def build_wallet_names(all_users):
 
 # ---------------- market/token universe ----------------
 
-MARKET_FETCH_PAGE_LIMIT = 150  # 150 pages x 100 = up to 15,000 markets, volume-sorted so the
-# highest-activity markets are always covered first even if we stop short of the true ~20k+ total.
-# The full crawl (no cap) was observed live to stall for 20+ minutes with zero progress output —
-# not worth chasing the entire long tail of near-zero-volume markets for it.
+MARKET_FETCH_MAX_OFFSET = 2000  # verified live: offset paginates correctly through here (each
+# page genuinely new markets), then 422s at offset=2100 ("offset too large") — a real, documented
+# ceiling on this endpoint, not a number we're choosing to save time.
 
 def fetch_active_tokens():
     """Returns (token_list, token_info) where token_info[token_id] =
     {conditionId, outcome, slug, title}.
 
-    Uses the /markets/keyset cursor-based endpoint, NOT /markets?offset=... —
-    the offset endpoint hard-caps around offset~2000 (returns HTTP 422:
-    "offset too large, use /markets/keyset for deeper pagination") and the
-    old code silently treated that error as "no more pages", which meant this
-    function was quietly capping at ~2,100 of a true ~20,000+ active markets.
-    Sorted by volume24hr descending and capped at MARKET_FETCH_PAGE_LIMIT pages
-    so this stays fast and bounded instead of crawling the entire long tail."""
+    Uses /markets?offset=..., NOT /markets/keyset — moved to keyset previously
+    to get past this endpoint's ~2,000-market ceiling, but verified live
+    (2026-08-01) that /markets/keyset's cursor is currently broken: every
+    page after the first returns the identical 100 markets regardless of
+    sort order, so in practice it was only ever covering ~100 of the
+    intended ~15,000 markets. /markets?offset=... still paginates correctly
+    (spot-checked every page up to the wall — genuinely new markets each
+    time) and reliably covers ~2,089 unique markets before the known 422 at
+    offset~2100, which is what caps MARKET_FETCH_MAX_OFFSET. If Polymarket
+    fixes the keyset cursor later, that's worth revisiting for the fuller
+    ~20k+ coverage — for now this covers ~20x what keyset was actually
+    delivering."""
     tokens, token_info = [], {}
-    cursor = None
-    page = 0
-    while True:
-        url = ('https://gamma-api.polymarket.com/markets/keyset?limit=100&active=true&closed=false'
-               '&order=volume24hr&ascending=false')
-        if cursor:
-            url += f'&next_cursor={cursor}'
+    offset = 0
+    while offset <= MARKET_FETCH_MAX_OFFSET:
+        url = (f'https://gamma-api.polymarket.com/markets?limit=100&offset={offset}'
+               '&active=true&closed=false&order=volume24hr&ascending=false')
         data = get_json(url)
-        if not data:
-            print(f'  (market fetch page {page} failed after retries, stopping there)')
+        markets = data if isinstance(data, list) else (data.get('markets', []) if data else [])
+        if not markets:
+            if data is None:
+                print(f'  (market fetch offset {offset} failed after retries, stopping there)')
             break
-        markets = data.get('markets', [])
         for m in markets:
             ids = m.get('clobTokenIds')
             outcomes = m.get('outcomes')
@@ -353,12 +355,9 @@ def fetch_active_tokens():
                     'slug': m.get('slug'), 'title': m.get('question') or m.get('slug'),
                     'eventId': event_id,
                 }
-        page += 1
-        if page % 20 == 0:
-            print(f'  ...fetched {page} pages, {len(tokens)} tokens so far')
-        cursor = data.get('next_cursor')
-        if not cursor or not markets or page >= MARKET_FETCH_PAGE_LIMIT:
-            break
+        offset += 100
+        if offset % 1000 == 0:
+            print(f'  ...fetched offset {offset}, {len(tokens)} tokens so far')
     return tokens, token_info
 
 
