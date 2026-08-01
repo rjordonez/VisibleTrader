@@ -25,6 +25,11 @@ RPC_PROVIDERS = [
     'https://1rpc.io/matic',
     'https://polygon.drpc.org',
 ]
+# Polymarket's collateral token — USDC.e (bridged USDC), not native USDC —
+# verified against Polymarket's own bridge docs, not assumed.
+USDC_CONTRACT = '0x2791bca1f2de4661ed88a30c99a7a9449aa84174'
+BALANCE_OF_SELECTOR = '0x70a08231'  # balanceOf(address)
+BALANCE_REFRESH_SECONDS = 15 * 60
 ROSTER_SIZE = 500
 TIERS = [1000, 5000, 20000, 50000, 100000]
 SOLO_TIER = 0  # sentinel: first tracked-trader entry into a market, fires immediately (keeps the feed active between rarer multi-wallet tier crossings)
@@ -541,6 +546,64 @@ def check_market_closed(slug):
         return None  # transient failure — try again on the next sweep, don't guess
 
 
+def fetch_usdc_balance(wallet, retries=2, retry_delay=1.0):
+    """USDC.e balanceOf(wallet) via a plain eth_call — a read call, not a
+    transaction, so no gas/signing involved. Same RPC_PROVIDERS
+    fallback/retry pattern as resolve_tx_sender, just a different method."""
+    padded = wallet[2:].lower().rjust(64, '0')
+    body = json.dumps({
+        'jsonrpc': '2.0', 'id': 1, 'method': 'eth_call',
+        'params': [{'to': USDC_CONTRACT, 'data': BALANCE_OF_SELECTOR + padded}, 'latest'],
+    }).encode()
+    for attempt in range(retries):
+        for rpc in RPC_PROVIDERS:
+            try:
+                req = urllib.request.Request(rpc, data=body, headers={'Content-Type': 'application/json', **UA})
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    res = json.load(r)
+                result = res.get('result')
+                if result and result != '0x':
+                    return int(result, 16) / 1e6  # USDC.e has 6 decimals
+            except Exception as e:
+                if os.environ.get('LSS_DEBUG'):
+                    print(f'  [debug] {rpc} attempt {attempt}: EXCEPTION {type(e).__name__}: {e}')
+                continue
+        if attempt < retries - 1:
+            time.sleep(retry_delay)
+    return None
+
+
+def refresh_wallet_balances(db, wallets):
+    """Runs periodically (BALANCE_REFRESH_SECONDS, see main()) — refreshes
+    USDC.e balances for the current roster + tracked wallets, the data the
+    win-rate/bet-ratio filters on Live Ticker and Vetted Picks need. Fans
+    out across a local thread pool (a few hundred wallets sequentially over
+    RPC would take minutes; this is a cheap read call, safe to parallelize)."""
+    wallets = list(wallets)
+    if not wallets:
+        return
+    results = {}
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        futures = {pool.submit(fetch_usdc_balance, w): w for w in wallets}
+        for fut, wallet in futures.items():
+            try:
+                bal = fut.result()
+            except Exception:
+                bal = None
+            if bal is not None:
+                results[wallet] = bal
+    if not results:
+        return
+    now = datetime.now(timezone.utc)
+    with lock:
+        for wallet, bal in results.items():
+            db.execute('''INSERT INTO wallet_balances (wallet, usdc_balance, updated_at)
+                VALUES (%s,%s,%s)
+                ON CONFLICT (wallet) DO UPDATE SET usdc_balance=EXCLUDED.usdc_balance, updated_at=EXCLUDED.updated_at''',
+                (wallet, bal, now))
+    print(f'  [balances] refreshed {len(results)}/{len(wallets)} wallet balances')
+
+
 def sweep_resolved_positions(db):
     """Runs periodically (not per-trade — this is a network call per distinct open
     market, too slow to do inline). Finds every market with still-open positions,
@@ -728,6 +791,7 @@ def main():
     last_prune = time.time()
     last_resolution_sweep = time.time()
     last_config_reload = time.time()
+    last_balance_refresh = 0.0  # fire once on startup, not just after the first interval
 
     while True:
         try:
@@ -775,6 +839,10 @@ def main():
                 if now - last_resolution_sweep > 300:  # every 5 min — catches positions closed out by market resolution, not a sale
                     executor.submit(sweep_resolved_positions, db)
                     last_resolution_sweep = now
+
+                if now - last_balance_refresh > BALANCE_REFRESH_SECONDS:  # roster wallets' USDC.e balances, for the win-rate/bet-ratio filters
+                    executor.submit(refresh_wallet_balances, db, set(roster))
+                    last_balance_refresh = now
 
                 if now - last_config_reload > 10:  # picks up Settings-page changes without a restart
                     apply_config(load_config(db), roster, all_users)

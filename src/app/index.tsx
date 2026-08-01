@@ -35,6 +35,8 @@ interface Opportunity {
   closed: number
   category: string | null
   total_profit: number
+  best_win_rate: number
+  best_bet_ratio: number
 }
 
 interface WalletContribution {
@@ -180,6 +182,10 @@ function SignalsDemo({ category }: { category: string }) {
   const [tab, setTab]                     = useState<'ticker' | 'vetted'>('ticker')
   const [todayOnly, setTodayOnly]         = useState(false)
   const [sortMode, setSortMode]           = useState<'recent' | 'profit'>('recent')
+  const [minWinRate, setMinWinRate]       = useState(0)
+  const [minBetRatio, setMinBetRatio]     = useState(0)
+  const [winRateMap, setWinRateMap]       = useState<Map<string, number>>(new Map())
+  const [balanceMap, setBalanceMap]       = useState<Map<string, number>>(new Map())
 
   useEffect(() => {
     let cancelled = false
@@ -215,6 +221,36 @@ function SignalsDemo({ category }: { category: string }) {
     return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
+  // Win rate / wallet-balance data for the two threshold filters below —
+  // both change slowly (win rate only moves on resolution, balance only on
+  // the ~15min backend refresh), so this polls far less often than the
+  // ticker/opportunities feeds.
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      Promise.all([
+        Promise.resolve(supabase.from('leaderboard').select('wallet, won, lost')),
+        Promise.resolve(supabase.from('wallet_balances').select('wallet, usdc_balance')),
+      ]).then(([lb, wb]) => {
+        if (cancelled) return
+        const wr = new Map<string, number>()
+        for (const r of (lb.data ?? []) as { wallet: string; won: number; lost: number }[]) {
+          const total = r.won + r.lost
+          if (total > 0) wr.set(r.wallet, r.won / total)
+        }
+        setWinRateMap(wr)
+        const bal = new Map<string, number>()
+        for (const r of (wb.data ?? []) as { wallet: string; usdc_balance: number | null }[]) {
+          if (r.usdc_balance != null && r.usdc_balance > 0) bal.set(r.wallet, r.usdc_balance)
+        }
+        setBalanceMap(bal)
+      }).catch(() => {})
+    }
+    load()
+    const interval = setInterval(load, 60000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [])
+
   const fetchWallets = (conditionId: string, outcome: string) =>
     Promise.resolve(
       supabase.from('wallet_positions').select('*')
@@ -243,9 +279,22 @@ function SignalsDemo({ category }: { category: string }) {
   const byCategory = <T extends { category: string | null }>(list: T[]) =>
     category === 'all' ? list : list.filter(x => (x.category ?? 'other') === category)
 
-  const filteredTicker = byCategory(ticker).filter(t => !todayOnly || isToday(t.ts))
+  const filteredTicker = byCategory(ticker)
+    .filter(t => !todayOnly || isToday(t.ts))
+    .filter(t => {
+      if (minWinRate === 0) return true
+      const wr = t.wallet ? winRateMap.get(t.wallet) : undefined
+      return wr !== undefined && wr * 100 >= minWinRate
+    })
+    .filter(t => {
+      if (minBetRatio === 0) return true
+      const bal = t.wallet ? balanceMap.get(t.wallet) : undefined
+      return bal !== undefined && (t.usd / bal) * 100 >= minBetRatio
+    })
   const filteredOpportunities = byCategory(opportunities)
     .filter(o => !todayOnly || isToday(o.first_seen))
+    .filter(o => minWinRate === 0 || o.best_win_rate * 100 >= minWinRate)
+    .filter(o => minBetRatio === 0 || o.best_bet_ratio * 100 >= minBetRatio)
     .sort((a, b) => sortMode === 'profit'
       ? b.total_profit - a.total_profit
       : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
@@ -285,6 +334,24 @@ function SignalsDemo({ category }: { category: string }) {
               Today only
             </div>
           </div>
+
+          <div className="sig-chips" style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)', marginRight: 2, alignSelf: 'center' }}>Win rate</span>
+            {[0, 50, 65, 80].map(v => (
+              <div key={v} className={minWinRate === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinWinRate(v)}>
+                {v === 0 ? 'Any' : `${v}%+`}
+              </div>
+            ))}
+          </div>
+
+          <div className="sig-chips" style={{ marginTop: 6 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)', marginRight: 2, alignSelf: 'center' }}>Bet vs wallet balance</span>
+            {[0, 5, 15, 30].map(v => (
+              <div key={v} className={minBetRatio === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinBetRatio(v)}>
+                {v === 0 ? 'Any' : `${v}%+`}
+              </div>
+            ))}
+          </div>
         </div>
 
         {tab === 'ticker' && (
@@ -308,6 +375,12 @@ function SignalsDemo({ category }: { category: string }) {
                         <span>someone</span>
                       )}
                       {t.roster_tagged ? <span className="sig-trk">Tracked</span> : null}
+                      {t.wallet && winRateMap.has(t.wallet) && (
+                        <span>· {Math.round((winRateMap.get(t.wallet) ?? 0) * 100)}% win rate</span>
+                      )}
+                      {t.wallet && balanceMap.has(t.wallet) && (
+                        <span>· {Math.round((t.usd / (balanceMap.get(t.wallet) ?? 1)) * 100)}% of wallet</span>
+                      )}
                       <span>· {timeAgo(t.ts)}</span>
                     </div>
                   </div>
@@ -376,6 +449,12 @@ function SignalsDemo({ category }: { category: string }) {
                       <div className="sig-stat"><span className="sig-stat-label">Total</span><span className="sig-stat-val g">{fmtFull(o.cumulative_usd)}</span></div>
                       {o.scalped > 0 && (
                         <div className="sig-stat"><span className="sig-stat-label">Scalped</span><span className="sig-stat-val r">{o.scalped}</span></div>
+                      )}
+                      {o.best_win_rate > 0 && (
+                        <div className="sig-stat"><span className="sig-stat-label">Best win rate</span><span className="sig-stat-val">{Math.round(o.best_win_rate * 100)}%</span></div>
+                      )}
+                      {o.best_bet_ratio > 0 && (
+                        <div className="sig-stat"><span className="sig-stat-label">Best bet ratio</span><span className="sig-stat-val">{Math.round(o.best_bet_ratio * 100)}%</span></div>
                       )}
                     </div>
                   </div>
