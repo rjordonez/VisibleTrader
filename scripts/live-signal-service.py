@@ -299,9 +299,9 @@ def load_config(db):
 
 def apply_config(cfg, roster_set, all_users):
     """Reassigning these module globals is enough — every read site
-    (resolve_and_record_trade, record_exit, etc.) looks the name up fresh
-    each call rather than holding a stale local copy, so this takes effect
-    on the very next trade with no restart.
+    (process_trade, record_exit, etc.) looks the name up fresh each call
+    rather than holding a stale local copy, so this takes effect on the
+    very next trade with no restart.
     roster_set is mutated in place (clear+update) rather than reassigned, since
     main() and every in-flight executor.submit closure already hold a reference
     to that exact set object."""
@@ -853,11 +853,10 @@ def record_ticker_trade(db, info, usd, price, side, tx_hash, trade_ts):
 
 
 def update_ticker_wallet(db, tx_hash, wallet, wallet_name, roster_tagged, category):
-    # Matched by tx_hash (+ still-unresolved guard) instead of a ticker_id
-    # threaded over from record_ticker_trade — that id lived in the fast
-    # path (see record_price_tick), and this runs on the slow, RPC-bound
-    # path as a fully independent executor submission now, not a
-    # continuation of the same call.
+    # Matched by tx_hash (+ still-unresolved guard) rather than the
+    # ticker_id record_ticker_trade returns — simpler than threading that
+    # id all the way through process_trade, and just as correct since a
+    # tx_hash only ever gets one ticker row.
     with lock:
         db.execute('''UPDATE ticker SET wallet=%s, wallet_name=%s, roster_tagged=%s, category=%s
             WHERE tx_hash=%s AND wallet IS NULL''',
@@ -917,25 +916,35 @@ def filter_price_changes(keyed_token_info, item):
 
 
 def write_price_updates(db, updates):
-    """The only part of price-change handling that touches the DB — submitted
-    to fast_executor so a slow write never stalls the WS-receiving loop, and
-    kept off the RPC-bound executor so a wallet-resolution backlog can't
-    delay it either (same reasoning as record_price_tick)."""
+    """The only part of price-change handling that touches the DB —
+    submitted to the executor so a slow write never stalls the
+    WS-receiving loop."""
     for condition_id, outcome, mid in updates:
         with lock:
             db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
                        (mid, condition_id, outcome))
 
 
-def record_price_tick(db, keyed_token_info, tid, price, size, side, tx_hash, trade_ts):
-    """Fast path — ticker + mark-to-market only, never an RPC call.
-    Dispatched to a small dedicated pool (see fast_executor in main())
-    instead of the RPC-bound one resolve_and_record_trade runs on:
-    confirmed live that a burst of ~15 trades on one market backed up the
-    shared 16-worker pool by 35-45 minutes, and every price/ticker update
-    queued behind it went stale for that whole window — this split means a
-    wallet-resolution backlog on one market can never delay the price
-    users are watching move on another."""
+def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster, wallet_names, trade_ts):
+    """Single combined path — a same-day attempt to split this into a fast
+    (ticker/mark-to-market) and slow (RPC-bound wallet resolution) pool on
+    two separate executors made things measurably worse, not better, and
+    was reverted. Root cause: every DB write in this file, on either pool,
+    still serializes through the same module-level `lock` guarding one
+    shared psycopg connection — that lock is the actual throughput
+    ceiling, not worker count, and concentrating the very high aggregate
+    volume of write_price_updates (price_change quotes, ~1,900 tracked
+    pairs each eligible roughly every 15s) onto its own small pool created
+    worse congestion than spreading it across the original 16-worker pool
+    did. Confirmed live: bumping the fast pool from 4 to 16 workers did
+    not fix it — trades_seen (the fast path's own counter) stayed
+    essentially flat while roster_matches (the slow path) kept climbing
+    normally, proving the fast pool was lock-starved, not merely
+    understaffed. Reverting to one path on one pool restores the last
+    confirmed-working state. A real fix for the original RPC-burst
+    problem this split was trying to solve needs actual connection
+    pooling (multiple real DB connections, not one shared lock+connection)
+    — flagged as follow-up work, not attempted here under time pressure."""
     if side not in ('BUY', 'SELL') or not tx_hash:
         return
     info = keyed_token_info.get(tid)
@@ -968,19 +977,6 @@ def record_price_tick(db, keyed_token_info, tid, price, size, side, tx_hash, tra
             db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
                        (float(price), key_probe[0], key_probe[1]))
 
-
-def resolve_and_record_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster, wallet_names, trade_ts):
-    """Slow path — wallet resolution (an RPC call) and everything
-    downstream of it. Runs on the larger RPC-bound pool; record_price_tick
-    above already handled the ticker/MTM output independently, so a
-    backlog here no longer delays that."""
-    if side not in ('BUY', 'SELL') or not tx_hash:
-        return
-    info = keyed_token_info.get(tid)
-    if not info:
-        return
-
-    usd = (float(price) if price else 0) * (float(size) if size else 0)
     if usd <= 0:
         return
 
@@ -1065,7 +1061,7 @@ def main():
     wallet_names = build_wallet_names(all_users)
     print(f'{len(roster)} roster wallets loaded, {len(wallet_names)} known wallet names available.')
 
-    # tiers_hit gates every mark-to-market write (both record_price_tick's and
+    # tiers_hit gates every mark-to-market write (both process_trade's and
     # write_price_updates') — it's an in-memory set, so without this it
     # starts empty on every restart, silently stopping price updates for
     # every already-tracked market until each one happens to get a fresh
@@ -1083,17 +1079,6 @@ def main():
     print(f'{len(resolved_markets)} already-resolved condition/outcome pairs rehydrated (mark-to-market writes blocked for these).')
 
     executor = ThreadPoolExecutor(max_workers=args.workers)
-    # Dedicated pool for record_price_tick (ticker + mark-to-market) — never
-    # does an RPC call, so it should never queue behind one. Kept separate
-    # from `executor` (RPC-bound wallet resolution) specifically so a burst
-    # of trades on one market can't delay price updates for every other
-    # market, which is what caused a real ~40-minute price lag confirmed
-    # live before this split existed. Sized at 16, not 4 — confirmed live
-    # that 4 workers, all still serialized through the same module-level
-    # `lock` as everything else, couldn't keep the queue draining under
-    # sustained trade volume and fell permanently behind in real time
-    # instead of catching up.
-    fast_executor = ThreadPoolExecutor(max_workers=16)
 
     print('Fetching active market/token universe...')
     tokens, token_info = fetch_active_tokens()
@@ -1177,13 +1162,8 @@ def main():
                         for item in items:
                             if item.get('event_type') == 'last_trade_price':
                                 trade_ts = parse_trade_ts(item)
-                                fast_executor.submit(
-                                    record_price_tick, db, keyed_token_info,
-                                    item.get('asset_id'), item.get('price'), item.get('size'),
-                                    item.get('side'), item.get('transaction_hash'), trade_ts,
-                                )
                                 executor.submit(
-                                    resolve_and_record_trade, db, keyed_token_info,
+                                    process_trade, db, keyed_token_info,
                                     item.get('asset_id'), item.get('price'), item.get('size'),
                                     item.get('side'), item.get('transaction_hash'), roster, wallet_names, trade_ts,
                                 )
@@ -1191,12 +1171,10 @@ def main():
                                 # Filtered inline (cheap, no I/O) — only submits to the
                                 # executor when there's an actual write to do, see
                                 # filter_price_changes' docstring for why this matters
-                                # at the current tracked-market count. Runs on
-                                # fast_executor, same reasoning as record_price_tick —
-                                # never an RPC call, must never queue behind one.
+                                # at the current tracked-market count.
                                 updates = filter_price_changes(keyed_token_info, item)
                                 if updates:
-                                    fast_executor.submit(write_price_updates, db, updates)
+                                    executor.submit(write_price_updates, db, updates)
                     elif opcode == 0x9:
                         send_frame(ssock, payload, opcode=0xA)
                     elif opcode == 0x8:
