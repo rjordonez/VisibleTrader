@@ -1083,13 +1083,17 @@ def main():
     print(f'{len(resolved_markets)} already-resolved condition/outcome pairs rehydrated (mark-to-market writes blocked for these).')
 
     executor = ThreadPoolExecutor(max_workers=args.workers)
-    # Small, dedicated pool for record_price_tick (ticker + mark-to-market) —
-    # never does an RPC call, so it should never queue behind one. Kept
-    # separate from `executor` (RPC-bound wallet resolution) specifically
-    # so a burst of trades on one market can't delay price updates for
-    # every other market, which is what caused a real ~40-minute price lag
-    # confirmed live before this split existed.
-    fast_executor = ThreadPoolExecutor(max_workers=4)
+    # Dedicated pool for record_price_tick (ticker + mark-to-market) — never
+    # does an RPC call, so it should never queue behind one. Kept separate
+    # from `executor` (RPC-bound wallet resolution) specifically so a burst
+    # of trades on one market can't delay price updates for every other
+    # market, which is what caused a real ~40-minute price lag confirmed
+    # live before this split existed. Sized at 16, not 4 — confirmed live
+    # that 4 workers, all still serialized through the same module-level
+    # `lock` as everything else, couldn't keep the queue draining under
+    # sustained trade volume and fell permanently behind in real time
+    # instead of catching up.
+    fast_executor = ThreadPoolExecutor(max_workers=16)
 
     print('Fetching active market/token universe...')
     tokens, token_info = fetch_active_tokens()
