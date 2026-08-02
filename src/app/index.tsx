@@ -228,8 +228,18 @@ function SignalsDemo({ category }: { category: string }) {
         })
     }
     load()
+    // opportunities_live is a view, so Realtime (which taps Postgres's
+    // replication stream on real tables) can't subscribe to it directly —
+    // instead, listen for changes on the base tables it's built from and
+    // re-fetch the instant one fires. The interval stays as a fallback in
+    // case a realtime event is ever missed (dropped connection etc.).
+    const channel = supabase
+      .channel('opportunities-live-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunity_wallets' }, load)
+      .subscribe()
     const interval = setInterval(load, 5000)
-    return () => { cancelled = true; clearInterval(interval) }
+    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel) }
   }, [])
 
   useEffect(() => {
@@ -240,8 +250,12 @@ function SignalsDemo({ category }: { category: string }) {
         .catch(() => {})
     }
     load()
+    const channel = supabase
+      .channel('ticker-changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticker' }, load)
+      .subscribe()
     const interval = setInterval(load, 3000)
-    return () => { cancelled = true; clearInterval(interval) }
+    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel) }
   }, [])
 
   // Win rate / wallet-balance data for the two threshold filters below —
@@ -739,8 +753,16 @@ function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; cate
         })
     }
     load()
+    // See SignalsDemo's identical pattern — opportunities_live is a view,
+    // so Realtime subscribes to the base tables it's built from instead
+    // and re-fetches on any change; the interval stays as a fallback.
+    const channel = supabase
+      .channel('home-opportunities-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunity_wallets' }, load)
+      .subscribe()
     const interval = setInterval(load, 5000)
-    return () => { cancelled = true; clearInterval(interval) }
+    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel) }
   }, [])
 
   const byCategory = <T extends { category: string | null }>(list: T[]) =>

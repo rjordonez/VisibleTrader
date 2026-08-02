@@ -1,0 +1,12 @@
+-- Enables Supabase Realtime (Postgres logical replication) on the base
+-- tables the live-signal-service.py backend writes to. Not automatic —
+-- confirmed live (SELECT * FROM pg_publication_tables WHERE pubname =
+-- 'supabase_realtime') that nothing was in the publication yet.
+--
+-- opportunities_live is a VIEW, so it can't be subscribed to directly
+-- (Realtime taps the replication stream on real tables, not view results)
+-- — the frontend instead subscribes to changes on these base tables and
+-- immediately re-fetches opportunities_live when one fires, turning "poll
+-- every 5s regardless" into "poll the instant something actually changed,
+-- with the existing interval kept only as a fallback."
+alter publication supabase_realtime add table opportunities, opportunity_wallets, ticker;
