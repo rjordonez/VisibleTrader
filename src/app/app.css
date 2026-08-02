@@ -650,6 +650,7 @@
   width: 26px; height: 26px; flex-shrink: 0;
   background: none; border: 1px solid var(--border); border-radius: 6px;
   color: var(--text-dim); cursor: pointer; padding: 0;
+  text-decoration: none;
   transition: border-color 0.12s;
 }
 .sig-track-btn:hover { border-color: var(--gold); }

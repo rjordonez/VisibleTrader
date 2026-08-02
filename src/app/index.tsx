@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { TrendingUp, BarChart2, Bell, Radar, Settings, Search, Home, Star } from 'lucide-react'
+import { TrendingUp, BarChart2, Bell, Radar, Settings, Search, Home, Star, ExternalLink } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import './app.css'
@@ -22,6 +22,7 @@ interface Opportunity {
   condition_id: string
   outcome: string
   slug: string
+  event_slug: string | null
   title: string
   cumulative_usd: number
   tier: number
@@ -89,6 +90,10 @@ function traderLabel(wallet: string | null, walletName: string | null) {
 
 function profileUrl(wallet: string | null) {
   return wallet ? `https://polymarket.com/profile/${wallet}` : null
+}
+
+function marketUrl(slug: string | null) {
+  return slug ? `https://polymarket.com/event/${slug}` : null
 }
 
 
@@ -413,6 +418,18 @@ function SignalsDemo({ category }: { category: string }) {
             <div className="sig-card-q">{o.title} <span className="sig-out">— {o.outcome}</span></div>
             <div className="sig-card-meta">{o.wallet_count} top trader{o.wallet_count > 1 ? 's' : ''}</div>
           </div>
+          {marketUrl(o.event_slug || o.slug) && (
+            <a
+              className="sig-track-btn"
+              href={marketUrl(o.event_slug || o.slug)!}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              title="Open market on Polymarket"
+            >
+              <ExternalLink size={15} />
+            </a>
+          )}
           {userId && (
             <button
               className="sig-track-btn"

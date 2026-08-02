@@ -363,12 +363,18 @@ def fetch_active_tokens():
                 continue
             events = m.get('events')
             event_id = events[0].get('id') if events else None
+            # Polymarket's public /event/{slug} page uses the parent event's
+            # slug, not a market's own `slug` — for grouped/templated markets
+            # (recurring date families) those differ and the market's own
+            # slug 404s. Falls back to the market's own slug for the rare
+            # case a market has no parent event.
+            event_slug = events[0].get('slug') if events else None
             for tid, outcome in zip(ids, outcomes):
                 tokens.append(tid)
                 token_info[tid] = {
                     'conditionId': m.get('conditionId'), 'outcome': outcome,
                     'slug': m.get('slug'), 'title': m.get('question') or m.get('slug'),
-                    'eventId': event_id,
+                    'eventId': event_id, 'eventSlug': event_slug or m.get('slug'),
                 }
         offset += 100
         if offset % 1000 == 0:
@@ -476,19 +482,20 @@ class Database:
 
 
 def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, tier, wallet_count, price):
-    slug = title = None
+    slug = title = event_slug = None
     category = 'other'
     meta = token_info.get((condition_id, outcome))
     if meta:
         slug, title = meta.get('slug'), meta.get('title')
+        event_slug = meta.get('eventSlug')
         category = fetch_event_category(meta.get('eventId'))
     now = datetime.now(timezone.utc)
     with lock:
         db.execute('''INSERT INTO opportunities
-            (condition_id, outcome, slug, title, cumulative_usd, tier, wallet_count, first_seen, last_updated, latest_price, category)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, first_seen, last_updated, latest_price, category)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (condition_id, outcome, tier) DO NOTHING''',
-            (condition_id, outcome, slug, title, cumulative_usd, tier, wallet_count, now, now, price, category))
+            (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, now, now, price, category))
         db.execute('''UPDATE opportunities SET cumulative_usd=%s, wallet_count=%s, last_updated=%s, latest_price=%s, category=%s
             WHERE condition_id=%s AND outcome=%s AND tier=%s''',
             (cumulative_usd, wallet_count, now, price, category, condition_id, outcome, tier))
