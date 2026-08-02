@@ -186,6 +186,18 @@ function SignalsDemo({ category }: { category: string }) {
   const [minBetRatio, setMinBetRatio]     = useState(0)
   const [minPrice, setMinPrice]           = useState(0)
   const [maxPrice, setMaxPrice]           = useState(100)
+  // Total/Won sliders cap at real data's ~p95 (checked live: cumulative_usd
+  // p95 ≈ $34k, total_profit p5/p95 ≈ -$6.8k/+$8.3k) — both fields are
+  // heavily long-tailed, so the slider ends mean "no limit" rather than a
+  // hard cap, keeping real outliers visible unless the user actually drags
+  // off the end.
+  const TOTAL_CAP = 50000
+  const WON_FLOOR = -10000
+  const WON_CAP = 10000
+  const [minTotal, setMinTotal]           = useState(0)
+  const [maxTotal, setMaxTotal]           = useState(TOTAL_CAP)
+  const [minWon, setMinWon]               = useState(WON_FLOOR)
+  const [maxWon, setMaxWon]               = useState(WON_CAP)
   const [winRateMap, setWinRateMap]       = useState<Map<string, number>>(new Map())
   const [balanceMap, setBalanceMap]       = useState<Map<string, number>>(new Map())
 
@@ -297,6 +309,7 @@ function SignalsDemo({ category }: { category: string }) {
       const cents = t.price * 100
       return cents >= minPrice && cents <= maxPrice
     })
+    .filter(t => t.usd >= minTotal && (maxTotal >= TOTAL_CAP || t.usd <= maxTotal))
   const filteredOpportunities = byCategory(opportunities)
     .filter(o => !todayOnly || isToday(o.first_seen))
     .filter(o => minWinRate === 0 || o.best_win_rate * 100 >= minWinRate)
@@ -305,6 +318,8 @@ function SignalsDemo({ category }: { category: string }) {
       const cents = o.latest_price * 100
       return cents >= minPrice && cents <= maxPrice
     })
+    .filter(o => o.cumulative_usd >= minTotal && (maxTotal >= TOTAL_CAP || o.cumulative_usd <= maxTotal))
+    .filter(o => (minWon <= WON_FLOOR || o.total_profit >= minWon) && (maxWon >= WON_CAP || o.total_profit <= maxWon))
     .sort((a, b) => sortMode === 'profit'
       ? b.total_profit - a.total_profit
       : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
@@ -382,6 +397,51 @@ function SignalsDemo({ category }: { category: string }) {
               />
             </div>
           </div>
+
+          <div className="sig-price-range" style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+              Total: {minTotal === 0 ? '$0' : fmtFull(minTotal)} – {maxTotal >= TOTAL_CAP ? 'no limit' : fmtFull(maxTotal)}
+            </span>
+            <div className="sig-range-track-wrap">
+              <div className="sig-range-track" />
+              <div className="sig-range-fill" style={{ left: `${(minTotal / TOTAL_CAP) * 100}%`, right: `${100 - (maxTotal / TOTAL_CAP) * 100}%` }} />
+              <input
+                type="range" min={0} max={TOTAL_CAP} step={500} value={minTotal}
+                onChange={e => setMinTotal(Math.min(Number(e.target.value), maxTotal - 500))}
+                className="sig-range-input"
+              />
+              <input
+                type="range" min={0} max={TOTAL_CAP} step={500} value={maxTotal}
+                onChange={e => setMaxTotal(Math.max(Number(e.target.value), minTotal + 500))}
+                className="sig-range-input"
+              />
+            </div>
+          </div>
+
+          {tab === 'vetted' && (
+            <div className="sig-price-range" style={{ marginTop: 10 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                Amount won: {minWon <= WON_FLOOR ? 'no limit' : fmtSigned(minWon)} – {maxWon >= WON_CAP ? 'no limit' : fmtSigned(maxWon)}
+              </span>
+              <div className="sig-range-track-wrap">
+                <div className="sig-range-track" />
+                <div className="sig-range-fill" style={{
+                  left: `${((minWon - WON_FLOOR) / (WON_CAP - WON_FLOOR)) * 100}%`,
+                  right: `${100 - ((maxWon - WON_FLOOR) / (WON_CAP - WON_FLOOR)) * 100}%`,
+                }} />
+                <input
+                  type="range" min={WON_FLOOR} max={WON_CAP} step={250} value={minWon}
+                  onChange={e => setMinWon(Math.min(Number(e.target.value), maxWon - 250))}
+                  className="sig-range-input"
+                />
+                <input
+                  type="range" min={WON_FLOOR} max={WON_CAP} step={250} value={maxWon}
+                  onChange={e => setMaxWon(Math.max(Number(e.target.value), minWon + 250))}
+                  className="sig-range-input"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {tab === 'ticker' && (
