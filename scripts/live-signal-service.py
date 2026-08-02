@@ -17,6 +17,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import psycopg
+from psycopg_pool import ConnectionPool
 
 WS_HOST = 'ws-subscriptions-clob.polymarket.com'
 WS_PATH = '/ws/market'
@@ -72,7 +73,9 @@ load_env_file(ENV_PATH)
 if 'vohtqodprqpobvvcdypy' in os.environ.get('DATABASE_URL', ''):
     print('⚠️  DATABASE_URL points at PRODUCTION — if this is running on your own machine (not the VM), that is almost certainly wrong. Ctrl+C now if so.')
 
-lock = threading.Lock()
+state_lock = threading.Lock()  # guards in-memory state only (stats/conviction/tiers_hit/
+# resolved_markets/roster_set) — DB writes go through Database's connection pool, which
+# lets Postgres's own MVCC handle write concurrency instead of serializing through Python.
 stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trades': 0}
 conviction = defaultdict(list)  # (conditionId, outcome) -> [(ts, wallet, usd, price), ...]
 tiers_hit = defaultdict(set)    # (conditionId, outcome) -> {tiers already recorded}
@@ -120,7 +123,7 @@ def resolve_tx_sender(tx_hash, retries=3, retry_delay=1.5):
                 continue
         if attempt < retries - 1:
             time.sleep(retry_delay)
-    with lock:
+    with state_lock:
         stats['rpc_failures'] += 1
     return None
 
@@ -251,7 +254,7 @@ def load_all_users(db):
     a 1GB-RAM box, and the actual cause of a VM going unresponsive under
     memory pressure. wallet_directory already holds the same data (synced by
     scripts/sync_wallet_directory.py) and is a normal bounded query instead."""
-    rows = db.execute('SELECT wallet, username, best_pnl FROM wallet_directory').fetchall()
+    rows = db.fetchall('SELECT wallet, username, best_pnl FROM wallet_directory')
     return [{'wallet': w, 'username': u, 'best_pnl': float(p) if p is not None else None} for w, u, p in rows]
 
 
@@ -273,9 +276,9 @@ def load_config(db):
         'tracked_wallets': set(),
     }
     try:
-        row = db.execute(
+        row = db.fetchone(
             'SELECT roster_size, tiers, ticker_min_usd, scalp_window_minutes FROM app_settings WHERE id = 1'
-        ).fetchone()
+        )
         if row:
             roster_size, tiers, ticker_min_usd, scalp_window_minutes = row
             defaults['roster_size'] = roster_size
@@ -289,8 +292,8 @@ def load_config(db):
         # 30 days of inactivity by just dropping out of this query, not by
         # deleting the row, so a wallet that trades again later resumes being
         # tracked automatically without needing to be re-added.
-        rows = db.execute('''SELECT wallet FROM tracked_wallets
-            WHERE COALESCE(last_active_at, added_at) > now() - interval '30 days' ''').fetchall()
+        rows = db.fetchall('''SELECT wallet FROM tracked_wallets
+            WHERE COALESCE(last_active_at, added_at) > now() - interval '30 days' ''')
         defaults['tracked_wallets'] = {r[0].lower() for r in rows}
     except Exception:
         pass
@@ -304,15 +307,19 @@ def apply_config(cfg, roster_set, all_users):
     very next trade with no restart.
     roster_set is mutated in place (clear+update) rather than reassigned, since
     main() and every in-flight executor.submit closure already hold a reference
-    to that exact set object."""
+    to that exact set object. The clear+update pair runs under state_lock —
+    process_trade's roster membership check takes the same lock, so a trade
+    can never observe the roster mid-swap (momentarily empty between clear()
+    and update() landing) and get silently dropped."""
     global TIERS, TICKER_MIN_USD, SCALP_WINDOW_SECONDS
     TIERS = sorted(float(t) if not float(t).is_integer() else int(t) for t in cfg['tiers'])
     TICKER_MIN_USD = cfg['ticker_min_usd']
     SCALP_WINDOW_SECONDS = cfg['scalp_window_minutes'] * 60
     new_roster = build_roster(all_users, cfg['roster_size']) | cfg.get('tracked_wallets', set())
     if new_roster != roster_set:
-        roster_set.clear()
-        roster_set.update(new_roster)
+        with state_lock:
+            roster_set.clear()
+            roster_set.update(new_roster)
 
 
 def build_wallet_names(all_users):
@@ -456,54 +463,81 @@ def recv_frames(ssock, buf):
 # ---------------- persistence ----------------
 
 class Database:
-    """Thin wrapper around a single psycopg connection. Schema lives in
-    supabase/migrations/*.sql now (applied via Supabase's GitHub
-    integration) — this never creates or alters tables, it only connects
-    and runs statements. A network DB connection can drop in ways a local
-    SQLite file never did, so execute() reconnects and retries once on a
-    dropped-connection error; every write in this file already goes through
-    the module-level `lock`, so this stays safe under the existing
-    ThreadPoolExecutor workers without extra locking here."""
+    """Wraps a real connection pool (psycopg_pool.ConnectionPool), not a
+    single shared connection. Schema lives in supabase/migrations/*.sql —
+    this never creates or alters tables, it only connects and runs
+    statements. Every write used to serialize through one connection
+    guarded by one Python lock — confirmed live that this was the actual
+    throughput ceiling under real trade volume (a fast, non-RPC write
+    could stall for minutes behind an unrelated slow one, and no amount of
+    ThreadPoolExecutor worker-count tuning fixed it, since more workers
+    just meant more threads queued on the same lock). A real pool lets
+    Postgres handle concurrent writes at the database level, the way it's
+    designed to.
 
-    def __init__(self, database_url):
-        self.database_url = database_url
-        self.conn = psycopg.connect(database_url, autocommit=False)
+    fetchall()/fetchone()/execute() each check out a connection, run one
+    statement, and return before the connection goes back to the pool —
+    results are fully materialized inside that scope, never a live cursor
+    handed back to the caller (a cursor from a connection that's already
+    back in the pool, possibly claimed by another thread, would be a real
+    bug under pooling even though it was safe under the old single-shared-
+    connection model). run_transaction() checks out one connection for the
+    whole callback, same as before, for statements that must commit
+    together or not at all.
 
-    def _reconnect(self):
-        try:
-            self.conn.close()
-        except Exception:
-            pass
-        self.conn = psycopg.connect(self.database_url, autocommit=False)
+    Commit/rollback are explicit here rather than relying on
+    pool.connection()'s own auto-commit-on-clean-exit behavior (confirmed
+    via source that it does this, and also auto-replaces a broken
+    connection on return) — belt and suspenders, matches this file's
+    existing explicit style, and removes any doubt."""
+
+    def __init__(self, database_url, pool_size=8):
+        self.pool = ConnectionPool(
+            database_url, min_size=pool_size, max_size=pool_size,
+            kwargs={'autocommit': False}, open=False,
+        )
+        # open=False + explicit open(wait=True) — verified via source that
+        # open=False alone leaves the pool unusable (raises PoolClosed)
+        # until opened; wait=True blocks here until pool_size connections
+        # are actually ready, matching the old code's eager psycopg.connect()
+        # fail-fast-at-startup behavior instead of failing lazily on first use.
+        self.pool.open(wait=True, timeout=30)
+
+    def fetchall(self, sql, params=None):
+        with self.pool.connection() as conn:
+            cur = conn.execute(sql, params)
+            rows = cur.fetchall()
+            conn.commit()
+            return rows
+
+    def fetchone(self, sql, params=None):
+        with self.pool.connection() as conn:
+            cur = conn.execute(sql, params)
+            row = cur.fetchone()
+            conn.commit()
+            return row
 
     def execute(self, sql, params=None):
-        try:
-            cur = self.conn.execute(sql, params)
-        except (psycopg.OperationalError, psycopg.InterfaceError):
-            self._reconnect()
-            cur = self.conn.execute(sql, params)
-        self.conn.commit()
-        return cur
+        with self.pool.connection() as conn:
+            conn.execute(sql, params)
+            conn.commit()
 
     def run_transaction(self, fn):
-        """Runs fn(conn) — fn issues one or more related statements directly
-        against the connection (free to read intermediate results, e.g. a
-        RETURNING clause, to build later statements) and everything commits
-        together at the end, or none of it does. Used for logically-related
-        writes (e.g. a contribution's wallet row + its paired
-        opportunity_stats delta) that must never partially apply if a
-        connection hiccup or error interrupts the sequence midway — unlike
-        execute(), which commits after every single statement."""
-        try:
-            result = fn(self.conn)
-        except (psycopg.OperationalError, psycopg.InterfaceError):
-            self._reconnect()
-            result = fn(self.conn)
-        except Exception:
-            self.conn.rollback()
-            raise
-        self.conn.commit()
-        return result
+        """Runs fn(conn) — fn issues one or more related statements
+        directly against the connection (free to read intermediate
+        results, e.g. a RETURNING clause, to build later statements) and
+        everything commits together at the end, or none of it does. Used
+        for logically-related writes (e.g. a contribution's wallet row +
+        its paired opportunity_stats delta) that must never partially
+        apply if an error interrupts the sequence midway."""
+        with self.pool.connection() as conn:
+            try:
+                result = fn(conn)
+            except Exception:
+                conn.rollback()
+                raise
+            conn.commit()
+            return result
 
 
 def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, tier, wallet_count, price, trade_ts):
@@ -516,6 +550,12 @@ def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, t
         category = fetch_event_category(meta.get('eventId'))
 
     def txn(conn):
+        # Serializes tier-crossing writes for this exact market (rare — at
+        # most 6 per market, ever) so the is_current MAX(tier) subquery below
+        # always sees a consistent picture, even though worker threads now
+        # run against a pooled connection instead of one shared connection.
+        conn.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))',
+                      (f'{condition_id}|{outcome}',))
         conn.execute('''INSERT INTO opportunities
             (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, first_seen, last_updated, latest_price, category)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
@@ -525,22 +565,17 @@ def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, t
             WHERE condition_id=%s AND outcome=%s AND tier=%s''',
             (cumulative_usd, wallet_count, trade_ts, price, category, condition_id, outcome, tier))
         # is_current replaces the view's old MAX(tier) GROUP BY — flip it here
-        # instead of recomputing it on every read. Computed via an actual
-        # MAX(tier) subquery rather than "tier = this call's tier": different
-        # trades for the same market are processed concurrently across
-        # worker threads (each calling this independently), so DB commits
-        # for a lower tier from a slower thread can land AFTER a higher
-        # tier's commit from a faster one — confirmed live via a dev
-        # dry-run. Recomputing the true max inside this same transaction is
-        # self-correcting regardless of call order, since the module-level
-        # lock still serializes actual commits one at a time.
+        # instead of recomputing it on every read, via an actual MAX(tier)
+        # subquery rather than "tier = this call's tier" (different trades
+        # for the same market can commit out of tier order across worker
+        # threads — confirmed live via a dev dry-run). Self-correcting
+        # regardless of commit order, protected by the advisory lock above.
         conn.execute('''UPDATE opportunities SET is_current = (tier = (
                 SELECT MAX(tier) FROM opportunities WHERE condition_id=%s AND outcome=%s
             )) WHERE condition_id=%s AND outcome=%s''',
                    (condition_id, outcome, condition_id, outcome))
 
-    with lock:
-        db.run_transaction(txn)
+    db.run_transaction(txn)
 
 
 def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, price, trade_ts):
@@ -579,8 +614,7 @@ def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, pri
             (condition_id, outcome, is_new_wallet, usd, shares, usd, processed_at,
              is_new_wallet, usd, shares, usd, processed_at))
 
-    with lock:
-        db.run_transaction(txn)
+    db.run_transaction(txn)
 
 
 def touch_tracked_wallet(db, wallet):
@@ -588,9 +622,8 @@ def touch_tracked_wallet(db, wallet):
     tracked_wallets at all) — the UPDATE just affects zero rows for those.
     For a manually-tracked wallet, this is what keeps it from expiring out
     of load_config()'s 30-day-inactivity filter."""
-    with lock:
-        db.execute('UPDATE tracked_wallets SET last_active_at = %s WHERE wallet = %s',
-                    (datetime.now(timezone.utc), wallet))
+    db.execute('UPDATE tracked_wallets SET last_active_at = %s WHERE wallet = %s',
+                (datetime.now(timezone.utc), wallet))
 
 
 def record_exit(db, condition_id, outcome, wallet, price, usd, trade_ts):
@@ -607,9 +640,16 @@ def record_exit(db, condition_id, outcome, wallet, price, usd, trade_ts):
     processed_at = datetime.now(timezone.utc)
 
     def txn(conn):
+        # FOR UPDATE SKIP LOCKED: under a pooled connection, two concurrent
+        # SELLs for the same wallet+market could otherwise both SELECT the
+        # same oldest-open row before either commits, double-closing one
+        # position and double-decrementing opportunity_stats. SKIP LOCKED
+        # makes a second concurrent SELL skip the row already claimed by an
+        # in-flight transaction and fall through to the next genuinely-open
+        # one — correct FIFO behavior under real concurrency.
         row = conn.execute('''SELECT id, ts, usd, price FROM opportunity_wallets
             WHERE condition_id=%s AND outcome=%s AND wallet=%s AND exit_ts IS NULL
-            ORDER BY ts ASC LIMIT 1''', (condition_id, outcome, wallet)).fetchone()
+            ORDER BY ts ASC LIMIT 1 FOR UPDATE SKIP LOCKED''', (condition_id, outcome, wallet)).fetchone()
         if not row:
             return None
         row_id, buy_ts, entry_usd, entry_price = row
@@ -634,8 +674,7 @@ def record_exit(db, condition_id, outcome, wallet, price, usd, trade_ts):
             (1 if is_scalp else 0, realized_delta, shares, entry_usd, processed_at, condition_id, outcome))
         return hold_seconds, is_scalp
 
-    with lock:
-        return db.run_transaction(txn)
+    return db.run_transaction(txn)
 
 
 def check_market_closed(slug):
@@ -714,12 +753,11 @@ def refresh_wallet_balances(db, wallets):
     if not results:
         return
     now = datetime.now(timezone.utc)
-    with lock:
-        for wallet, bal in results.items():
-            db.execute('''INSERT INTO wallet_balances (wallet, usdc_balance, updated_at)
-                VALUES (%s,%s,%s)
-                ON CONFLICT (wallet) DO UPDATE SET usdc_balance=EXCLUDED.usdc_balance, updated_at=EXCLUDED.updated_at''',
-                (wallet, bal, now))
+    for wallet, bal in results.items():
+        db.execute('''INSERT INTO wallet_balances (wallet, usdc_balance, updated_at)
+            VALUES (%s,%s,%s)
+            ON CONFLICT (wallet) DO UPDATE SET usdc_balance=EXCLUDED.usdc_balance, updated_at=EXCLUDED.updated_at''',
+            (wallet, bal, now))
     print(f'  [balances] refreshed {len(results)}/{len(wallets)} wallet balances')
 
 
@@ -727,11 +765,10 @@ def sweep_resolved_positions(db):
     """Runs periodically (not per-trade — this is a network call per distinct open
     market, too slow to do inline). Finds every market with still-open positions,
     checks whether it has resolved, and closes out all its open rows at once."""
-    with lock:
-        rows = db.execute('''SELECT DISTINCT ow.condition_id, ow.outcome, o.slug
-            FROM opportunity_wallets ow
-            JOIN opportunities o ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
-            WHERE ow.exit_ts IS NULL AND (ow.market_closed IS NULL OR ow.market_closed = false)''').fetchall()
+    rows = db.fetchall('''SELECT DISTINCT ow.condition_id, ow.outcome, o.slug
+        FROM opportunity_wallets ow
+        JOIN opportunities o ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
+        WHERE ow.exit_ts IS NULL AND (ow.market_closed IS NULL OR ow.market_closed = false)''')
 
     distinct_slugs = list({slug for _, _, slug in rows})
     # One HTTP call per distinct slug — confirmed live this backlog can be
@@ -812,9 +849,9 @@ def sweep_resolved_positions(db):
                  n, won_inc, lost_inc, realized_delta, now))
             return n
 
-        with lock:
-            n = db.run_transaction(txn)
-            if n and won is not None:
+        n = db.run_transaction(txn)
+        if n and won is not None:
+            with state_lock:
                 resolved_markets.add((condition_id, outcome))
         if n:
             closed_count += 1
@@ -842,14 +879,13 @@ def record_ticker_trade(db, info, usd, price, side, tx_hash, trade_ts):
     """Inserted immediately on a big-enough trade, BEFORE on-chain wallet
     resolution — this is what makes the ticker sub-second instead of waiting
     on an RPC round trip like the roster-matched signals do."""
-    with lock:
-        cur = db.execute('''INSERT INTO ticker
-            (condition_id, outcome, slug, title, usd, price, side, tx_hash, wallet, roster_tagged, ts, epoch)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NULL,false,%s,%s)
-            RETURNING id''',
-            (info['conditionId'], info['outcome'], info['slug'], info['title'],
-             usd, price, side, tx_hash, trade_ts, trade_ts.timestamp()))
-        return cur.fetchone()[0]
+    # No RETURNING/return value here — update_ticker_wallet matches by
+    # tx_hash, not a ticker_id threaded back through the caller.
+    db.execute('''INSERT INTO ticker
+        (condition_id, outcome, slug, title, usd, price, side, tx_hash, wallet, roster_tagged, ts, epoch)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NULL,false,%s,%s)''',
+        (info['conditionId'], info['outcome'], info['slug'], info['title'],
+         usd, price, side, tx_hash, trade_ts, trade_ts.timestamp()))
 
 
 def update_ticker_wallet(db, tx_hash, wallet, wallet_name, roster_tagged, category):
@@ -857,16 +893,14 @@ def update_ticker_wallet(db, tx_hash, wallet, wallet_name, roster_tagged, catego
     # ticker_id record_ticker_trade returns — simpler than threading that
     # id all the way through process_trade, and just as correct since a
     # tx_hash only ever gets one ticker row.
-    with lock:
-        db.execute('''UPDATE ticker SET wallet=%s, wallet_name=%s, roster_tagged=%s, category=%s
-            WHERE tx_hash=%s AND wallet IS NULL''',
-                    (wallet, wallet_name, bool(roster_tagged), category, tx_hash))
+    db.execute('''UPDATE ticker SET wallet=%s, wallet_name=%s, roster_tagged=%s, category=%s
+        WHERE tx_hash=%s AND wallet IS NULL''',
+                (wallet, wallet_name, bool(roster_tagged), category, tx_hash))
 
 
 def prune_ticker(db):
     cutoff = time.time() - TICKER_RETENTION_SECONDS
-    with lock:
-        db.execute('DELETE FROM ticker WHERE epoch < %s', (cutoff,))
+    db.execute('DELETE FROM ticker WHERE epoch < %s', (cutoff,))
 
 
 # ---------------- signal processing ----------------
@@ -920,37 +954,32 @@ def write_price_updates(db, updates):
     submitted to the executor so a slow write never stalls the
     WS-receiving loop."""
     for condition_id, outcome, mid in updates:
-        with lock:
-            db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
-                       (mid, condition_id, outcome))
+        db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
+                   (mid, condition_id, outcome))
 
 
 def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster, wallet_names, trade_ts):
     """Single combined path — a same-day attempt to split this into a fast
     (ticker/mark-to-market) and slow (RPC-bound wallet resolution) pool on
     two separate executors made things measurably worse, not better, and
-    was reverted. Root cause: every DB write in this file, on either pool,
-    still serializes through the same module-level `lock` guarding one
-    shared psycopg connection — that lock is the actual throughput
-    ceiling, not worker count, and concentrating the very high aggregate
-    volume of write_price_updates (price_change quotes, ~1,900 tracked
-    pairs each eligible roughly every 15s) onto its own small pool created
-    worse congestion than spreading it across the original 16-worker pool
-    did. Confirmed live: bumping the fast pool from 4 to 16 workers did
-    not fix it — trades_seen (the fast path's own counter) stayed
-    essentially flat while roster_matches (the slow path) kept climbing
-    normally, proving the fast pool was lock-starved, not merely
-    understaffed. Reverting to one path on one pool restores the last
-    confirmed-working state. A real fix for the original RPC-burst
-    problem this split was trying to solve needs actual connection
-    pooling (multiple real DB connections, not one shared lock+connection)
-    — flagged as follow-up work, not attempted here under time pressure."""
+    was reverted. Root cause, confirmed live: every DB write in this file,
+    on either pool, still serialized through one shared psycopg connection
+    guarded by one Python lock — concentrating the very high aggregate
+    volume of write_price_updates onto its own small pool created worse
+    lock contention than spreading it across the original 16-worker pool.
+    trades_seen (the fast path's own counter) stayed flat while
+    roster_matches (the slow path) kept climbing normally, proving the
+    fast pool was lock-starved, not understaffed. The actual fix (this
+    file's Database class) is a real connection pool, so concurrent DB
+    writes execute concurrently at the Postgres level instead of being
+    serialized through Python — the module-level `state_lock` below now
+    only protects in-memory state, never a DB call."""
     if side not in ('BUY', 'SELL') or not tx_hash:
         return
     info = keyed_token_info.get(tid)
     if not info:
         return
-    with lock:
+    with state_lock:
         stats['trades_seen'] += 1
 
     usd = (float(price) if price else 0) * (float(size) if size else 0)
@@ -959,7 +988,7 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
     # what makes it sub-second instead of gated on wallet resolution.
     if usd >= TICKER_MIN_USD:
         record_ticker_trade(db, info, usd, float(price) if price else 0, side, tx_hash, trade_ts)
-        with lock:
+        with state_lock:
             stats['ticker_trades'] += 1
 
     # Mark-to-market: keep latest_price tracking the real market, not just
@@ -973,9 +1002,8 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
     key_probe = (info['conditionId'], info['outcome'])
     if price and float(price) > 0 and key_probe in tiers_hit and key_probe not in resolved_markets:
         last_mtm_update[key_probe] = time.time()  # a real fill is always fresher than a throttled quote update
-        with lock:
-            db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
-                       (float(price), key_probe[0], key_probe[1]))
+        db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
+                   (float(price), key_probe[0], key_probe[1]))
 
     if usd <= 0:
         return
@@ -985,13 +1013,21 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
     if wallet and not wallet_name:
         wallet_name = fetch_live_profile_name(wallet)  # not in our local 261k dataset — try live, covers anyone with a profile
 
+    # roster is mutated (clear+update) by apply_config on a config-poll
+    # thread while trade-processing threads read it here — state_lock
+    # makes the membership check atomic w.r.t. that clear+update pair, so a
+    # trade can never see a momentarily-empty roster and get silently
+    # dropped between the clear() and the update() landing.
+    with state_lock:
+        is_roster_wallet = bool(wallet and wallet in roster)
+
     if usd >= TICKER_MIN_USD:
         category = fetch_event_category(info.get('eventId'))
-        update_ticker_wallet(db, tx_hash, wallet, wallet_name, bool(wallet and wallet in roster), category)
+        update_ticker_wallet(db, tx_hash, wallet, wallet_name, is_roster_wallet, category)
 
-    if not wallet or wallet not in roster:
+    if not is_roster_wallet:
         return
-    with lock:
+    with state_lock:
         stats['roster_matches'] += 1
 
     if side == 'SELL':
@@ -1009,7 +1045,7 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
 
     key = (info['conditionId'], info['outcome'])
     trade_epoch = trade_ts.timestamp()
-    with lock:
+    with state_lock:
         bucket = conviction[key]
         already_hit = tiers_hit[key]
         is_first_ever = len(bucket) == 0 and SOLO_TIER not in already_hit
@@ -1069,12 +1105,12 @@ def main():
     # sat stale post-restart while its real price moved dramatically
     # (0.16 shown vs Polymarket's actual ~1.0 after a late-game swing) —
     # rehydrating from opportunities on startup closes that gap.
-    for cond_id, outcome, tier in db.execute('SELECT condition_id, outcome, tier FROM opportunities').fetchall():
+    for cond_id, outcome, tier in db.fetchall('SELECT condition_id, outcome, tier FROM opportunities'):
         tiers_hit[(cond_id, outcome)].add(tier)
     print(f'{len(tiers_hit)} already-tracked condition/outcome pairs rehydrated for mark-to-market.')
 
-    for cond_id, outcome in db.execute(
-        'SELECT DISTINCT condition_id, outcome FROM opportunity_wallets WHERE market_closed = true').fetchall():
+    for cond_id, outcome in db.fetchall(
+        'SELECT DISTINCT condition_id, outcome FROM opportunity_wallets WHERE market_closed = true'):
         resolved_markets.add((cond_id, outcome))
     print(f'{len(resolved_markets)} already-resolved condition/outcome pairs rehydrated (mark-to-market writes blocked for these).')
 
@@ -1123,7 +1159,7 @@ def main():
                         break  # break inner loop -> reconnect with fresh subscription
 
                 if now - last_heartbeat > HEARTBEAT_SECONDS:
-                    with lock:
+                    with state_lock:
                         n_opps = sum(len(v) for v in tiers_hit.values())
                         print(f'[heartbeat] trades_seen={stats["trades_seen"]} '
                               f'roster_matches={stats["roster_matches"]} '
