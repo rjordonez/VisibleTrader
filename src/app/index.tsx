@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom'
 import { TrendingUp, BarChart2, Bell, Radar, Settings, Search, Home, Star, ExternalLink } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import type { User } from '@supabase/supabase-js'
+import {
+  ResponsiveContainer, ComposedChart, Area, Scatter, XAxis, YAxis, CartesianGrid, Tooltip,
+} from 'recharts'
 import './app.css'
 
 const navItems = [
@@ -115,6 +118,22 @@ function opportunityCursor(o: Pick<Opportunity, 'last_updated' | 'id' | 'total_p
     return `total_profit.lt.${o.total_profit},and(total_profit.eq.${o.total_profit},id.lt.${o.id})`
   }
   return `last_updated.lt.${o.last_updated},and(last_updated.eq.${o.last_updated},id.lt.${o.id})`
+}
+
+// Every polling loop in this file is vulnerable to the same thing: browsers
+// heavily throttle setInterval in a backgrounded tab (sometimes to once a
+// minute or less), and a Realtime channel can go quiet across a long
+// suspension without visibly reconnecting. Left alone, a tab backgrounded
+// for a while and then refocused shows a frozen feed with no indication
+// anything's wrong — confirmed live, "everything says 14-23m ago and
+// nothing new arrives" is exactly this, not a backend outage. Call this
+// alongside a poll loop's own setInterval so switching back to the tab
+// always forces an immediate refetch instead of waiting on the next lucky
+// timer tick.
+function onTabVisible(cb: () => void) {
+  const handler = () => { if (document.visibilityState === 'visible') cb() }
+  document.addEventListener('visibilitychange', handler)
+  return () => document.removeEventListener('visibilitychange', handler)
 }
 
 
@@ -335,11 +354,13 @@ function SignalsDemo({ category }: { category: string }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedRefresh)
       .subscribe()
     const interval = setInterval(refreshKeepingDepth, 5000)
+    const unsubVisible = onTabVisible(refreshKeepingDepth)
     return () => {
       cancelled = true
       clearInterval(interval)
       if (debounceTimer) clearTimeout(debounceTimer)
       supabase.removeChannel(channel)
+      unsubVisible()
     }
   }, [])
 
@@ -383,7 +404,8 @@ function SignalsDemo({ category }: { category: string }) {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticker' }, load)
       .subscribe()
     const interval = setInterval(load, 3000)
-    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel) }
+    const unsubVisible = onTabVisible(load)
+    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel); unsubVisible() }
   }, [])
 
   // Win rate / wallet-balance data for the two threshold filters below —
@@ -413,7 +435,8 @@ function SignalsDemo({ category }: { category: string }) {
     }
     load()
     const interval = setInterval(load, 60000)
-    return () => { cancelled = true; clearInterval(interval) }
+    const unsubVisible = onTabVisible(load)
+    return () => { cancelled = true; clearInterval(interval); unsubVisible() }
   }, [])
 
   // Tracked picks — a personal watchlist (RLS-scoped to auth.uid(), see
@@ -906,11 +929,13 @@ function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; cate
       .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedLoad)
       .subscribe()
     const interval = setInterval(load, 5000)
+    const unsubVisible = onTabVisible(load)
     return () => {
       cancelled = true
       clearInterval(interval)
       if (debounceTimer) clearTimeout(debounceTimer)
       supabase.removeChannel(channel)
+      unsubVisible()
     }
   }, [])
 
@@ -1157,40 +1182,89 @@ interface ProfitsPosition {
   profit: number
 }
 
+interface ChartMarker { t: number; p: number; color: string; label: string }
+
+function PriceChartTooltip({ active, payload }: { active?: boolean; payload?: { payload: ChartPoint | ChartMarker }[] }) {
+  if (!active || !payload || !payload.length) return null
+  const point = payload[0].payload
+  // Marker points carry a `label` (see markers below); plain price-history
+  // points don't — same Tooltip renders either depending on which series
+  // is being hovered.
+  if ('label' in point) {
+    return <div className="sig-chart-tooltip">{point.label}</div>
+  }
+  return (
+    <div className="sig-chart-tooltip">
+      <div className="sig-chart-tooltip-price">{Math.round(point.p * 100)}¢</div>
+      <div className="sig-chart-tooltip-time">{fmtChartTime(point.t)}</div>
+    </div>
+  )
+}
+
+function fmtChartTime(t: number) {
+  return new Date(t * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+function ChartMarkerDot(props: { cx?: number; cy?: number; payload?: ChartMarker }) {
+  const { cx, cy, payload } = props
+  if (cx == null || cy == null || !payload) return null
+  return <circle cx={cx} cy={cy} r={5} fill={payload.color} stroke="#0b0d10" strokeWidth={1.5} />
+}
+
 function PriceChart({ history, wallets }: { history: ChartPoint[]; wallets: WalletContribution[] }) {
   if (history.length < 2) return null
-  const width = 1000, height = 220, padding = 24
   const times = history.map(h => h.t)
   const minT = Math.min(...times)
   const maxT = Math.max(...times)
-  const tRange = maxT - minT || 1
-  const xFor = (t: number) => padding + ((t - minT) / tRange) * (width - padding * 2)
-  const yFor = (p: number) => height - padding - p * (height - padding * 2) // price is always 0–1, fixed scale so moves aren't exaggerated
-  const points = history.map(h => `${xFor(h.t)},${yFor(h.p)}`).join(' ')
 
-  const markers = wallets
+  const markers: ChartMarker[] = wallets
     .map(w => {
       const t = new Date(w.ts).getTime() / 1000
       if (t < minT || t > maxT) return null
       const st = signalsTraderStatus(w)
-      return { x: xFor(t), y: yFor(w.price), color: st.color, label: `${traderLabel(w.wallet, w.wallet_name)} — ${st.label} — ${fmtFull(w.usd)} at ${Math.round(w.price * 100)}¢` }
+      return {
+        t, p: w.price, color: st.color,
+        label: `${traderLabel(w.wallet, w.wallet_name)} — ${st.label} — ${fmtFull(w.usd)} at ${Math.round(w.price * 100)}¢`,
+      }
     })
-    .filter((m): m is { x: number; y: number; color: string; label: string } => m !== null)
+    .filter((m): m is ChartMarker => m !== null)
 
   return (
-    <svg className="sig-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ height: 220 }}>
-      <line x1={padding} y1={yFor(1)} x2={width - padding} y2={yFor(1)} stroke="var(--border)" strokeWidth={1} />
-      <line x1={padding} y1={yFor(0.5)} x2={width - padding} y2={yFor(0.5)} stroke="var(--border)" strokeWidth={1} strokeDasharray="3 3" />
-      <line x1={padding} y1={yFor(0)} x2={width - padding} y2={yFor(0)} stroke="var(--border)" strokeWidth={1} />
-      <text x={padding} y={yFor(1) - 4} fill="var(--text-faint)" fontSize="9">100¢</text>
-      <text x={padding} y={yFor(0) - 4} fill="var(--text-faint)" fontSize="9">0¢</text>
-      <polyline points={points} fill="none" stroke="#2f6fed" strokeWidth={2} />
-      {markers.map((m, i) => (
-        <circle key={i} cx={m.x} cy={m.y} r={5} fill={m.color} stroke="#0b0d10" strokeWidth={1.5}>
-          <title>{m.label}</title>
-        </circle>
-      ))}
-    </svg>
+    <div>
+      <ResponsiveContainer width="100%" height={220}>
+        <ComposedChart data={history} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id="sig-chart-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#2f6fed" stopOpacity={0.35} />
+              <stop offset="100%" stopColor="#2f6fed" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+          <XAxis
+            dataKey="t" type="number" domain={[minT, maxT]}
+            tickFormatter={fmtChartTime} stroke="var(--text-faint)" fontSize={10}
+            tickLine={false} axisLine={{ stroke: 'var(--border)' }} minTickGap={40}
+          />
+          <YAxis
+            domain={[0, 1]} ticks={[0, 0.5, 1]}
+            tickFormatter={(v: number) => `${Math.round(v * 100)}¢`}
+            stroke="var(--text-faint)" fontSize={10}
+            tickLine={false} axisLine={false} width={32}
+          />
+          <Tooltip content={<PriceChartTooltip />} cursor={{ stroke: 'var(--text-faint)', strokeDasharray: '3 3' }} />
+          <Area
+            type="monotone" dataKey="p" stroke="#2f6fed" strokeWidth={2}
+            fill="url(#sig-chart-fill)" dot={false} isAnimationActive={false}
+          />
+          <Scatter data={markers} dataKey="p" shape={<ChartMarkerDot />} isAnimationActive={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div className="sig-chart-legend">
+        <span className="sig-chart-legend-item"><span className="sig-chart-dot" style={{ background: '#00d17a' }} />Won / Holding</span>
+        <span className="sig-chart-legend-item"><span className="sig-chart-dot" style={{ background: '#ff3b5c' }} />Lost / Exited</span>
+        <span className="sig-chart-legend-item"><span className="sig-chart-dot" style={{ background: '#2f6fed' }} />Scalped</span>
+      </div>
+    </div>
   )
 }
 
@@ -1247,7 +1321,8 @@ function ProfitsPage() {
     }
     load()
     const interval = setInterval(load, 15000)
-    return () => { cancelled = true; clearInterval(interval) }
+    const unsubVisible = onTabVisible(load)
+    return () => { cancelled = true; clearInterval(interval); unsubVisible() }
   }, [])
 
   const winRate = summary && summary.won + summary.lost > 0 ? (summary.won / (summary.won + summary.lost)) * 100 : 0
@@ -1381,7 +1456,8 @@ function LeaderboardPage({ onSelectWallet }: { onSelectWallet: (wallet: string) 
     }
     load()
     const interval = setInterval(load, 15000)
-    return () => { cancelled = true; clearInterval(interval) }
+    const unsubVisible = onTabVisible(load)
+    return () => { cancelled = true; clearInterval(interval); unsubVisible() }
   }, [])
 
   return (
@@ -1868,7 +1944,8 @@ function AlertsPage() {
     }
     load()
     const interval = setInterval(load, 5000)
-    return () => { cancelled = true; clearInterval(interval) }
+    const unsubVisible = onTabVisible(load)
+    return () => { cancelled = true; clearInterval(interval); unsubVisible() }
   }, [watchedWallets, permission])
 
   useEffect(() => {
@@ -1891,7 +1968,8 @@ function AlertsPage() {
     }
     load()
     const interval = setInterval(load, 5000)
-    return () => { cancelled = true; clearInterval(interval) }
+    const unsubVisible = onTabVisible(load)
+    return () => { cancelled = true; clearInterval(interval); unsubVisible() }
   }, [minTier, permission])
 
   const requestPermission = () => {

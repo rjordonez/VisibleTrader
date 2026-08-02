@@ -737,6 +737,21 @@
 
 .sig-chart { width: 100%; height: 160px; margin-bottom: 24px; }
 
+.sig-chart-tooltip {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 10px; font-size: 11.5px; color: var(--text);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+}
+.sig-chart-tooltip-price { font-weight: 700; }
+.sig-chart-tooltip-time { color: var(--text-faint); font-size: 10.5px; margin-top: 2px; }
+
+.sig-chart-legend { display: flex; gap: 16px; margin: 6px 0 20px; flex-wrap: wrap; }
+.sig-chart-legend-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-dim);
+}
+.sig-chart-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
 .sig-watch-form { display: flex; gap: 8px; margin-bottom: 20px; }
 .sig-watch-input {
   flex: 1; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px;
