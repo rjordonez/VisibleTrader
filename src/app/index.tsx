@@ -106,11 +106,14 @@ function marketUrl(slug: string | null) {
 // since OFFSET pagination degrades as the table grows.
 const PAGE_SIZE = 300
 
-function opportunityCursor(o: Pick<Opportunity, 'last_updated' | 'id'>) {
+function opportunityCursor(o: Pick<Opportunity, 'last_updated' | 'id' | 'total_profit'>, sortMode: 'recent' | 'profit') {
   // PostgREST has no clean compound row-value "<" comparison, so this is
-  // the standard keyset-pagination workaround: everything strictly older,
-  // plus same-instant rows with a smaller id (the id tiebreaker only ever
-  // matters when two tier crossings land in the same millisecond).
+  // the standard keyset-pagination workaround: everything strictly past
+  // the last row's sort key, plus same-value rows with a smaller id (the
+  // id tiebreaker only ever matters on an exact tie in the sort column).
+  if (sortMode === 'profit') {
+    return `total_profit.lt.${o.total_profit},and(total_profit.eq.${o.total_profit},id.lt.${o.id})`
+  }
   return `last_updated.lt.${o.last_updated},and(last_updated.eq.${o.last_updated},id.lt.${o.id})`
 }
 
@@ -235,15 +238,53 @@ function SignalsDemo({ category }: { category: string }) {
   const [hasMore, setHasMore]             = useState(false)
   const [loadingMore, setLoadingMore]     = useState(false)
 
+  // Every discovery filter is pushed into the query itself instead of
+  // filtering the already-fetched page client-side — a narrow filter (e.g.
+  // 9+ traders) previously showed nothing until you'd paged deep enough to
+  // stumble onto a match, since it only ever searched whatever was already
+  // in the browser. Rebuilt fresh each render (cheap — just query-builder
+  // calls, no network) and read through a ref so the mount-once effect
+  // below (which owns the Realtime subscription) always uses the current
+  // filter state without needing to tear down and resubscribe on every
+  // slider tick.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const buildQueryRef = useRef<() => any>(() => supabase.from('opportunities_live').select('*'))
+  buildQueryRef.current = () => {
+    let q = supabase.from('opportunities_live').select('*')
+    if (category !== 'all') {
+      q = category === 'other' ? q.or('category.eq.other,category.is.null') : q.eq('category', category)
+    }
+    if (todayOnly) {
+      const startOfToday = new Date()
+      startOfToday.setHours(0, 0, 0, 0)
+      q = q.gte('first_seen', startOfToday.toISOString())
+    }
+    if (minWinRate > 0) q = q.gte('best_win_rate', minWinRate / 100)
+    if (minBetRatio > 0) q = q.gte('best_bet_ratio', minBetRatio / 100)
+    q = q.gte('latest_price', minPrice / 100).lte('latest_price', maxPrice / 100)
+    q = q.gte('cumulative_usd', minTotal)
+    if (maxTotal < TOTAL_CAP) q = q.lte('cumulative_usd', maxTotal)
+    if (minWon > WON_FLOOR) q = q.gte('total_profit', minWon)
+    if (maxWon < WON_CAP) q = q.lte('total_profit', maxWon)
+    q = q.gte('wallet_count', minTraders)
+    if (maxTraders < TRADERS_CAP) q = q.lte('wallet_count', maxTraders)
+    return sortMode === 'profit'
+      ? q.order('total_profit', { ascending: false }).order('id', { ascending: false })
+      : q.order('last_updated', { ascending: false }).order('id', { ascending: false })
+  }
+
+  // How many rows are currently loaded for the active filter set — a
+  // background refresh re-fetches this many instead of collapsing back to
+  // one page, so "Load more" doesn't get silently wiped out from under you
+  // by the next 5s poll or Realtime event.
+  const loadedCountRef = useRef(PAGE_SIZE)
+  const loadFirstPageRef = useRef<() => void>(() => {})
+
   useEffect(() => {
     let cancelled = false
-    // Refresh (poll/realtime/tab-open) always resets to the first page —
-    // this is "what's live right now", not a position to preserve across
-    // reloads. "Load more" (below) is the only thing that extends past it.
-    const load = () => {
-      Promise.resolve(supabase.from('opportunities_live').select('*')
-        .order('last_updated', { ascending: false }).order('id', { ascending: false })
-        .limit(PAGE_SIZE))
+    const loadFirstPage = () => {
+      loadedCountRef.current = PAGE_SIZE
+      Promise.resolve(buildQueryRef.current!().limit(PAGE_SIZE))
         .then(({ data, error }) => {
           if (cancelled) return
           if (error) throw error
@@ -259,7 +300,19 @@ function SignalsDemo({ category }: { category: string }) {
           setLoading(false)
         })
     }
-    load()
+    const refreshKeepingDepth = () => {
+      Promise.resolve(buildQueryRef.current!().limit(loadedCountRef.current))
+        .then(({ data, error }) => {
+          if (cancelled) return
+          if (error) throw error
+          const rows = (data ?? []) as Opportunity[]
+          setOpportunities(rows)
+          setHasMore(rows.length === loadedCountRef.current)
+        })
+        .catch(() => {})
+    }
+    loadFirstPageRef.current = loadFirstPage
+    loadFirstPage()
     // opportunities_live is a view, so Realtime (which taps Postgres's
     // replication stream on real tables) can't subscribe to it directly —
     // instead, listen for changes on `opportunities` and re-fetch once one
@@ -269,19 +322,19 @@ function SignalsDemo({ category }: { category: string }) {
     // `opportunities` (latest_price, last_updated, or is_current), so a
     // wallet-level change is never invisible here. Mark-to-market price
     // ticks land on `opportunities` continuously across ~1,400 tracked
-    // markets, so this debounces (trailing-edge) rather than firing `load`
-    // on every single event. The interval stays as a fallback in case a
+    // markets, so this debounces (trailing-edge) rather than firing on
+    // every single event. The interval stays as a fallback in case a
     // realtime event is ever missed (dropped connection etc.).
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
-    const debouncedLoad = () => {
+    const debouncedRefresh = () => {
       if (debounceTimer) clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(load, 1000)
+      debounceTimer = setTimeout(refreshKeepingDepth, 1000)
     }
     const channel = supabase
       .channel('opportunities-live-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedRefresh)
       .subscribe()
-    const interval = setInterval(load, 5000)
+    const interval = setInterval(refreshKeepingDepth, 5000)
     return () => {
       cancelled = true
       clearInterval(interval)
@@ -290,18 +343,27 @@ function SignalsDemo({ category }: { category: string }) {
     }
   }, [])
 
+  // Refetches page 1 for the new filter set whenever a filter changes —
+  // debounced since range sliders fire on every drag tick. Skips the very
+  // first render since the mount effect above already loads page 1.
+  const filterMounted = useRef(false)
+  useEffect(() => {
+    if (!filterMounted.current) { filterMounted.current = true; return }
+    const t = setTimeout(() => loadFirstPageRef.current(), 300)
+    return () => clearTimeout(t)
+  }, [category, todayOnly, minWinRate, minBetRatio, minPrice, maxPrice,
+      minTotal, maxTotal, minWon, maxWon, minTraders, maxTraders, sortMode])
+
   const loadMore = () => {
     const last = opportunities[opportunities.length - 1]
     if (!last || loadingMore) return
     setLoadingMore(true)
-    Promise.resolve(supabase.from('opportunities_live').select('*')
-      .or(opportunityCursor(last))
-      .order('last_updated', { ascending: false }).order('id', { ascending: false })
-      .limit(PAGE_SIZE))
+    Promise.resolve(buildQueryRef.current!().or(opportunityCursor(last, sortMode)).limit(PAGE_SIZE))
       .then(({ data, error }) => {
         if (error) throw error
         const rows = (data ?? []) as Opportunity[]
         setOpportunities(prev => [...prev, ...rows])
+        loadedCountRef.current += rows.length
         setHasMore(rows.length === PAGE_SIZE)
       })
       .catch(() => {})
@@ -438,20 +500,10 @@ function SignalsDemo({ category }: { category: string }) {
       return cents >= minPrice && cents <= maxPrice
     })
     .filter(t => t.usd >= minTotal && (maxTotal >= TOTAL_CAP || t.usd <= maxTotal))
-  const filteredOpportunities = byCategory(opportunities)
-    .filter(o => !todayOnly || isToday(o.first_seen))
-    .filter(o => minWinRate === 0 || o.best_win_rate * 100 >= minWinRate)
-    .filter(o => minBetRatio === 0 || o.best_bet_ratio * 100 >= minBetRatio)
-    .filter(o => {
-      const cents = o.latest_price * 100
-      return cents >= minPrice && cents <= maxPrice
-    })
-    .filter(o => o.cumulative_usd >= minTotal && (maxTotal >= TOTAL_CAP || o.cumulative_usd <= maxTotal))
-    .filter(o => (minWon <= WON_FLOOR || o.total_profit >= minWon) && (maxWon >= WON_CAP || o.total_profit <= maxWon))
-    .filter(o => o.wallet_count >= minTraders && (maxTraders >= TRADERS_CAP || o.wallet_count <= maxTraders))
-    .sort((a, b) => sortMode === 'profit'
-      ? b.total_profit - a.total_profit
-      : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
+  // All discovery filtering + sorting now happens server-side in the query
+  // itself (see buildQueryRef above) — the fetched page is already exactly
+  // the filtered, sorted set, so nothing left to do here.
+  const filteredOpportunities = opportunities
   // Tracked tab intentionally ignores the discovery filters above (category,
   // win rate, price, etc.) — a watchlist shouldn't lose items just because
   // an unrelated filter chip happens to be active elsewhere on the page.
