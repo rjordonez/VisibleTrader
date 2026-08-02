@@ -644,6 +644,16 @@
 }
 .sig-card:hover { border-color: rgba(255,255,255,0.16); transform: translateY(-1px); }
 .sig-card-top { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+
+.sig-track-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; flex-shrink: 0;
+  background: none; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-dim); cursor: pointer; padding: 0;
+  transition: border-color 0.12s;
+}
+.sig-track-btn:hover { border-color: var(--gold); }
+.sig-track-btn:disabled { opacity: 0.5; cursor: default; }
 .sig-card-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
 .sig-card-q { font-size: 14px; font-weight: 700; line-height: 1.35; }
 .sig-card-q .sig-out { color: var(--text-dim); font-weight: 500; }
