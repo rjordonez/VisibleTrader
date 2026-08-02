@@ -6,4 +6,4 @@
 set -e
 
 gcloud compute ssh visibletraderhq@instance-20260801-214922 --zone=us-central1-a --quiet \
-  --command="cd ~/venter && git pull && sudo systemctl restart live-signal-service && sleep 3 && sudo systemctl status live-signal-service --no-pager"
+  --command="cd ~/venter && git pull && venv/bin/pip install -q -r requirements.txt && sudo systemctl restart live-signal-service && sleep 3 && sudo systemctl status live-signal-service --no-pager"
