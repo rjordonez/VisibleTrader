@@ -201,6 +201,12 @@ function SignalsDemo({ category }: { category: string }) {
   const [maxTotal, setMaxTotal]           = useState(TOTAL_CAP)
   const [minWon, setMinWon]               = useState(WON_FLOOR)
   const [maxWon, setMaxWon]               = useState(WON_CAP)
+  // wallet_count checked live: 1-16 actual range, p95=7 — small and bounded
+  // enough that a plain 1-20 cap needs no "unlimited" sentinel like
+  // Total/Won do.
+  const TRADERS_CAP = 20
+  const [minTraders, setMinTraders]       = useState(1)
+  const [maxTraders, setMaxTraders]       = useState(TRADERS_CAP)
   const [winRateMap, setWinRateMap]       = useState<Map<string, number>>(new Map())
   const [balanceMap, setBalanceMap]       = useState<Map<string, number>>(new Map())
 
@@ -362,6 +368,7 @@ function SignalsDemo({ category }: { category: string }) {
     })
     .filter(o => o.cumulative_usd >= minTotal && (maxTotal >= TOTAL_CAP || o.cumulative_usd <= maxTotal))
     .filter(o => (minWon <= WON_FLOOR || o.total_profit >= minWon) && (maxWon >= WON_CAP || o.total_profit <= maxWon))
+    .filter(o => o.wallet_count >= minTraders && (maxTraders >= TRADERS_CAP || o.wallet_count <= maxTraders))
     .sort((a, b) => sortMode === 'profit'
       ? b.total_profit - a.total_profit
       : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
@@ -595,6 +602,31 @@ function SignalsDemo({ category }: { category: string }) {
                 <input
                   type="range" min={WON_FLOOR} max={WON_CAP} step={250} value={maxWon}
                   onChange={e => setMaxWon(Math.max(Number(e.target.value), minWon + 250))}
+                  className="sig-range-input"
+                />
+              </div>
+            </div>
+          )}
+
+          {tab === 'vetted' && (
+            <div className="sig-price-range" style={{ marginTop: 10 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                Trader size: {minTraders} – {maxTraders >= TRADERS_CAP ? `${TRADERS_CAP}+` : maxTraders}
+              </span>
+              <div className="sig-range-track-wrap">
+                <div className="sig-range-track" />
+                <div className="sig-range-fill" style={{
+                  left: `${((minTraders - 1) / (TRADERS_CAP - 1)) * 100}%`,
+                  right: `${100 - ((maxTraders - 1) / (TRADERS_CAP - 1)) * 100}%`,
+                }} />
+                <input
+                  type="range" min={1} max={TRADERS_CAP} step={1} value={minTraders}
+                  onChange={e => setMinTraders(Math.min(Number(e.target.value), maxTraders - 1))}
+                  className="sig-range-input"
+                />
+                <input
+                  type="range" min={1} max={TRADERS_CAP} step={1} value={maxTraders}
+                  onChange={e => setMaxTraders(Math.max(Number(e.target.value), minTraders + 1))}
                   className="sig-range-input"
                 />
               </div>
