@@ -76,6 +76,10 @@ lock = threading.Lock()
 stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trades': 0}
 conviction = defaultdict(list)  # (conditionId, outcome) -> [(ts, wallet, usd, price), ...]
 tiers_hit = defaultdict(set)    # (conditionId, outcome) -> {tiers already recorded}
+resolved_markets = set()        # (conditionId, outcome) already resolved — mark-to-market writes
+                                 # must never touch these again, or a late/delayed WS tick from
+                                 # right before the market closed can silently overwrite the
+                                 # snapped-to-final price with a stale mid-market quote.
 event_categories = {}           # eventId -> category slug, cached (an /events/{id} call per market is too expensive to do for the whole active-token universe up front)
 
 
@@ -668,6 +672,7 @@ def sweep_resolved_positions(db):
             if won is not None:
                 db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
                            (1.0 if won else 0.0, condition_id, outcome))
+                resolved_markets.add((condition_id, outcome))
         closed_count += 1
     if closed_count:
         print(f'  [resolved] {closed_count} market/outcome pairs closed out (positions settled by resolution, not a sale)')
@@ -730,7 +735,7 @@ def filter_price_changes(keyed_token_info, item):
         if not info:
             continue
         key = (info['conditionId'], info['outcome'])
-        if key not in tiers_hit:
+        if key not in tiers_hit or key in resolved_markets:
             continue
         try:
             best_bid = float(change['best_bid'])
@@ -784,7 +789,7 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
     # a market we already track is a free, sub-second price update — no
     # extra network call, since we already receive it over the WS.
     key_probe = (info['conditionId'], info['outcome'])
-    if price and float(price) > 0 and key_probe in tiers_hit:
+    if price and float(price) > 0 and key_probe in tiers_hit and key_probe not in resolved_markets:
         last_mtm_update[key_probe] = time.time()  # a real fill is always fresher than a throttled quote update
         with lock:
             db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
@@ -885,6 +890,11 @@ def main():
     for cond_id, outcome, tier in db.execute('SELECT condition_id, outcome, tier FROM opportunities').fetchall():
         tiers_hit[(cond_id, outcome)].add(tier)
     print(f'{len(tiers_hit)} already-tracked condition/outcome pairs rehydrated for mark-to-market.')
+
+    for cond_id, outcome in db.execute(
+        'SELECT DISTINCT condition_id, outcome FROM opportunity_wallets WHERE market_closed = true').fetchall():
+        resolved_markets.add((cond_id, outcome))
+    print(f'{len(resolved_markets)} already-resolved condition/outcome pairs rehydrated (mark-to-market writes blocked for these).')
 
     executor = ThreadPoolExecutor(max_workers=args.workers)
 
