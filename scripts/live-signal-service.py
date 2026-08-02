@@ -48,6 +48,7 @@ KNOWN_CATEGORY_SLUGS = {
     'mentions', 'weather', 'economics', 'tech', 'finance',
 }  # Polymarket's own top-level taxonomy (same list the leaderboard scraper uses)
 ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
+ENV_LOCAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env.local')
 
 
 def load_env_file(path):
@@ -66,7 +67,10 @@ def load_env_file(path):
             os.environ.setdefault(key.strip(), value.strip())
 
 
+load_env_file(ENV_LOCAL_PATH)  # loaded first — setdefault() means .env.local wins over .env, matching Vite's precedence
 load_env_file(ENV_PATH)
+if 'vohtqodprqpobvvcdypy' in os.environ.get('DATABASE_URL', ''):
+    print('⚠️  DATABASE_URL points at PRODUCTION — if this is running on your own machine (not the VM), that is almost certainly wrong. Ctrl+C now if so.')
 
 lock = threading.Lock()
 stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trades': 0}

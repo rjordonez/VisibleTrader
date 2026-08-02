@@ -13,6 +13,8 @@ dist-ssr
 *.local
 .env
 .env.local
+venv
+__pycache__
 
 # Generated data dumps (scripts/*.py output)
 polymarket_users.json

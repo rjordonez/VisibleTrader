@@ -15,6 +15,7 @@ import os
 import psycopg
 
 ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
+ENV_LOCAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env.local')
 BATCH_SIZE = 2000
 
 
@@ -30,6 +31,7 @@ def load_env_file(path):
             os.environ.setdefault(key.strip(), value.strip())
 
 
+load_env_file(ENV_LOCAL_PATH)  # loaded first — setdefault() means .env.local wins over .env, matching Vite's precedence
 load_env_file(ENV_PATH)
 
 
