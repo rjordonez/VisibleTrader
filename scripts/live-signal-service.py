@@ -641,6 +641,16 @@ def sweep_resolved_positions(db):
             db.execute('''UPDATE opportunity_wallets SET market_closed=true, resolved_win=%s, resolved_ts=%s
                 WHERE condition_id=%s AND outcome=%s AND exit_ts IS NULL''',
                 (won, now, condition_id, outcome))
+            # Mark-to-market (both the trade-tick and price_change paths) only
+            # ever runs while a market is still actively trading — once it
+            # resolves, no more WS events for it arrive, so latest_price was
+            # freezing at whatever it happened to be right before resolution
+            # instead of snapping to the real final price. Confirmed live: a
+            # market that resolved Under=$0 was still showing 16c on the
+            # Signals page because nothing ever wrote the resolved price.
+            if won is not None:
+                db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
+                           (1.0 if won else 0.0, condition_id, outcome))
         closed_count += 1
     if closed_count:
         print(f'  [resolved] {closed_count} market/outcome pairs closed out (positions settled by resolution, not a sale)')
