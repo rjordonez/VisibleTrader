@@ -834,6 +834,18 @@ def main():
     wallet_names = build_wallet_names(all_users)
     print(f'{len(roster)} roster wallets loaded, {len(wallet_names)} known wallet names available.')
 
+    # tiers_hit gates every mark-to-market write (both process_trade's and
+    # process_price_change's) — it's an in-memory set, so without this it
+    # starts empty on every restart, silently stopping price updates for
+    # every already-tracked market until each one happens to get a fresh
+    # top-trader trade. Confirmed live: a market that was already tracked
+    # sat stale post-restart while its real price moved dramatically
+    # (0.16 shown vs Polymarket's actual ~1.0 after a late-game swing) —
+    # rehydrating from opportunities on startup closes that gap.
+    for cond_id, outcome, tier in db.execute('SELECT condition_id, outcome, tier FROM opportunities').fetchall():
+        tiers_hit[(cond_id, outcome)].add(tier)
+    print(f'{len(tiers_hit)} already-tracked condition/outcome pairs rehydrated for mark-to-market.')
+
     executor = ThreadPoolExecutor(max_workers=args.workers)
 
     print('Fetching active market/token universe...')
