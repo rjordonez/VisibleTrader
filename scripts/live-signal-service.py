@@ -675,6 +675,47 @@ def prune_ticker(db):
 
 # ---------------- signal processing ----------------
 
+last_mtm_update = {}  # (conditionId, outcome) -> unix time of last mark-to-market write
+MTM_THROTTLE_SECONDS = 2  # price_change fires far more often than trades — measured live:
+# 490 price_change events vs 0 last_trade_price events in 20s for one token during an active
+# game. Throttling avoids hammering the DB with writes while still staying seconds-fresh
+# instead of stale-until-the-next-fill (which could be minutes on a slow-trading token).
+
+
+def process_price_change(db, keyed_token_info, item):
+    """Order-book quote movements (best_bid/best_ask) arrive far more often than
+    actual trade fills. Mark-to-market previously only updated latest_price inside
+    process_trade on a fill, so it could sit stale for minutes on a token with light
+    trading even while the real market — and Polymarket's own displayed price —
+    kept moving. Confirmed live against gamma-api: our latest_price read 12c while
+    Polymarket showed 23c for the same market, with zero trades on that token in the
+    prior 20s of WS traffic. Midpoint of best_bid/best_ask is a far more current
+    proxy for "the real price right now" than waiting for the next fill."""
+    now = time.time()
+    for change in item.get('price_changes', []):
+        tid = change.get('asset_id')
+        info = keyed_token_info.get(tid)
+        if not info:
+            continue
+        key = (info['conditionId'], info['outcome'])
+        if key not in tiers_hit:
+            continue
+        try:
+            best_bid = float(change['best_bid'])
+            best_ask = float(change['best_ask'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if best_bid <= 0 or best_ask <= 0:
+            continue
+        if now - last_mtm_update.get(key, 0) < MTM_THROTTLE_SECONDS:
+            continue
+        last_mtm_update[key] = now
+        mid = (best_bid + best_ask) / 2
+        with lock:
+            db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
+                       (mid, key[0], key[1]))
+
+
 def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster, wallet_names):
     if side not in ('BUY', 'SELL') or not tx_hash:
         return
@@ -704,6 +745,7 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
     # extra network call, since we already receive it over the WS.
     key_probe = (info['conditionId'], info['outcome'])
     if price and float(price) > 0 and key_probe in tiers_hit:
+        last_mtm_update[key_probe] = time.time()  # a real fill is always fresher than a throttled quote update
         with lock:
             db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
                        (float(price), key_probe[0], key_probe[1]))
@@ -880,6 +922,8 @@ def main():
                                     item.get('asset_id'), item.get('price'), item.get('size'),
                                     item.get('side'), item.get('transaction_hash'), roster, wallet_names,
                                 )
+                            elif item.get('event_type') == 'price_change':
+                                executor.submit(process_price_change, db, keyed_token_info, item)
                     elif opcode == 0x9:
                         send_frame(ssock, payload, opcode=0xA)
                     elif opcode == 0x8:
