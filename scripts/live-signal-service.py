@@ -298,9 +298,10 @@ def load_config(db):
 
 
 def apply_config(cfg, roster_set, all_users):
-    """Reassigning these module globals is enough — every read site (process_trade,
-    record_exit, etc.) looks the name up fresh each call rather than holding a
-    stale local copy, so this takes effect on the very next trade with no restart.
+    """Reassigning these module globals is enough — every read site
+    (resolve_and_record_trade, record_exit, etc.) looks the name up fresh
+    each call rather than holding a stale local copy, so this takes effect
+    on the very next trade with no restart.
     roster_set is mutated in place (clear+update) rather than reassigned, since
     main() and every in-flight executor.submit closure already hold a reference
     to that exact set object."""
@@ -505,7 +506,7 @@ class Database:
         return result
 
 
-def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, tier, wallet_count, price):
+def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, tier, wallet_count, price, trade_ts):
     slug = title = event_slug = None
     category = 'other'
     meta = token_info.get((condition_id, outcome))
@@ -513,17 +514,16 @@ def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, t
         slug, title = meta.get('slug'), meta.get('title')
         event_slug = meta.get('eventSlug')
         category = fetch_event_category(meta.get('eventId'))
-    now = datetime.now(timezone.utc)
 
     def txn(conn):
         conn.execute('''INSERT INTO opportunities
             (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, first_seen, last_updated, latest_price, category)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (condition_id, outcome, tier) DO NOTHING''',
-            (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, now, now, price, category))
+            (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, trade_ts, trade_ts, price, category))
         conn.execute('''UPDATE opportunities SET cumulative_usd=%s, wallet_count=%s, last_updated=%s, latest_price=%s, category=%s
             WHERE condition_id=%s AND outcome=%s AND tier=%s''',
-            (cumulative_usd, wallet_count, now, price, category, condition_id, outcome, tier))
+            (cumulative_usd, wallet_count, trade_ts, price, category, condition_id, outcome, tier))
         # is_current replaces the view's old MAX(tier) GROUP BY — flip it here
         # instead of recomputing it on every read. Computed via an actual
         # MAX(tier) subquery rather than "tier = this call's tier": different
@@ -543,8 +543,12 @@ def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, t
         db.run_transaction(txn)
 
 
-def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, price):
-    now = datetime.now(timezone.utc)
+def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, price, trade_ts):
+    # trade_ts (the real on-chain trade time) is what "ts" means to anyone
+    # reading it later — used for FIFO exit ordering and displayed as "Xm
+    # ago". updated_at stays processing time deliberately: if it ever
+    # visibly lags trade_ts, that gap IS the backlog signal.
+    processed_at = datetime.now(timezone.utc)
     shares = usd / price
 
     # opportunity_stats/opportunity_contributors: the incrementally-
@@ -558,7 +562,7 @@ def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, pri
     # persisted with its paired stats delta lost.
     def txn(conn):
         conn.execute('''INSERT INTO opportunity_wallets (condition_id, outcome, wallet, wallet_name, usd, price, ts)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)''', (condition_id, outcome, wallet, wallet_name, usd, price, now))
+            VALUES (%s,%s,%s,%s,%s,%s,%s)''', (condition_id, outcome, wallet, wallet_name, usd, price, trade_ts))
         cur = conn.execute('''INSERT INTO opportunity_contributors (condition_id, outcome, wallet)
             VALUES (%s,%s,%s) ON CONFLICT DO NOTHING RETURNING 1''', (condition_id, outcome, wallet))
         is_new_wallet = 1 if cur.fetchone() is not None else 0
@@ -572,8 +576,8 @@ def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, pri
                 open_shares_sum = opportunity_stats.open_shares_sum + %s,
                 open_invested_usd = opportunity_stats.open_invested_usd + %s,
                 updated_at = %s''',
-            (condition_id, outcome, is_new_wallet, usd, shares, usd, now,
-             is_new_wallet, usd, shares, usd, now))
+            (condition_id, outcome, is_new_wallet, usd, shares, usd, processed_at,
+             is_new_wallet, usd, shares, usd, processed_at))
 
     with lock:
         db.run_transaction(txn)
@@ -589,14 +593,18 @@ def touch_tracked_wallet(db, wallet):
                     (datetime.now(timezone.utc), wallet))
 
 
-def record_exit(db, condition_id, outcome, wallet, price, usd):
+def record_exit(db, condition_id, outcome, wallet, price, usd, trade_ts):
     """Closes the oldest still-open contribution row for this wallet+market
     (FIFO — this is a best-effort signal classifier, not real accounting) and
     classifies the round trip as a scalp (held < SCALP_WINDOW_SECONDS) or a
     genuine exit. Returns (hold_seconds, is_scalp) or None if this wallet has
     no tracked open entry here (e.g. they sold a position opened before this
     process started watching, or before it started tracking sells at all)."""
-    now_dt = datetime.now(timezone.utc)
+    # hold_seconds/exit_ts use trade_ts (the real SELL time) — using
+    # processing time here would inflate hold_seconds by however long the
+    # trade sat queued, which could misclassify a genuine scalp as a
+    # longer hold. updated_at stays processing time (see record_contribution).
+    processed_at = datetime.now(timezone.utc)
 
     def txn(conn):
         row = conn.execute('''SELECT id, ts, usd, price FROM opportunity_wallets
@@ -605,10 +613,10 @@ def record_exit(db, condition_id, outcome, wallet, price, usd):
         if not row:
             return None
         row_id, buy_ts, entry_usd, entry_price = row
-        hold_seconds = now_dt.timestamp() - buy_ts.timestamp()
+        hold_seconds = trade_ts.timestamp() - buy_ts.timestamp()
         is_scalp = hold_seconds <= SCALP_WINDOW_SECONDS
         conn.execute('''UPDATE opportunity_wallets SET exit_ts=%s, exit_price=%s, exit_usd=%s, hold_seconds=%s, is_scalp=%s
-            WHERE id=%s''', (now_dt, price, usd, hold_seconds, is_scalp, row_id))
+            WHERE id=%s''', (trade_ts, price, usd, hold_seconds, is_scalp, row_id))
         # Realized profit uses the ORIGINAL entry's implied shares valued at
         # exit price, not the actual exit_usd — matches the formula the view
         # (and the backfill) already use: (entry_usd/entry_price)*exit_price
@@ -623,7 +631,7 @@ def record_exit(db, condition_id, outcome, wallet, price, usd):
                 open_invested_usd = open_invested_usd - %s,
                 updated_at = %s
             WHERE condition_id=%s AND outcome=%s''',
-            (1 if is_scalp else 0, realized_delta, shares, entry_usd, now_dt, condition_id, outcome))
+            (1 if is_scalp else 0, realized_delta, shares, entry_usd, processed_at, condition_id, outcome))
         return hold_seconds, is_scalp
 
     with lock:
@@ -814,25 +822,46 @@ def sweep_resolved_positions(db):
         print(f'  [resolved] {closed_count} market/outcome pairs closed out (positions settled by resolution, not a sale)')
 
 
-def record_ticker_trade(db, info, usd, price, side, tx_hash):
+def parse_trade_ts(item):
+    """Every last_trade_price WS event carries its own timestamp (ms since
+    epoch) — confirmed live via a raw message dump. Using it instead of
+    datetime.now() means a trade that sat queued behind an RPC-bound
+    backlog is stored with the time it actually happened, not the time we
+    got around to processing it. A market that traded at 58c 40 minutes
+    ago and has since moved to 91c should show "40m ago", not "just now" —
+    confirmed live: exactly this made a real, moved-on price look current.
+    Falls back to processing time if the field is ever missing/malformed."""
+    raw = item.get('timestamp')
+    try:
+        return datetime.fromtimestamp(int(raw) / 1000, tz=timezone.utc)
+    except (TypeError, ValueError):
+        return datetime.now(timezone.utc)
+
+
+def record_ticker_trade(db, info, usd, price, side, tx_hash, trade_ts):
     """Inserted immediately on a big-enough trade, BEFORE on-chain wallet
     resolution — this is what makes the ticker sub-second instead of waiting
     on an RPC round trip like the roster-matched signals do."""
-    now = datetime.now(timezone.utc)
     with lock:
         cur = db.execute('''INSERT INTO ticker
             (condition_id, outcome, slug, title, usd, price, side, tx_hash, wallet, roster_tagged, ts, epoch)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NULL,false,%s,%s)
             RETURNING id''',
             (info['conditionId'], info['outcome'], info['slug'], info['title'],
-             usd, price, side, tx_hash, now, now.timestamp()))
+             usd, price, side, tx_hash, trade_ts, trade_ts.timestamp()))
         return cur.fetchone()[0]
 
 
-def update_ticker_wallet(db, ticker_id, wallet, wallet_name, roster_tagged, category):
+def update_ticker_wallet(db, tx_hash, wallet, wallet_name, roster_tagged, category):
+    # Matched by tx_hash (+ still-unresolved guard) instead of a ticker_id
+    # threaded over from record_ticker_trade — that id lived in the fast
+    # path (see record_price_tick), and this runs on the slow, RPC-bound
+    # path as a fully independent executor submission now, not a
+    # continuation of the same call.
     with lock:
-        db.execute('UPDATE ticker SET wallet=%s, wallet_name=%s, roster_tagged=%s, category=%s WHERE id=%s',
-                    (wallet, wallet_name, bool(roster_tagged), category, ticker_id))
+        db.execute('''UPDATE ticker SET wallet=%s, wallet_name=%s, roster_tagged=%s, category=%s
+            WHERE tx_hash=%s AND wallet IS NULL''',
+                    (wallet, wallet_name, bool(roster_tagged), category, tx_hash))
 
 
 def prune_ticker(db):
@@ -889,15 +918,24 @@ def filter_price_changes(keyed_token_info, item):
 
 def write_price_updates(db, updates):
     """The only part of price-change handling that touches the DB — submitted
-    to the executor so a slow write never stalls the WS-receiving loop, same
-    reasoning as process_trade."""
+    to fast_executor so a slow write never stalls the WS-receiving loop, and
+    kept off the RPC-bound executor so a wallet-resolution backlog can't
+    delay it either (same reasoning as record_price_tick)."""
     for condition_id, outcome, mid in updates:
         with lock:
             db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
                        (mid, condition_id, outcome))
 
 
-def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster, wallet_names):
+def record_price_tick(db, keyed_token_info, tid, price, size, side, tx_hash, trade_ts):
+    """Fast path — ticker + mark-to-market only, never an RPC call.
+    Dispatched to a small dedicated pool (see fast_executor in main())
+    instead of the RPC-bound one resolve_and_record_trade runs on:
+    confirmed live that a burst of ~15 trades on one market backed up the
+    shared 16-worker pool by 35-45 minutes, and every price/ticker update
+    queued behind it went stale for that whole window — this split means a
+    wallet-resolution backlog on one market can never delay the price
+    users are watching move on another."""
     if side not in ('BUY', 'SELL') or not tx_hash:
         return
     info = keyed_token_info.get(tid)
@@ -910,9 +948,8 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
 
     # Ticker: fires on size alone, immediately, before any RPC wait — this is
     # what makes it sub-second instead of gated on wallet resolution.
-    ticker_id = None
     if usd >= TICKER_MIN_USD:
-        ticker_id = record_ticker_trade(db, info, usd, float(price) if price else 0, side, tx_hash)
+        record_ticker_trade(db, info, usd, float(price) if price else 0, side, tx_hash, trade_ts)
         with lock:
             stats['ticker_trades'] += 1
 
@@ -931,6 +968,19 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
             db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
                        (float(price), key_probe[0], key_probe[1]))
 
+
+def resolve_and_record_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster, wallet_names, trade_ts):
+    """Slow path — wallet resolution (an RPC call) and everything
+    downstream of it. Runs on the larger RPC-bound pool; record_price_tick
+    above already handled the ticker/MTM output independently, so a
+    backlog here no longer delays that."""
+    if side not in ('BUY', 'SELL') or not tx_hash:
+        return
+    info = keyed_token_info.get(tid)
+    if not info:
+        return
+
+    usd = (float(price) if price else 0) * (float(size) if size else 0)
     if usd <= 0:
         return
 
@@ -939,9 +989,9 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
     if wallet and not wallet_name:
         wallet_name = fetch_live_profile_name(wallet)  # not in our local 261k dataset — try live, covers anyone with a profile
 
-    if ticker_id is not None:
+    if usd >= TICKER_MIN_USD:
         category = fetch_event_category(info.get('eventId'))
-        update_ticker_wallet(db, ticker_id, wallet, wallet_name, bool(wallet and wallet in roster), category)
+        update_ticker_wallet(db, tx_hash, wallet, wallet_name, bool(wallet and wallet in roster), category)
 
     if not wallet or wallet not in roster:
         return
@@ -949,7 +999,7 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
         stats['roster_matches'] += 1
 
     if side == 'SELL':
-        result = record_exit(db, info['conditionId'], info['outcome'], wallet, float(price), usd)
+        result = record_exit(db, info['conditionId'], info['outcome'], wallet, float(price), usd, trade_ts)
         touch_tracked_wallet(db, wallet)
         if result:
             hold_seconds, is_scalp = result
@@ -962,13 +1012,13 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
         return
 
     key = (info['conditionId'], info['outcome'])
-    now_ts = time.time()
+    trade_epoch = trade_ts.timestamp()
     with lock:
         bucket = conviction[key]
         already_hit = tiers_hit[key]
         is_first_ever = len(bucket) == 0 and SOLO_TIER not in already_hit
-        bucket.append((now_ts, wallet, usd, float(price)))
-        cutoff = now_ts - CONVICTION_WINDOW_SECONDS
+        bucket.append((trade_epoch, wallet, usd, float(price)))
+        cutoff = trade_epoch - CONVICTION_WINDOW_SECONDS
         while bucket and bucket[0][0] < cutoff:
             bucket.pop(0)
         distinct_wallets = {w for _, w, _, _ in bucket}
@@ -979,15 +1029,15 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
         if is_first_ever:
             already_hit.add(SOLO_TIER)
 
-    record_contribution(db, key[0], key[1], wallet, wallet_name, usd, float(price))
+    record_contribution(db, key[0], key[1], wallet, wallet_name, usd, float(price), trade_ts)
     touch_tracked_wallet(db, wallet)
     meta_lookup = {key: info}
     if is_first_ever:
-        record_tier_crossed(db, key[0], key[1], meta_lookup, usd, SOLO_TIER, 1, float(price))
+        record_tier_crossed(db, key[0], key[1], meta_lookup, usd, SOLO_TIER, 1, float(price), trade_ts)
         who = wallet_name or f'{wallet[:10]}…'
         print(f'  [solo pick] {info["title"]!r} -> {info["outcome"]}  {who} bought ${usd:,.0f}')
     for t in newly_crossed:
-        record_tier_crossed(db, key[0], key[1], meta_lookup, total_usd, t, len(distinct_wallets), float(price))
+        record_tier_crossed(db, key[0], key[1], meta_lookup, total_usd, t, len(distinct_wallets), float(price), trade_ts)
         print(f'  [OPPORTUNITY] {info["title"]!r} -> {info["outcome"]}  '
               f'${total_usd:,.0f} from {len(distinct_wallets)} roster wallets (crossed ${t:,} tier)')
 
@@ -1015,8 +1065,8 @@ def main():
     wallet_names = build_wallet_names(all_users)
     print(f'{len(roster)} roster wallets loaded, {len(wallet_names)} known wallet names available.')
 
-    # tiers_hit gates every mark-to-market write (both process_trade's and
-    # process_price_change's) — it's an in-memory set, so without this it
+    # tiers_hit gates every mark-to-market write (both record_price_tick's and
+    # write_price_updates') — it's an in-memory set, so without this it
     # starts empty on every restart, silently stopping price updates for
     # every already-tracked market until each one happens to get a fresh
     # top-trader trade. Confirmed live: a market that was already tracked
@@ -1033,6 +1083,13 @@ def main():
     print(f'{len(resolved_markets)} already-resolved condition/outcome pairs rehydrated (mark-to-market writes blocked for these).')
 
     executor = ThreadPoolExecutor(max_workers=args.workers)
+    # Small, dedicated pool for record_price_tick (ticker + mark-to-market) —
+    # never does an RPC call, so it should never queue behind one. Kept
+    # separate from `executor` (RPC-bound wallet resolution) specifically
+    # so a burst of trades on one market can't delay price updates for
+    # every other market, which is what caused a real ~40-minute price lag
+    # confirmed live before this split existed.
+    fast_executor = ThreadPoolExecutor(max_workers=4)
 
     print('Fetching active market/token universe...')
     tokens, token_info = fetch_active_tokens()
@@ -1115,19 +1172,27 @@ def main():
                         items = msg if isinstance(msg, list) else [msg]
                         for item in items:
                             if item.get('event_type') == 'last_trade_price':
-                                executor.submit(
-                                    process_trade, db, keyed_token_info,
+                                trade_ts = parse_trade_ts(item)
+                                fast_executor.submit(
+                                    record_price_tick, db, keyed_token_info,
                                     item.get('asset_id'), item.get('price'), item.get('size'),
-                                    item.get('side'), item.get('transaction_hash'), roster, wallet_names,
+                                    item.get('side'), item.get('transaction_hash'), trade_ts,
+                                )
+                                executor.submit(
+                                    resolve_and_record_trade, db, keyed_token_info,
+                                    item.get('asset_id'), item.get('price'), item.get('size'),
+                                    item.get('side'), item.get('transaction_hash'), roster, wallet_names, trade_ts,
                                 )
                             elif item.get('event_type') == 'price_change':
                                 # Filtered inline (cheap, no I/O) — only submits to the
                                 # executor when there's an actual write to do, see
                                 # filter_price_changes' docstring for why this matters
-                                # at the current tracked-market count.
+                                # at the current tracked-market count. Runs on
+                                # fast_executor, same reasoning as record_price_tick —
+                                # never an RPC call, must never queue behind one.
                                 updates = filter_price_changes(keyed_token_info, item)
                                 if updates:
-                                    executor.submit(write_price_updates, db, updates)
+                                    fast_executor.submit(write_price_updates, db, updates)
                     elif opcode == 0x9:
                         send_frame(ssock, payload, opcode=0xA)
                     elif opcode == 0x8:
