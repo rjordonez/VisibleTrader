@@ -26,6 +26,14 @@ and running two copies against the same database (one local, one on the
 VM) causes duplicate writes. This actually happened once — see git history
 around the GCP VM setup for the incident.
 
+**Viewing prod from `npm run dev`**: set `VITE_USE_PROD_DB=true` in
+`.env.local` to point the *frontend only* at production instead of dev —
+useful for checking real data without touching `live-signal-service.py` at
+all. A red "⚠ PROD DATA" badge appears in the header the entire time this
+is on, so it's never silent. This does **not** make anything read-only —
+the Lookup/Settings pages still write for real, so be deliberate about
+what you click while it's on. Flip back to `false` when done.
+
 Config files:
 - `.env` — reference copy of prod's values (not used by anything directly
   once `.env.local` exists; Vite prefers `.env.local` when both are

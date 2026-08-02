@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, BarChart2, Bell, Radar, Settings, Search, Home } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { supabase, isProdDb } from '../lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import './app.css'
 
@@ -184,6 +184,8 @@ function SignalsDemo({ category }: { category: string }) {
   const [sortMode, setSortMode]           = useState<'recent' | 'profit'>('recent')
   const [minWinRate, setMinWinRate]       = useState(0)
   const [minBetRatio, setMinBetRatio]     = useState(0)
+  const [minPrice, setMinPrice]           = useState(0)
+  const [maxPrice, setMaxPrice]           = useState(100)
   const [winRateMap, setWinRateMap]       = useState<Map<string, number>>(new Map())
   const [balanceMap, setBalanceMap]       = useState<Map<string, number>>(new Map())
 
@@ -291,10 +293,18 @@ function SignalsDemo({ category }: { category: string }) {
       const bal = t.wallet ? balanceMap.get(t.wallet) : undefined
       return bal !== undefined && (t.usd / bal) * 100 >= minBetRatio
     })
+    .filter(t => {
+      const cents = t.price * 100
+      return cents >= minPrice && cents <= maxPrice
+    })
   const filteredOpportunities = byCategory(opportunities)
     .filter(o => !todayOnly || isToday(o.first_seen))
     .filter(o => minWinRate === 0 || o.best_win_rate * 100 >= minWinRate)
     .filter(o => minBetRatio === 0 || o.best_bet_ratio * 100 >= minBetRatio)
+    .filter(o => {
+      const cents = o.latest_price * 100
+      return cents >= minPrice && cents <= maxPrice
+    })
     .sort((a, b) => sortMode === 'profit'
       ? b.total_profit - a.total_profit
       : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
@@ -351,6 +361,26 @@ function SignalsDemo({ category }: { category: string }) {
                 {v === 0 ? 'Any' : `${v}%+`}
               </div>
             ))}
+          </div>
+
+          <div className="sig-price-range" style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+              Price range: {minPrice}¢ – {maxPrice}¢
+            </span>
+            <div className="sig-range-track-wrap">
+              <div className="sig-range-track" />
+              <div className="sig-range-fill" style={{ left: `${minPrice}%`, right: `${100 - maxPrice}%` }} />
+              <input
+                type="range" min={0} max={100} value={minPrice}
+                onChange={e => setMinPrice(Math.min(Number(e.target.value), maxPrice - 1))}
+                className="sig-range-input"
+              />
+              <input
+                type="range" min={0} max={100} value={maxPrice}
+                onChange={e => setMaxPrice(Math.max(Number(e.target.value), minPrice + 1))}
+                className="sig-range-input"
+              />
+            </div>
           </div>
         </div>
 
@@ -1983,6 +2013,7 @@ export default function AppShell() {
       <header className="app-header">
         <div className="app-header-inner">
           <div className="app-header-logo">VisibleTrader</div>
+          {isProdDb && <div className="app-prod-badge">⚠ PROD DATA</div>}
           <nav className="app-header-nav">
             {navItems.map(({ id, label, Icon }) => (
               <button

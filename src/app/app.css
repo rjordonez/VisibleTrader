@@ -52,6 +52,26 @@
   flex-shrink: 0;
 }
 
+/* Only ever renders when VITE_USE_PROD_DB=true — a deliberately loud,
+   impossible-to-miss warning that this local session is reading/writing
+   real production data, not the dev database. */
+.app-prod-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #ff3b5c;
+  background: rgba(255, 59, 92, 0.14);
+  border: 1px solid rgba(255, 59, 92, 0.4);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  flex-shrink: 0;
+  animation: prod-badge-pulse 2s ease-in-out infinite;
+}
+@keyframes prod-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .app-header-nav {
   flex: 1;
   display: flex;
@@ -551,6 +571,39 @@
   border-radius: 4px; cursor: pointer; white-space: nowrap;
 }
 .sig-chip.active { background: var(--surface-2); border-color: var(--blue); color: var(--text); }
+
+/* Dual-handle range slider — two native <input type="range"> stacked on
+   the same track, each thumb independently draggable. The inputs
+   themselves are transparent/pointer-events:none except their thumbs,
+   so a click anywhere on the track doesn't jump either handle — only
+   grabbing a thumb does. */
+.sig-price-range { display: flex; flex-direction: column; gap: 8px; max-width: 340px; }
+.sig-range-track-wrap { position: relative; height: 20px; }
+.sig-range-track {
+  position: absolute; top: 50%; left: 0; right: 0; height: 4px;
+  transform: translateY(-50%); background: var(--border); border-radius: 2px;
+}
+.sig-range-fill {
+  position: absolute; top: 50%; height: 4px;
+  transform: translateY(-50%); background: var(--blue); border-radius: 2px;
+}
+.sig-range-input {
+  position: absolute; top: 0; left: 0; width: 100%; height: 20px;
+  margin: 0; background: transparent; appearance: none; -webkit-appearance: none;
+  pointer-events: none;
+}
+.sig-range-input::-webkit-slider-runnable-track { background: transparent; height: 4px; }
+.sig-range-input::-moz-range-track { background: transparent; height: 4px; }
+.sig-range-input::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none; pointer-events: auto;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--blue); border: 2px solid var(--text); cursor: pointer;
+  margin-top: -5px; /* (track 4px - thumb 14px) / 2, centers the thumb on the track */
+}
+.sig-range-input::-moz-range-thumb {
+  pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--blue); border: 2px solid var(--text); cursor: pointer;
+}
 
 .sig-list { padding: 4px 0; }
 .sig-row {
