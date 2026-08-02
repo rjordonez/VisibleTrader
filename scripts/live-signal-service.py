@@ -627,12 +627,22 @@ def sweep_resolved_positions(db):
             FROM opportunity_wallets ow
             JOIN opportunities o ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
             WHERE ow.exit_ts IS NULL AND (ow.market_closed IS NULL OR ow.market_closed = false)''').fetchall()
+
+    distinct_slugs = list({slug for _, _, slug in rows})
+    # One HTTP call per distinct slug — confirmed live this backlog can be
+    # 300 distinct slugs at once, and doing these sequentially (as this
+    # function used to) could take minutes for a single pass, leaving
+    # already-resolved markets showing stale data the whole time. These are
+    # independent, I/O-bound calls, so they parallelize cleanly.
     slug_results = {}
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = {pool.submit(check_market_closed, slug): slug for slug in distinct_slugs}
+        for fut in futures:
+            slug_results[futures[fut]] = fut.result()
+
     closed_count = 0
     for condition_id, outcome, slug in rows:
-        if slug not in slug_results:
-            slug_results[slug] = check_market_closed(slug)
-        result = slug_results[slug]
+        result = slug_results.get(slug)
         if result is None:
             continue  # still open
         won = result.get(outcome)
