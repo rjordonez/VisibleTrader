@@ -262,13 +262,16 @@ function SignalsDemo({ category }: { category: string }) {
     load()
     // opportunities_live is a view, so Realtime (which taps Postgres's
     // replication stream on real tables) can't subscribe to it directly —
-    // instead, listen for changes on the base tables it's built from and
-    // re-fetch once one fires. Mark-to-market price ticks land on
-    // `opportunities` continuously across ~1,400 tracked markets, so this
-    // debounces (trailing-edge) rather than firing `load` on every single
-    // event — otherwise every connected tab re-runs a full fetch on every
-    // tick. The interval stays as a fallback in case a realtime event is
-    // ever missed (dropped connection etc.).
+    // instead, listen for changes on `opportunities` and re-fetch once one
+    // fires. Only `opportunities` needs watching: live-signal-service.py
+    // now writes opportunity_stats under the same lock as every
+    // opportunity_wallets write, and every one of those paths also touches
+    // `opportunities` (latest_price, last_updated, or is_current), so a
+    // wallet-level change is never invisible here. Mark-to-market price
+    // ticks land on `opportunities` continuously across ~1,400 tracked
+    // markets, so this debounces (trailing-edge) rather than firing `load`
+    // on every single event. The interval stays as a fallback in case a
+    // realtime event is ever missed (dropped connection etc.).
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
     const debouncedLoad = () => {
       if (debounceTimer) clearTimeout(debounceTimer)
@@ -277,7 +280,6 @@ function SignalsDemo({ category }: { category: string }) {
     const channel = supabase
       .channel('opportunities-live-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedLoad)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunity_wallets' }, debouncedLoad)
       .subscribe()
     const interval = setInterval(load, 5000)
     return () => {
@@ -837,8 +839,9 @@ function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; cate
     }
     load()
     // See SignalsDemo's identical pattern — opportunities_live is a view,
-    // so Realtime subscribes to the base tables it's built from instead
-    // and re-fetches on any change, debounced (trailing-edge) since
+    // so Realtime subscribes to `opportunities` (the only base table that
+    // needs watching, see SignalsDemo's fuller comment) instead and
+    // re-fetches on any change, debounced (trailing-edge) since
     // mark-to-market ticks land on `opportunities` continuously across
     // ~1,400 tracked markets; the interval stays as a fallback.
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -849,7 +852,6 @@ function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; cate
     const channel = supabase
       .channel('home-opportunities-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedLoad)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunity_wallets' }, debouncedLoad)
       .subscribe()
     const interval = setInterval(load, 5000)
     return () => {
