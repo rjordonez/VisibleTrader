@@ -31,11 +31,20 @@ def load_env_file(path):
             os.environ[key.strip()] = value.strip()
 
 
-def fetch_event_slugs(condition_ids):
+def _fetch(condition_ids, extra_qs=''):
     qs = '&'.join(f'condition_ids={cid}' for cid in condition_ids)
-    req = urllib.request.Request(f'https://gamma-api.polymarket.com/markets?{qs}', headers=UA)
+    req = urllib.request.Request(f'https://gamma-api.polymarket.com/markets?{qs}{extra_qs}', headers=UA)
     with urllib.request.urlopen(req, timeout=20) as resp:
-        markets = json.load(resp)
+        return json.load(resp)
+
+
+def fetch_event_slugs(condition_ids):
+    # gamma-api's `closed` param is a strict filter, not a default-include-all:
+    # omitted/false returns only OPEN markets, closed=true returns only CLOSED
+    # ones. A resolved sports market (the common case — games finish within
+    # hours) would silently vanish from a single unparameterized query, so
+    # this checks both and merges.
+    markets = _fetch(condition_ids) + _fetch(condition_ids, '&closed=true')
     result = {}
     for m in markets:
         events = m.get('events')
