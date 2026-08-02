@@ -484,6 +484,26 @@ class Database:
         self.conn.commit()
         return cur
 
+    def run_transaction(self, fn):
+        """Runs fn(conn) — fn issues one or more related statements directly
+        against the connection (free to read intermediate results, e.g. a
+        RETURNING clause, to build later statements) and everything commits
+        together at the end, or none of it does. Used for logically-related
+        writes (e.g. a contribution's wallet row + its paired
+        opportunity_stats delta) that must never partially apply if a
+        connection hiccup or error interrupts the sequence midway — unlike
+        execute(), which commits after every single statement."""
+        try:
+            result = fn(self.conn)
+        except (psycopg.OperationalError, psycopg.InterfaceError):
+            self._reconnect()
+            result = fn(self.conn)
+        except Exception:
+            self.conn.rollback()
+            raise
+        self.conn.commit()
+        return result
+
 
 def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, tier, wallet_count, price):
     slug = title = event_slug = None
@@ -494,22 +514,69 @@ def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, t
         event_slug = meta.get('eventSlug')
         category = fetch_event_category(meta.get('eventId'))
     now = datetime.now(timezone.utc)
-    with lock:
-        db.execute('''INSERT INTO opportunities
+
+    def txn(conn):
+        conn.execute('''INSERT INTO opportunities
             (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, first_seen, last_updated, latest_price, category)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (condition_id, outcome, tier) DO NOTHING''',
             (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, now, now, price, category))
-        db.execute('''UPDATE opportunities SET cumulative_usd=%s, wallet_count=%s, last_updated=%s, latest_price=%s, category=%s
+        conn.execute('''UPDATE opportunities SET cumulative_usd=%s, wallet_count=%s, last_updated=%s, latest_price=%s, category=%s
             WHERE condition_id=%s AND outcome=%s AND tier=%s''',
             (cumulative_usd, wallet_count, now, price, category, condition_id, outcome, tier))
+        # is_current replaces the view's old MAX(tier) GROUP BY — flip it here
+        # instead of recomputing it on every read. Computed via an actual
+        # MAX(tier) subquery rather than "tier = this call's tier": different
+        # trades for the same market are processed concurrently across
+        # worker threads (each calling this independently), so DB commits
+        # for a lower tier from a slower thread can land AFTER a higher
+        # tier's commit from a faster one — confirmed live via a dev
+        # dry-run. Recomputing the true max inside this same transaction is
+        # self-correcting regardless of call order, since the module-level
+        # lock still serializes actual commits one at a time.
+        conn.execute('''UPDATE opportunities SET is_current = (tier = (
+                SELECT MAX(tier) FROM opportunities WHERE condition_id=%s AND outcome=%s
+            )) WHERE condition_id=%s AND outcome=%s''',
+                   (condition_id, outcome, condition_id, outcome))
+
+    with lock:
+        db.run_transaction(txn)
 
 
 def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, price):
     now = datetime.now(timezone.utc)
-    with lock:
-        db.execute('''INSERT INTO opportunity_wallets (condition_id, outcome, wallet, wallet_name, usd, price, ts)
+    shares = usd / price
+
+    # opportunity_stats/opportunity_contributors: the incrementally-
+    # maintained aggregates opportunities_live will read from once cut over,
+    # instead of a GROUP BY over all of opportunity_wallets on every query.
+    # wallet_count only needs "have I already counted this wallet" (rows are
+    # never deleted, so it's monotonic) — the INSERT ... ON CONFLICT DO
+    # NOTHING RETURNING tells us that in one statement, no separate
+    # existence check needed. All three statements run as one transaction —
+    # a connection hiccup partway through must never leave the wallet row
+    # persisted with its paired stats delta lost.
+    def txn(conn):
+        conn.execute('''INSERT INTO opportunity_wallets (condition_id, outcome, wallet, wallet_name, usd, price, ts)
             VALUES (%s,%s,%s,%s,%s,%s,%s)''', (condition_id, outcome, wallet, wallet_name, usd, price, now))
+        cur = conn.execute('''INSERT INTO opportunity_contributors (condition_id, outcome, wallet)
+            VALUES (%s,%s,%s) ON CONFLICT DO NOTHING RETURNING 1''', (condition_id, outcome, wallet))
+        is_new_wallet = 1 if cur.fetchone() is not None else 0
+        conn.execute('''INSERT INTO opportunity_stats
+                (condition_id, outcome, entries, wallet_count, cumulative_usd, open_shares_sum, open_invested_usd, updated_at)
+            VALUES (%s,%s,1,%s,%s,%s,%s,%s)
+            ON CONFLICT (condition_id, outcome) DO UPDATE SET
+                entries = opportunity_stats.entries + 1,
+                wallet_count = opportunity_stats.wallet_count + %s,
+                cumulative_usd = opportunity_stats.cumulative_usd + %s,
+                open_shares_sum = opportunity_stats.open_shares_sum + %s,
+                open_invested_usd = opportunity_stats.open_invested_usd + %s,
+                updated_at = %s''',
+            (condition_id, outcome, is_new_wallet, usd, shares, usd, now,
+             is_new_wallet, usd, shares, usd, now))
+
+    with lock:
+        db.run_transaction(txn)
 
 
 def touch_tracked_wallet(db, wallet):
@@ -530,18 +597,37 @@ def record_exit(db, condition_id, outcome, wallet, price, usd):
     no tracked open entry here (e.g. they sold a position opened before this
     process started watching, or before it started tracking sells at all)."""
     now_dt = datetime.now(timezone.utc)
-    with lock:
-        row = db.execute('''SELECT id, ts FROM opportunity_wallets
+
+    def txn(conn):
+        row = conn.execute('''SELECT id, ts, usd, price FROM opportunity_wallets
             WHERE condition_id=%s AND outcome=%s AND wallet=%s AND exit_ts IS NULL
             ORDER BY ts ASC LIMIT 1''', (condition_id, outcome, wallet)).fetchone()
         if not row:
             return None
-        row_id, buy_ts = row
+        row_id, buy_ts, entry_usd, entry_price = row
         hold_seconds = now_dt.timestamp() - buy_ts.timestamp()
         is_scalp = hold_seconds <= SCALP_WINDOW_SECONDS
-        db.execute('''UPDATE opportunity_wallets SET exit_ts=%s, exit_price=%s, exit_usd=%s, hold_seconds=%s, is_scalp=%s
+        conn.execute('''UPDATE opportunity_wallets SET exit_ts=%s, exit_price=%s, exit_usd=%s, hold_seconds=%s, is_scalp=%s
             WHERE id=%s''', (now_dt, price, usd, hold_seconds, is_scalp, row_id))
-    return hold_seconds, is_scalp
+        # Realized profit uses the ORIGINAL entry's implied shares valued at
+        # exit price, not the actual exit_usd — matches the formula the view
+        # (and the backfill) already use: (entry_usd/entry_price)*exit_price
+        # - entry_usd, not anything derived from the sell trade's own $ size.
+        shares = float(entry_usd) / float(entry_price)
+        realized_delta = shares * price - float(entry_usd)
+        conn.execute('''UPDATE opportunity_stats SET
+                exited = exited + 1,
+                scalped = scalped + %s,
+                realized_profit = realized_profit + %s,
+                open_shares_sum = open_shares_sum - %s,
+                open_invested_usd = open_invested_usd - %s,
+                updated_at = %s
+            WHERE condition_id=%s AND outcome=%s''',
+            (1 if is_scalp else 0, realized_delta, shares, entry_usd, now_dt, condition_id, outcome))
+        return hold_seconds, is_scalp
+
+    with lock:
+        return db.run_transaction(txn)
 
 
 def check_market_closed(slug):
@@ -658,10 +744,22 @@ def sweep_resolved_positions(db):
             continue  # still open
         won = result.get(outcome)
         now = datetime.now(timezone.utc)
-        with lock:
-            db.execute('''UPDATE opportunity_wallets SET market_closed=true, resolved_win=%s, resolved_ts=%s
-                WHERE condition_id=%s AND outcome=%s AND exit_ts IS NULL''',
+
+        # Consecutive sweep calls can overlap if one is still waiting on
+        # slow/flaky gamma-api responses when the next 5-minute tick fires —
+        # confirmed live via a dev dry-run. Both would see this pair as a
+        # candidate before either closes it. The market_closed guard below
+        # (matching the SELECT above) makes a second/racing attempt a true
+        # no-op (rowcount=0) instead of re-matching the same already-closed
+        # rows and double-counting closed/won/lost.
+        def txn(conn, condition_id=condition_id, outcome=outcome, won=won, now=now):
+            cur = conn.execute('''UPDATE opportunity_wallets SET market_closed=true, resolved_win=%s, resolved_ts=%s
+                WHERE condition_id=%s AND outcome=%s AND exit_ts IS NULL
+                    AND (market_closed IS NULL OR market_closed = false)''',
                 (won, now, condition_id, outcome))
+            n = cur.rowcount
+            if n == 0:
+                return 0
             # Mark-to-market (both the trade-tick and price_change paths) only
             # ever runs while a market is still actively trading — once it
             # resolves, no more WS events for it arrive, so latest_price was
@@ -670,10 +768,48 @@ def sweep_resolved_positions(db):
             # market that resolved Under=$0 was still showing 16c on the
             # Signals page because nothing ever wrote the resolved price.
             if won is not None:
-                db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
+                conn.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
                            (1.0 if won else 0.0, condition_id, outcome))
+            # record_exit's WHERE exit_ts IS NULL and this sweep's identical
+            # filter are mutually exclusive by construction, so the market's
+            # entire currently-open set is exactly what's being closed in
+            # this batch — the current open_shares_sum/open_invested_usd
+            # values themselves ARE the batch aggregate, no extra query
+            # needed beyond fetching them once to compute the delta.
+            stat_row = conn.execute('''SELECT open_shares_sum, open_invested_usd FROM opportunity_stats
+                WHERE condition_id=%s AND outcome=%s''', (condition_id, outcome)).fetchone()
+            open_shares, open_invested = stat_row if stat_row else (0, 0)
+            if won is True:
+                realized_delta = float(open_shares) - float(open_invested)
+                won_inc, lost_inc = n, 0
+            elif won is False:
+                realized_delta = -float(open_invested)
+                won_inc, lost_inc = 0, n
+            else:
+                # Ambiguous resolution (gamma-api couldn't determine a
+                # winner) — a wash, not a loss, consistent with won/lost
+                # already counting it as neither.
+                realized_delta = 0.0
+                won_inc, lost_inc = 0, 0
+            conn.execute('''INSERT INTO opportunity_stats
+                    (condition_id, outcome, closed, won, lost, realized_profit, open_shares_sum, open_invested_usd, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,0,0,%s)
+                ON CONFLICT (condition_id, outcome) DO UPDATE SET
+                    closed = opportunity_stats.closed + %s,
+                    won = opportunity_stats.won + %s,
+                    lost = opportunity_stats.lost + %s,
+                    realized_profit = opportunity_stats.realized_profit + %s,
+                    open_shares_sum = 0, open_invested_usd = 0, updated_at = %s''',
+                (condition_id, outcome, n, won_inc, lost_inc, realized_delta, now,
+                 n, won_inc, lost_inc, realized_delta, now))
+            return n
+
+        with lock:
+            n = db.run_transaction(txn)
+            if n and won is not None:
                 resolved_markets.add((condition_id, outcome))
-        closed_count += 1
+        if n:
+            closed_count += 1
     if closed_count:
         print(f'  [resolved] {closed_count} market/outcome pairs closed out (positions settled by resolution, not a sale)')
 
