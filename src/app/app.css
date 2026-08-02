@@ -686,6 +686,15 @@
 
 .sig-empty { padding: 3rem 0; text-align: center; font-size: 0.875rem; color: var(--text-dim); }
 
+.sig-load-more {
+  display: block; margin: 18px auto 0; padding: 9px 20px;
+  background: none; border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-dim); font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.sig-load-more:hover { border-color: var(--gold); color: var(--text); }
+.sig-load-more:disabled { opacity: 0.5; cursor: default; }
+
 /* contributor drill-down — added beyond the static mock, reuses the wallet-detail
    data we already built (holding/scalped/exited), restyled to the v4 palette */
 .sig-drill { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 14px; cursor: default; }

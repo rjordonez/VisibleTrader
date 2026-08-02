@@ -96,6 +96,24 @@ function marketUrl(slug: string | null) {
   return slug ? `https://polymarket.com/event/${slug}` : null
 }
 
+// opportunities_live has no hard cap on row count as more markets get
+// tracked over time, so every fetch site bounds its query instead of
+// pulling the entire view — last_updated is written only on a tier
+// crossing (a low-churn event), so a page of the most-recent PAGE_SIZE
+// covers "what's new" for the Alerts/Home use cases without pagination,
+// and the Vetted Picks tab (the one actual browsable list) adds "Load
+// more" using a keyset cursor on (last_updated, id) instead of OFFSET,
+// since OFFSET pagination degrades as the table grows.
+const PAGE_SIZE = 300
+
+function opportunityCursor(o: Pick<Opportunity, 'last_updated' | 'id'>) {
+  // PostgREST has no clean compound row-value "<" comparison, so this is
+  // the standard keyset-pagination workaround: everything strictly older,
+  // plus same-instant rows with a smaller id (the id tiebreaker only ever
+  // matters when two tier crossings land in the same millisecond).
+  return `last_updated.lt.${o.last_updated},and(last_updated.eq.${o.last_updated},id.lt.${o.id})`
+}
+
 
 const CATEGORY_ICON: Record<string, { emoji: string; bg: string }> = {
   politics:  { emoji: '🏛️', bg: 'rgba(47,111,237,0.15)' },
@@ -214,15 +232,24 @@ function SignalsDemo({ category }: { category: string }) {
   const [maxTraders, setMaxTraders]       = useState(TRADERS_CAP)
   const [winRateMap, setWinRateMap]       = useState<Map<string, number>>(new Map())
   const [balanceMap, setBalanceMap]       = useState<Map<string, number>>(new Map())
+  const [hasMore, setHasMore]             = useState(false)
+  const [loadingMore, setLoadingMore]     = useState(false)
 
   useEffect(() => {
     let cancelled = false
+    // Refresh (poll/realtime/tab-open) always resets to the first page —
+    // this is "what's live right now", not a position to preserve across
+    // reloads. "Load more" (below) is the only thing that extends past it.
     const load = () => {
-      Promise.resolve(supabase.from('opportunities_live').select('*').order('last_updated', { ascending: false }))
+      Promise.resolve(supabase.from('opportunities_live').select('*')
+        .order('last_updated', { ascending: false }).order('id', { ascending: false })
+        .limit(PAGE_SIZE))
         .then(({ data, error }) => {
           if (cancelled) return
           if (error) throw error
-          setOpportunities((data ?? []) as Opportunity[])
+          const rows = (data ?? []) as Opportunity[]
+          setOpportunities(rows)
+          setHasMore(rows.length === PAGE_SIZE)
           setLoading(false)
           setError(null)
         })
@@ -236,16 +263,48 @@ function SignalsDemo({ category }: { category: string }) {
     // opportunities_live is a view, so Realtime (which taps Postgres's
     // replication stream on real tables) can't subscribe to it directly —
     // instead, listen for changes on the base tables it's built from and
-    // re-fetch the instant one fires. The interval stays as a fallback in
-    // case a realtime event is ever missed (dropped connection etc.).
+    // re-fetch once one fires. Mark-to-market price ticks land on
+    // `opportunities` continuously across ~1,400 tracked markets, so this
+    // debounces (trailing-edge) rather than firing `load` on every single
+    // event — otherwise every connected tab re-runs a full fetch on every
+    // tick. The interval stays as a fallback in case a realtime event is
+    // ever missed (dropped connection etc.).
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    const debouncedLoad = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(load, 1000)
+    }
     const channel = supabase
       .channel('opportunities-live-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, load)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunity_wallets' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunity_wallets' }, debouncedLoad)
       .subscribe()
     const interval = setInterval(load, 5000)
-    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel) }
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      if (debounceTimer) clearTimeout(debounceTimer)
+      supabase.removeChannel(channel)
+    }
   }, [])
+
+  const loadMore = () => {
+    const last = opportunities[opportunities.length - 1]
+    if (!last || loadingMore) return
+    setLoadingMore(true)
+    Promise.resolve(supabase.from('opportunities_live').select('*')
+      .or(opportunityCursor(last))
+      .order('last_updated', { ascending: false }).order('id', { ascending: false })
+      .limit(PAGE_SIZE))
+      .then(({ data, error }) => {
+        if (error) throw error
+        const rows = (data ?? []) as Opportunity[]
+        setOpportunities(prev => [...prev, ...rows])
+        setHasMore(rows.length === PAGE_SIZE)
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMore(false))
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -719,6 +778,11 @@ function SignalsDemo({ category }: { category: string }) {
             )}
             {!loading && filteredOpportunities.map(renderOpportunityCard)}
           </div>
+          {!loading && hasMore && (
+            <button className="sig-load-more" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </button>
+          )}
           </>
         )}
 
@@ -755,7 +819,9 @@ function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; cate
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      Promise.resolve(supabase.from('opportunities_live').select('*').order('last_updated', { ascending: false }))
+      Promise.resolve(supabase.from('opportunities_live').select('*')
+        .order('last_updated', { ascending: false }).order('id', { ascending: false })
+        .limit(PAGE_SIZE))
         .then(({ data, error: err }) => {
           if (cancelled) return
           if (err) throw err
@@ -772,14 +838,26 @@ function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; cate
     load()
     // See SignalsDemo's identical pattern — opportunities_live is a view,
     // so Realtime subscribes to the base tables it's built from instead
-    // and re-fetches on any change; the interval stays as a fallback.
+    // and re-fetches on any change, debounced (trailing-edge) since
+    // mark-to-market ticks land on `opportunities` continuously across
+    // ~1,400 tracked markets; the interval stays as a fallback.
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    const debouncedLoad = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(load, 1000)
+    }
     const channel = supabase
       .channel('home-opportunities-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, load)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunity_wallets' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunity_wallets' }, debouncedLoad)
       .subscribe()
     const interval = setInterval(load, 5000)
-    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel) }
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      if (debounceTimer) clearTimeout(debounceTimer)
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   const byCategory = <T extends { category: string | null }>(list: T[]) =>
@@ -1742,7 +1820,9 @@ function AlertsPage() {
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      Promise.resolve(supabase.from('opportunities_live').select('*').order('last_updated', { ascending: false }))
+      Promise.resolve(supabase.from('opportunities_live').select('*')
+        .order('last_updated', { ascending: false }).order('id', { ascending: false })
+        .limit(PAGE_SIZE))
         .then(({ data }) => {
           if (cancelled) return
           for (const o of (data ?? []) as Opportunity[]) {
