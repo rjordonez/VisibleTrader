@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import psycopg
 from psycopg_pool import ConnectionPool
+from _env import load_env
 
 WS_HOST = 'ws-subscriptions-clob.polymarket.com'
 WS_PATH = '/ws/market'
@@ -48,28 +49,8 @@ KNOWN_CATEGORY_SLUGS = {
     'politics', 'sports', 'esports', 'crypto', 'culture',
     'mentions', 'weather', 'economics', 'tech', 'finance',
 }  # Polymarket's own top-level taxonomy (same list the leaderboard scraper uses)
-ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
-ENV_LOCAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env.local')
 
-
-def load_env_file(path):
-    """Minimal KEY=VALUE .env loader — no new dependency for this alone.
-    Same file the frontend/Node proxy read via Vite/process.loadEnvFile();
-    existing environment variables win over the file, matching normal
-    dotenv precedence."""
-    if not os.path.exists(path):
-        return
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            key, _, value = line.partition('=')
-            os.environ.setdefault(key.strip(), value.strip())
-
-
-load_env_file(ENV_LOCAL_PATH)  # loaded first — setdefault() means .env.local wins over .env, matching Vite's precedence
-load_env_file(ENV_PATH)
+load_env()
 if 'vohtqodprqpobvvcdypy' in os.environ.get('DATABASE_URL', ''):
     print('⚠️  DATABASE_URL points at PRODUCTION — if this is running on your own machine (not the VM), that is almost certainly wrong. Ctrl+C now if so.')
 

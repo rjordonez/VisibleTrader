@@ -14,25 +14,11 @@ import os
 
 import psycopg
 
-ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
-ENV_LOCAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env.local')
+from _env import load_env
+
 BATCH_SIZE = 2000
 
-
-def load_env_file(path):
-    if not os.path.exists(path):
-        return
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            key, _, value = line.partition('=')
-            os.environ.setdefault(key.strip(), value.strip())
-
-
-load_env_file(ENV_LOCAL_PATH)  # loaded first — setdefault() means .env.local wins over .env, matching Vite's precedence
-load_env_file(ENV_PATH)
+load_env()
 
 
 def main():

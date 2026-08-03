@@ -13,26 +13,15 @@ Requires DATABASE_URL in the environment or .env (same as live-signal-service.py
 import argparse
 import os
 import sqlite3
+import sys
 from datetime import datetime, timezone
 
 import psycopg
 
-ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from _env import load_env
 
-
-def load_env_file(path):
-    if not os.path.exists(path):
-        return
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            key, _, value = line.partition('=')
-            os.environ.setdefault(key.strip(), value.strip())
-
-
-load_env_file(ENV_PATH)
+load_env()
 
 
 def parse_ts(value):

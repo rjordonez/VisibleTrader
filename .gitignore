@@ -19,6 +19,11 @@ __pycache__
 # Generated data dumps (scripts/*.py output)
 polymarket_users.json
 backtest_results.json
+backtest_results_frequency.json
+robustness_checks.json
+strategy_sweep.json
+strategy_sweep_single_split.json
+walkforward_results.json
 polymarket_dashboard.html
 venter_config.json
 trades_cache.json

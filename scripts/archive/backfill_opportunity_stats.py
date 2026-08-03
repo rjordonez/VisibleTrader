@@ -14,23 +14,12 @@ Usage: python3 scripts/backfill_opportunity_stats.py --target dev|prod
 """
 import argparse
 import os
+import sys
 
 import psycopg
 
-ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
-ENV_LOCAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env.local')
-
-
-def load_env_file(path):
-    if not os.path.exists(path):
-        return
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            key, _, value = line.partition('=')
-            os.environ[key.strip()] = value.strip()
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from _env import load_env
 
 
 CONTRIBUTORS_SQL = '''
@@ -88,8 +77,7 @@ def main():
     ap.add_argument('--target', choices=['dev', 'prod'], required=True)
     args = ap.parse_args()
 
-    load_env_file(ENV_PATH)
-    load_env_file(ENV_LOCAL_PATH)
+    load_env()
     var_name = 'DEV_DATABASE_URL' if args.target == 'dev' else 'PROD_DATABASE_URL'
     database_url = os.environ.get(var_name)
     if not database_url:

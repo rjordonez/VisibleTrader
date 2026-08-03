@@ -1,0 +1,666 @@
+import { useState, useEffect, useRef } from 'react'
+import { ExternalLink, Star } from 'lucide-react'
+import { supabase } from '../lib/supabase'
+import type { Opportunity, WalletContribution, ChartPoint, TickerTrade } from './types'
+import {
+  onTabVisible, byCategory, fetchWallets, fetchChart, opportunityCursor, PAGE_SIZE,
+  categoryIcon, gaugePct, gaugeColor, signalsTag, fmtFull, fmtSigned, isToday,
+  signalsTraderStatus, walletReturn, profileUrl, traderLabel, timeAgo, marketUrl,
+} from './helpers'
+import { PriceChart } from './PriceChart'
+
+function SignalsDemo({ category }: { category: string }) {
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([])
+  const [loading, setLoading]             = useState(true)
+  const [error, setError]                 = useState<string | null>(null)
+  const [expanded, setExpanded]           = useState<string | null>(null)
+  const [wallets, setWallets]             = useState<WalletContribution[]>([])
+  const [walletsLoading, setWalletsLoading] = useState(false)
+  const [chartHistory, setChartHistory]   = useState<ChartPoint[]>([])
+  const [chartLoading, setChartLoading]   = useState(false)
+  const [ticker, setTicker]               = useState<TickerTrade[]>([])
+  const [tab, setTab]                     = useState<'ticker' | 'vetted' | 'tracked'>('ticker')
+  const [userId, setUserId]               = useState<string | null>(null)
+  const [trackedPicks, setTrackedPicks]   = useState<Set<string>>(new Set())
+  const [trackBusy, setTrackBusy]         = useState<string | null>(null)
+  const [todayOnly, setTodayOnly]         = useState(false)
+  const [sortMode, setSortMode]           = useState<'recent' | 'profit'>('recent')
+  const [minWinRate, setMinWinRate]       = useState(0)
+  const [minBetRatio, setMinBetRatio]     = useState(0)
+  const [minPrice, setMinPrice]           = useState(0)
+  const [maxPrice, setMaxPrice]           = useState(100)
+  // Total/Won sliders cap at real data's ~p95 (checked live: cumulative_usd
+  // p95 ≈ $34k, total_profit p5/p95 ≈ -$6.8k/+$8.3k) — both fields are
+  // heavily long-tailed, so the slider ends mean "no limit" rather than a
+  // hard cap, keeping real outliers visible unless the user actually drags
+  // off the end.
+  const TOTAL_CAP = 50000
+  const WON_FLOOR = -10000
+  const WON_CAP = 10000
+  const [minTotal, setMinTotal]           = useState(0)
+  const [maxTotal, setMaxTotal]           = useState(TOTAL_CAP)
+  const [minWon, setMinWon]               = useState(WON_FLOOR)
+  const [maxWon, setMaxWon]               = useState(WON_CAP)
+  // wallet_count checked live: 1-16 actual range, p95=7 — small and bounded
+  // enough that a plain 1-20 cap needs no "unlimited" sentinel like
+  // Total/Won do.
+  const TRADERS_CAP = 20
+  const [minTraders, setMinTraders]       = useState(1)
+  const [maxTraders, setMaxTraders]       = useState(TRADERS_CAP)
+  const [winRateMap, setWinRateMap]       = useState<Map<string, number>>(new Map())
+  const [balanceMap, setBalanceMap]       = useState<Map<string, number>>(new Map())
+  const [hasMore, setHasMore]             = useState(false)
+  const [loadingMore, setLoadingMore]     = useState(false)
+
+  // Every discovery filter is pushed into the query itself instead of
+  // filtering the already-fetched page client-side — a narrow filter (e.g.
+  // 9+ traders) previously showed nothing until you'd paged deep enough to
+  // stumble onto a match, since it only ever searched whatever was already
+  // in the browser. Rebuilt fresh each render (cheap — just query-builder
+  // calls, no network) and read through a ref so the mount-once effect
+  // below (which owns the Realtime subscription) always uses the current
+  // filter state without needing to tear down and resubscribe on every
+  // slider tick.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const buildQueryRef = useRef<() => any>(() => supabase.from('opportunities_live').select('*'))
+  buildQueryRef.current = () => {
+    let q = supabase.from('opportunities_live').select('*')
+    if (category !== 'all') {
+      q = category === 'other' ? q.or('category.eq.other,category.is.null') : q.eq('category', category)
+    }
+    if (todayOnly) {
+      const startOfToday = new Date()
+      startOfToday.setHours(0, 0, 0, 0)
+      q = q.gte('first_seen', startOfToday.toISOString())
+    }
+    if (minWinRate > 0) q = q.gte('best_win_rate', minWinRate / 100)
+    if (minBetRatio > 0) q = q.gte('best_bet_ratio', minBetRatio / 100)
+    q = q.gte('latest_price', minPrice / 100).lte('latest_price', maxPrice / 100)
+    q = q.gte('cumulative_usd', minTotal)
+    if (maxTotal < TOTAL_CAP) q = q.lte('cumulative_usd', maxTotal)
+    if (minWon > WON_FLOOR) q = q.gte('total_profit', minWon)
+    if (maxWon < WON_CAP) q = q.lte('total_profit', maxWon)
+    q = q.gte('wallet_count', minTraders)
+    if (maxTraders < TRADERS_CAP) q = q.lte('wallet_count', maxTraders)
+    return sortMode === 'profit'
+      ? q.order('total_profit', { ascending: false }).order('id', { ascending: false })
+      : q.order('last_updated', { ascending: false }).order('id', { ascending: false })
+  }
+
+  // How many rows are currently loaded for the active filter set — a
+  // background refresh re-fetches this many instead of collapsing back to
+  // one page, so "Load more" doesn't get silently wiped out from under you
+  // by the next 5s poll or Realtime event.
+  const loadedCountRef = useRef(PAGE_SIZE)
+  const loadFirstPageRef = useRef<() => void>(() => {})
+
+  useEffect(() => {
+    let cancelled = false
+    const loadFirstPage = () => {
+      loadedCountRef.current = PAGE_SIZE
+      Promise.resolve(buildQueryRef.current!().limit(PAGE_SIZE))
+        .then(({ data, error }) => {
+          if (cancelled) return
+          if (error) throw error
+          const rows = (data ?? []) as Opportunity[]
+          setOpportunities(rows)
+          setHasMore(rows.length === PAGE_SIZE)
+          setLoading(false)
+          setError(null)
+        })
+        .catch((e: Error) => {
+          if (cancelled) return
+          setError(e.message)
+          setLoading(false)
+        })
+    }
+    const refreshKeepingDepth = () => {
+      Promise.resolve(buildQueryRef.current!().limit(loadedCountRef.current))
+        .then(({ data, error }) => {
+          if (cancelled) return
+          if (error) throw error
+          const rows = (data ?? []) as Opportunity[]
+          setOpportunities(rows)
+          setHasMore(rows.length === loadedCountRef.current)
+        })
+        .catch(() => {})
+    }
+    loadFirstPageRef.current = loadFirstPage
+    loadFirstPage()
+    // opportunities_live is a view, so Realtime (which taps Postgres's
+    // replication stream on real tables) can't subscribe to it directly —
+    // instead, listen for changes on `opportunities` and re-fetch once one
+    // fires. Only `opportunities` needs watching: live-signal-service.py
+    // now writes opportunity_stats under the same lock as every
+    // opportunity_wallets write, and every one of those paths also touches
+    // `opportunities` (latest_price, last_updated, or is_current), so a
+    // wallet-level change is never invisible here. Mark-to-market price
+    // ticks land on `opportunities` continuously across ~1,400 tracked
+    // markets, so this debounces (trailing-edge) rather than firing on
+    // every single event. The interval stays as a fallback in case a
+    // realtime event is ever missed (dropped connection etc.).
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    const debouncedRefresh = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(refreshKeepingDepth, 1000)
+    }
+    const channel = supabase
+      .channel('opportunities-live-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedRefresh)
+      .subscribe()
+    const interval = setInterval(refreshKeepingDepth, 5000)
+    const unsubVisible = onTabVisible(refreshKeepingDepth)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      if (debounceTimer) clearTimeout(debounceTimer)
+      supabase.removeChannel(channel)
+      unsubVisible()
+    }
+  }, [])
+
+  // Refetches page 1 for the new filter set whenever a filter changes —
+  // debounced since range sliders fire on every drag tick. Skips the very
+  // first render since the mount effect above already loads page 1.
+  const filterMounted = useRef(false)
+  useEffect(() => {
+    if (!filterMounted.current) { filterMounted.current = true; return }
+    const t = setTimeout(() => loadFirstPageRef.current(), 300)
+    return () => clearTimeout(t)
+  }, [category, todayOnly, minWinRate, minBetRatio, minPrice, maxPrice,
+      minTotal, maxTotal, minWon, maxWon, minTraders, maxTraders, sortMode])
+
+  const loadMore = () => {
+    const last = opportunities[opportunities.length - 1]
+    if (!last || loadingMore) return
+    setLoadingMore(true)
+    Promise.resolve(buildQueryRef.current!().or(opportunityCursor(last, sortMode)).limit(PAGE_SIZE))
+      .then(({ data, error }) => {
+        if (error) throw error
+        const rows = (data ?? []) as Opportunity[]
+        setOpportunities(prev => [...prev, ...rows])
+        loadedCountRef.current += rows.length
+        setHasMore(rows.length === PAGE_SIZE)
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMore(false))
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      Promise.resolve(supabase.from('ticker').select('*').order('epoch', { ascending: false }).limit(200))
+        .then(({ data }) => { if (!cancelled) setTicker((data ?? []) as TickerTrade[]) })
+        .catch(() => {})
+    }
+    load()
+    const channel = supabase
+      .channel('ticker-changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticker' }, load)
+      .subscribe()
+    const interval = setInterval(load, 3000)
+    const unsubVisible = onTabVisible(load)
+    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel); unsubVisible() }
+  }, [])
+
+  // Win rate / wallet-balance data for the two threshold filters below —
+  // both change slowly (win rate only moves on resolution, balance only on
+  // the ~15min backend refresh), so this polls far less often than the
+  // ticker/opportunities feeds.
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      Promise.all([
+        Promise.resolve(supabase.from('leaderboard').select('wallet, won, lost')),
+        Promise.resolve(supabase.from('wallet_balances').select('wallet, usdc_balance')),
+      ]).then(([lb, wb]) => {
+        if (cancelled) return
+        const wr = new Map<string, number>()
+        for (const r of (lb.data ?? []) as { wallet: string; won: number; lost: number }[]) {
+          const total = r.won + r.lost
+          if (total > 0) wr.set(r.wallet, r.won / total)
+        }
+        setWinRateMap(wr)
+        const bal = new Map<string, number>()
+        for (const r of (wb.data ?? []) as { wallet: string; usdc_balance: number | null }[]) {
+          if (r.usdc_balance != null && r.usdc_balance > 0) bal.set(r.wallet, r.usdc_balance)
+        }
+        setBalanceMap(bal)
+      }).catch(() => {})
+    }
+    load()
+    const interval = setInterval(load, 60000)
+    const unsubVisible = onTabVisible(load)
+    return () => { cancelled = true; clearInterval(interval); unsubVisible() }
+  }, [])
+
+  // Tracked picks — a personal watchlist (RLS-scoped to auth.uid(), see
+  // tracked_picks migration), so this select naturally returns only the
+  // signed-in user's own rows with no client-side filtering needed.
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null))
+  }, [])
+
+  useEffect(() => {
+    if (!userId) { setTrackedPicks(new Set()); return }
+    Promise.resolve(supabase.from('tracked_picks').select('condition_id, outcome'))
+      .then(({ data }) => {
+        const rows = (data ?? []) as { condition_id: string; outcome: string }[]
+        setTrackedPicks(new Set(rows.map(r => `${r.condition_id}::${r.outcome}`)))
+      })
+      .catch(() => {})
+  }, [userId])
+
+  const toggleTrack = (o: Opportunity) => {
+    if (!userId) return
+    const key = `${o.condition_id}::${o.outcome}`
+    const isTracked = trackedPicks.has(key)
+    setTrackBusy(key)
+    const req = isTracked
+      ? Promise.resolve(supabase.from('tracked_picks').delete()
+          .eq('user_id', userId).eq('condition_id', o.condition_id).eq('outcome', o.outcome))
+      : Promise.resolve(supabase.from('tracked_picks').upsert(
+          { user_id: userId, condition_id: o.condition_id, outcome: o.outcome },
+          { onConflict: 'user_id,condition_id,outcome', ignoreDuplicates: true }
+        ))
+    req.then(({ error }) => {
+      if (error) throw error
+      setTrackedPicks(s => {
+        const next = new Set(s)
+        if (isTracked) next.delete(key); else next.add(key)
+        return next
+      })
+    }).catch(() => {}).finally(() => setTrackBusy(null))
+  }
+
+  const toggleExpand = (o: Opportunity) => {
+    const key = `${o.condition_id}::${o.outcome}`
+    if (expanded === key) {
+      setExpanded(null)
+      return
+    }
+    setExpanded(key)
+    setWalletsLoading(true)
+    setChartLoading(true)
+    fetchWallets(o.condition_id, o.outcome).then(setWallets).finally(() => setWalletsLoading(false))
+    fetchChart(o.condition_id, o.outcome).then(setChartHistory).finally(() => setChartLoading(false))
+  }
+
+  const filteredTicker = byCategory(ticker, category)
+    .filter(t => !todayOnly || isToday(t.ts))
+    .filter(t => {
+      if (minWinRate === 0) return true
+      const wr = t.wallet ? winRateMap.get(t.wallet) : undefined
+      return wr !== undefined && wr * 100 >= minWinRate
+    })
+    .filter(t => {
+      if (minBetRatio === 0) return true
+      const bal = t.wallet ? balanceMap.get(t.wallet) : undefined
+      return bal !== undefined && (t.usd / bal) * 100 >= minBetRatio
+    })
+    .filter(t => {
+      const cents = t.price * 100
+      return cents >= minPrice && cents <= maxPrice
+    })
+    .filter(t => t.usd >= minTotal && (maxTotal >= TOTAL_CAP || t.usd <= maxTotal))
+  // All discovery filtering + sorting now happens server-side in the query
+  // itself (see buildQueryRef above) — the fetched page is already exactly
+  // the filtered, sorted set, so nothing left to do here.
+  const filteredOpportunities = opportunities
+  // Tracked tab intentionally ignores the discovery filters above (category,
+  // win rate, price, etc.) — a watchlist shouldn't lose items just because
+  // an unrelated filter chip happens to be active elsewhere on the page.
+  const trackedOpportunities = opportunities.filter(o => trackedPicks.has(`${o.condition_id}::${o.outcome}`))
+
+  const renderOpportunityCard = (o: Opportunity) => {
+    const key = `${o.condition_id}::${o.outcome}`
+    const isOpen = expanded === key
+    const isTracked = trackedPicks.has(key)
+    const ic = categoryIcon(o.category)
+    const pct = gaugePct(o.entries, o.exited, o.closed)
+    const color = gaugeColor(pct)
+    // Gauge is a half-circle (top 180°) with the bottom half open — not a
+    // full 360° ring — the track and the fill both stop short of meeting
+    // at the bottom regardless of pct.
+    const r = 32, c = 2 * Math.PI * r
+    const arcLen = c * 0.5
+    const dash = (pct / 100) * arcLen
+    const tag = signalsTag(o.tier, o.cumulative_usd)
+    return (
+      <div key={key} className="sig-card" onClick={() => toggleExpand(o)}>
+        <div className="sig-card-top">
+          <div className="sig-card-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
+          <div style={{ flex: 1 }}>
+            <div className="sig-card-q">{o.title} <span className="sig-out">— {o.outcome}</span></div>
+            <div className="sig-card-meta">{o.wallet_count} top trader{o.wallet_count > 1 ? 's' : ''}</div>
+          </div>
+          {marketUrl(o.event_slug || o.slug) && (
+            <a
+              className="sig-track-btn"
+              href={marketUrl(o.event_slug || o.slug)!}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              title="Open market on Polymarket"
+            >
+              <ExternalLink size={15} />
+            </a>
+          )}
+          {userId && (
+            <button
+              className="sig-track-btn"
+              disabled={trackBusy === key}
+              onClick={e => { e.stopPropagation(); toggleTrack(o) }}
+              title={isTracked ? 'Untrack this pick' : 'Track this pick'}
+            >
+              <Star size={15} fill={isTracked ? '#f2b73f' : 'none'} color={isTracked ? '#f2b73f' : 'currentColor'} />
+            </button>
+          )}
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: o.total_profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+            {fmtSigned(o.total_profit)}
+          </div>
+        </div>
+        <div className="sig-gauge-row">
+          <div className="sig-gauge">
+            <svg width="80" height="80" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r={r} fill="none" stroke="#33363d" strokeWidth="7"
+                strokeDasharray={`${arcLen} ${c}`} strokeLinecap="round" />
+              <circle cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="7"
+                strokeDasharray={`${dash} ${c}`} strokeLinecap="round" />
+            </svg>
+            <div className="sig-gauge-label">
+              <div className="sig-gauge-pct">{pct}%</div>
+              <div className="sig-gauge-sub">in</div>
+            </div>
+          </div>
+          <div className="sig-stat-col">
+            <div className="sig-stat"><span className="sig-stat-label">Price</span><span className="sig-stat-val">{Math.round(o.latest_price * 100)}¢</span></div>
+            <div className="sig-stat"><span className="sig-stat-label">Total</span><span className="sig-stat-val g">{fmtFull(o.cumulative_usd)}</span></div>
+            {o.scalped > 0 && (
+              <div className="sig-stat"><span className="sig-stat-label">Scalped</span><span className="sig-stat-val r">{o.scalped}</span></div>
+            )}
+            {o.best_win_rate > 0 && (
+              <div className="sig-stat"><span className="sig-stat-label">Best win rate</span><span className="sig-stat-val">{Math.round(o.best_win_rate * 100)}%</span></div>
+            )}
+            {o.best_bet_ratio > 0 && (
+              <div className="sig-stat"><span className="sig-stat-label">Best bet ratio</span><span className="sig-stat-val">{Math.round(o.best_bet_ratio * 100)}%</span></div>
+            )}
+          </div>
+        </div>
+        <div className={`sig-tag ${tag.cls}`}>{tag.label}</div>
+
+        {isOpen && (
+          <div className="sig-drill" onClick={e => e.stopPropagation()}>
+            <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
+            {chartLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>Loading chart…</div>}
+            {!chartLoading && chartHistory.length < 2 && (
+              <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>No price history available for this market.</div>
+            )}
+            {!chartLoading && chartHistory.length >= 2 && (
+              <div style={{ marginBottom: 16 }}>
+                <PriceChart history={chartHistory} wallets={wallets} />
+              </div>
+            )}
+
+            <div className="sig-drill-label">Contributing traders</div>
+            {walletsLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>Loading contributors…</div>}
+            {!walletsLoading && wallets.length === 0 && (
+              <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
+            )}
+            {!walletsLoading && wallets.map((w, i) => {
+              const st = signalsTraderStatus(w)
+              const ret = walletReturn(w, o.latest_price)
+              return (
+                <div key={i} className="sig-drill-row">
+                  <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name">
+                    {traderLabel(w.wallet, w.wallet_name)}
+                  </a>
+                  <div className="sig-drill-detail">
+                    {fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}
+                  </div>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+                    {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
+                  </div>
+                  <div className="sig-drill-status" style={{ color: st.color, background: st.color + '26' }}>
+                    {st.label}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="sig-page">
+      <div className="app-section-header">
+        <div>
+          <h1 className="app-section-title">Top Trader Signals</h1>
+          <p className="app-section-sub">
+            {loading ? 'Loading live signals…'
+              : error ? 'Could not reach the signals backend'
+              : <>{opportunities.length} live opportunities · capital-weighted conviction from top traders</>}
+          </p>
+        </div>
+        {!error && <div className="sig-live">LIVE</div>}
+      </div>
+
+      <div className="sig-panel">
+        <div className="sig-head">
+          {error && (
+            <div style={{ color: '#ff3b5c', padding: '0 0 20px', fontSize: '0.875rem' }}>
+              {error} — check your Supabase connection and that `python3 scripts/live-signal-service.py` is running.
+            </div>
+          )}
+
+          <div className="sig-seg">
+            <div className={tab === 'ticker' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('ticker')}>Live Ticker</div>
+            <div className={tab === 'vetted' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('vetted')}>Vetted Picks</div>
+            <div className={tab === 'tracked' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('tracked')}>
+              Tracked{trackedPicks.size > 0 ? ` (${trackedPicks.size})` : ''}
+            </div>
+          </div>
+
+          <div className="sig-chips">
+            <div
+              className={todayOnly ? 'sig-chip active' : 'sig-chip'}
+              onClick={() => setTodayOnly(t => !t)}
+            >
+              Today only
+            </div>
+          </div>
+
+          <div className="sig-chips" style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)', marginRight: 2, alignSelf: 'center' }}>Win rate</span>
+            {[0, 50, 65, 80].map(v => (
+              <div key={v} className={minWinRate === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinWinRate(v)}>
+                {v === 0 ? 'Any' : `${v}%+`}
+              </div>
+            ))}
+          </div>
+
+          <div className="sig-chips" style={{ marginTop: 6 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)', marginRight: 2, alignSelf: 'center' }}>Bet vs wallet balance</span>
+            {[0, 5, 15, 30].map(v => (
+              <div key={v} className={minBetRatio === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinBetRatio(v)}>
+                {v === 0 ? 'Any' : `${v}%+`}
+              </div>
+            ))}
+          </div>
+
+          <div className="sig-price-range" style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+              Price range: {minPrice}¢ – {maxPrice}¢
+            </span>
+            <div className="sig-range-track-wrap">
+              <div className="sig-range-track" />
+              <div className="sig-range-fill" style={{ left: `${minPrice}%`, right: `${100 - maxPrice}%` }} />
+              <input
+                type="range" min={0} max={100} value={minPrice}
+                onChange={e => setMinPrice(Math.min(Number(e.target.value), maxPrice - 1))}
+                className="sig-range-input"
+              />
+              <input
+                type="range" min={0} max={100} value={maxPrice}
+                onChange={e => setMaxPrice(Math.max(Number(e.target.value), minPrice + 1))}
+                className="sig-range-input"
+              />
+            </div>
+          </div>
+
+          <div className="sig-price-range" style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+              Total: {minTotal === 0 ? '$0' : fmtFull(minTotal)} – {maxTotal >= TOTAL_CAP ? 'no limit' : fmtFull(maxTotal)}
+            </span>
+            <div className="sig-range-track-wrap">
+              <div className="sig-range-track" />
+              <div className="sig-range-fill" style={{ left: `${(minTotal / TOTAL_CAP) * 100}%`, right: `${100 - (maxTotal / TOTAL_CAP) * 100}%` }} />
+              <input
+                type="range" min={0} max={TOTAL_CAP} step={500} value={minTotal}
+                onChange={e => setMinTotal(Math.min(Number(e.target.value), maxTotal - 500))}
+                className="sig-range-input"
+              />
+              <input
+                type="range" min={0} max={TOTAL_CAP} step={500} value={maxTotal}
+                onChange={e => setMaxTotal(Math.max(Number(e.target.value), minTotal + 500))}
+                className="sig-range-input"
+              />
+            </div>
+          </div>
+
+          {tab === 'vetted' && (
+            <div className="sig-price-range" style={{ marginTop: 10 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                Amount won: {minWon <= WON_FLOOR ? 'no limit' : fmtSigned(minWon)} – {maxWon >= WON_CAP ? 'no limit' : fmtSigned(maxWon)}
+              </span>
+              <div className="sig-range-track-wrap">
+                <div className="sig-range-track" />
+                <div className="sig-range-fill" style={{
+                  left: `${((minWon - WON_FLOOR) / (WON_CAP - WON_FLOOR)) * 100}%`,
+                  right: `${100 - ((maxWon - WON_FLOOR) / (WON_CAP - WON_FLOOR)) * 100}%`,
+                }} />
+                <input
+                  type="range" min={WON_FLOOR} max={WON_CAP} step={250} value={minWon}
+                  onChange={e => setMinWon(Math.min(Number(e.target.value), maxWon - 250))}
+                  className="sig-range-input"
+                />
+                <input
+                  type="range" min={WON_FLOOR} max={WON_CAP} step={250} value={maxWon}
+                  onChange={e => setMaxWon(Math.max(Number(e.target.value), minWon + 250))}
+                  className="sig-range-input"
+                />
+              </div>
+            </div>
+          )}
+
+          {tab === 'vetted' && (
+            <div className="sig-price-range" style={{ marginTop: 10 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                Trader size: {minTraders} – {maxTraders >= TRADERS_CAP ? `${TRADERS_CAP}+` : maxTraders}
+              </span>
+              <div className="sig-range-track-wrap">
+                <div className="sig-range-track" />
+                <div className="sig-range-fill" style={{
+                  left: `${((minTraders - 1) / (TRADERS_CAP - 1)) * 100}%`,
+                  right: `${100 - ((maxTraders - 1) / (TRADERS_CAP - 1)) * 100}%`,
+                }} />
+                <input
+                  type="range" min={1} max={TRADERS_CAP} step={1} value={minTraders}
+                  onChange={e => setMinTraders(Math.min(Number(e.target.value), maxTraders - 1))}
+                  className="sig-range-input"
+                />
+                <input
+                  type="range" min={1} max={TRADERS_CAP} step={1} value={maxTraders}
+                  onChange={e => setMaxTraders(Math.max(Number(e.target.value), minTraders + 1))}
+                  className="sig-range-input"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {tab === 'ticker' && (
+          <div className="sig-list">
+            {filteredTicker.length === 0 && (
+              <div className="sig-empty">Waiting for a big trade…</div>
+            )}
+            {filteredTicker.map(t => {
+              const ic = categoryIcon(t.category)
+              return (
+                <div key={t.id} className="sig-row">
+                  <div className="sig-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
+                  <div className="sig-mid">
+                    <div className="sig-q">{t.title} <span className="sig-out">— {t.outcome}</span></div>
+                    <div className="sig-meta">
+                      {t.wallet ? (
+                        <a href={profileUrl(t.wallet)!} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>
+                          {traderLabel(t.wallet, t.wallet_name)}
+                        </a>
+                      ) : (
+                        <span>someone</span>
+                      )}
+                      {t.roster_tagged ? <span className="sig-trk">Tracked</span> : null}
+                      {t.wallet && winRateMap.has(t.wallet) && (
+                        <span>· {Math.round((winRateMap.get(t.wallet) ?? 0) * 100)}% win rate</span>
+                      )}
+                      {t.wallet && balanceMap.has(t.wallet) && (
+                        <span>· {Math.round((t.usd / (balanceMap.get(t.wallet) ?? 1)) * 100)}% of wallet</span>
+                      )}
+                      <span>· {timeAgo(t.ts)}</span>
+                    </div>
+                  </div>
+                  <div className="sig-right">
+                    <span className={`sig-pill ${t.side === 'BUY' ? 'buy' : 'sell'}`}>{t.side}</span>
+                    <div className="sig-rowprice">{Math.round(t.price * 100)}¢</div>
+                    <div className="sig-rowsize">{fmtFull(t.usd)}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {tab === 'vetted' && (
+          <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <div className={sortMode === 'recent' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('recent')}>Most recent</div>
+              <div className={sortMode === 'profit' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('profit')}>Most profitable</div>
+            </div>
+          <div className="sig-grid">
+            {loading && <div className="sig-empty">Connecting to the live signal feed…</div>}
+            {!loading && filteredOpportunities.length === 0 && (
+              <div className="sig-empty">No opportunities detected yet — the live backend hasn't caught a tracked trader's trade yet. This is normal; keep it running.</div>
+            )}
+            {!loading && filteredOpportunities.map(renderOpportunityCard)}
+          </div>
+          {!loading && hasMore && (
+            <button className="sig-load-more" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </button>
+          )}
+          </>
+        )}
+
+        {tab === 'tracked' && (
+          <div className="sig-grid">
+            {!userId && (
+              <div className="sig-empty">Sign in to track picks.</div>
+            )}
+            {userId && trackedOpportunities.length === 0 && (
+              <div className="sig-empty">No tracked picks yet — star a signal from Vetted Picks to add it here.</div>
+            )}
+            {userId && trackedOpportunities.map(renderOpportunityCard)}
+          </div>
+        )}
+
+        <div className="sig-foot">
+          {tab === 'ticker' ? 'Raw trade activity, $100+ · not a recommendation' : 'Positions still open, weighted by trader conviction'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default SignalsDemo
