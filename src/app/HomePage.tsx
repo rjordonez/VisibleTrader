@@ -7,6 +7,8 @@ import {
   profileUrl, traderLabel, timeAgo, NAV_CATEGORIES,
 } from './helpers'
 import { PriceChart } from './PriceChart'
+import { SkelHeroRow, SkelCardGrid } from './Skeleton'
+import { SignalModal } from './SignalModal'
 
 /* ── Home (Polymarket-homepage-style overview: hero + top movers + grid) ── */
 function HomePage({ onOpenSignals, category, onCategoryChange }: {
@@ -18,6 +20,7 @@ function HomePage({ onOpenSignals, category, onCategoryChange }: {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [heroIndex, setHeroIndex] = useState(0)
+  const [modalOpp, setModalOpp] = useState<Opportunity | null>(null)
   // Every hero-carousel candidate's wallets/chart, keyed by condition_id::outcome,
   // fetched up front rather than one-at-a-time on rotation — the carousel advances
   // every 6s, and fetching only the newly-shown slot on each rotation produced a
@@ -146,6 +149,8 @@ function HomePage({ onOpenSignals, category, onCategoryChange }: {
 
   return (
     <div className="sig-page">
+
+      {loading && !error && <SkelHeroRow />}
 
       {!loading && !error && heroSignal && (
         <div className="sig-hero-row">
@@ -301,7 +306,7 @@ function HomePage({ onOpenSignals, category, onCategoryChange }: {
           <button className="sig-btn secondary" onClick={onOpenSignals}>Open full Signals page →</button>
         </div>
 
-        {loading && <div className="sig-empty">Connecting to the live signal feed…</div>}
+        {loading && <SkelCardGrid count={12} dense />}
         {!loading && !error && gridItems.length === 0 && (
           <div className="sig-empty">No opportunities detected yet.</div>
         )}
@@ -310,7 +315,7 @@ function HomePage({ onOpenSignals, category, onCategoryChange }: {
             const ic = categoryIcon(o.category)
             const tag = signalsTag(o.tier, o.cumulative_usd)
             return (
-              <div key={`${o.condition_id}::${o.outcome}`} className="sig-card sig-card-dense" onClick={onOpenSignals}>
+              <div key={`${o.condition_id}::${o.outcome}`} className="sig-card sig-card-dense" onClick={() => setModalOpp(o)}>
                 <div className="sig-card-top" style={{ marginBottom: 10 }}>
                   <div className="sig-card-icon" style={{ background: ic.bg, width: 28, height: 28, fontSize: 13 }}>{ic.emoji}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -328,6 +333,14 @@ function HomePage({ onOpenSignals, category, onCategoryChange }: {
           })}
         </div>
       </div>
+
+      {modalOpp && (
+        <SignalModal
+          key={`${modalOpp.condition_id}::${modalOpp.outcome}`}
+          opportunity={modalOpp}
+          onClose={() => setModalOpp(null)}
+        />
+      )}
     </div>
   )
 }

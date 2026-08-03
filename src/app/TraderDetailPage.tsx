@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { traderLabel, profileUrl, categoryLabel, fmtSigned, fmtFull, timeAgo } from './helpers'
 import { CumulativeChart } from './PriceChart'
+import { SkelStatsRow, SkelTableRows } from './Skeleton'
 
 /* ── Trader detail ── */
 interface TraderSummary {
@@ -158,6 +159,23 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
           <div style={{ color: '#ff3b5c', padding: '0 0 20px', fontSize: '0.875rem' }}>{error}</div>
         )}
 
+        {loading && !error && (
+          <>
+            <SkelStatsRow count={5} />
+            <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>All resolved positions</div>
+            <div className="sig-table-wrap">
+              <table className="sig-table">
+                <thead>
+                  <tr><th>Market</th><th className="num">Stake</th><th className="num">Price</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
+                </thead>
+                <tbody>
+                  <SkelTableRows cols={6} count={8} />
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
         {!loading && !error && summary && (
           <>
             <div className="sig-stats-row">
@@ -238,7 +256,21 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
               Not in our tracked history yet — showing live data straight from Polymarket instead.
             </div>
 
-            {liveLoading && <div className="sig-empty">Loading from Polymarket…</div>}
+            {liveLoading && (
+              <>
+                <SkelStatsRow count={4} />
+                <div className="sig-table-wrap">
+                  <table className="sig-table">
+                    <thead>
+                      <tr><th>Market</th><th className="num">Avg Price</th><th className="num">Current Price</th><th className="num">Unrealized P&L</th></tr>
+                    </thead>
+                    <tbody>
+                      <SkelTableRows cols={4} count={6} />
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
 
             {!liveLoading && (livePositions.length > 0 || liveClosed.length > 0) && (
               <>
@@ -264,9 +296,7 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
                 {liveCumulative.length > 1 && (
                   <>
                     <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Realized P&L over time (live from Polymarket)</div>
-                    <div style={{ marginBottom: 24 }}>
-                      <CumulativeChart data={liveCumulative} />
-                    </div>
+                    <CumulativeChart data={liveCumulative} />
                   </>
                 )}
               </>

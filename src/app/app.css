@@ -14,6 +14,14 @@
   font-family: 'Manrope', system-ui, sans-serif;
 }
 
+/* No default browser focus ring anywhere in the app — most visibly, Recharts
+   makes its <svg> tabbable and tapping a chart threw up the plain blue/white
+   outline rectangle around the whole card. */
+.app-shell *:focus,
+.app-shell *:focus-visible {
+  outline: none;
+}
+
 /* ── Top header ──
    Bar itself stays edge-to-edge (background/border read as one continuous
    strip); the actual content is inset into a centered max-width column so
@@ -37,6 +45,9 @@
   align-items: center;
   gap: 1.5rem;
   padding: 0 2.5rem;
+}
+@media (max-width: 640px) {
+  .app-header-inner { padding: 0 1rem; }
 }
 
 .app-header-logo {
@@ -168,6 +179,9 @@
   margin-left: auto;
   margin-right: auto;
   padding: 2rem 2.5rem;
+}
+@media (max-width: 640px) {
+  .app-main { padding: 1.25rem 1rem; }
 }
 
 /* ── Section Header ── */
@@ -426,24 +440,36 @@
 
 /* ── Loading skeletons — reserve real content's footprint so nothing
    resizes when async data (hero chart / contributors) lands ── */
-@keyframes sig-shimmer { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.9; } }
-.sig-skel { background: var(--surface-2); border-radius: 6px; animation: sig-shimmer 1.4s ease-in-out infinite; }
+@keyframes sig-shimmer { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+/* rgba white overlay (not a solid surface color) so this reads against
+   every container it sits in — .sig-hero, .sig-card, .sig-stat-cell etc.
+   all use --surface-2 themselves, which made an earlier version of this
+   using that same var completely invisible against its own container. */
+.sig-skel { background: rgba(255, 255, 255, 0.09); border-radius: 6px; animation: sig-shimmer 1.4s ease-in-out infinite; }
 .sig-skel-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
 .sig-skel-row:not(:first-child) { border-top: 1px solid var(--border); }
 .sig-drill-name { font-weight: 700; width: 100px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--blue); text-decoration: none; }
 .sig-drill-name:hover { text-decoration: underline; }
 .sig-drill-detail { flex: 1; color: var(--text-dim); }
+@media (max-width: 480px) {
+  .sig-drill-name { width: 72px; font-size: 11.5px; }
+}
 .sig-drill-status { font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 4px; flex-shrink: 0; }
 
 /* ── Dashboard shared: stat cells, data tables (Profits/Leaderboard) ── */
 .sig-stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
 .sig-stat-cell { background: var(--surface-2); padding: 16px 18px; }
+@media (max-width: 640px) {
+  .sig-stats-row { grid-template-columns: repeat(2, 1fr); }
+  .sig-stat-cell { padding: 12px 14px; }
+}
 .sig-stat-cell-label { font-size: 11px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
 .sig-stat-cell-val { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
 .sig-stat-cell-val.g { color: var(--green); }
 .sig-stat-cell-val.r { color: var(--red); }
 
-.sig-table-wrap { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.sig-table-wrap { border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; scrollbar-width: none; }
+.sig-table-wrap::-webkit-scrollbar { display: none; }
 .sig-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .sig-table th {
   text-align: left; font-size: 11px; font-weight: 600; color: var(--text-dim);
@@ -493,4 +519,68 @@
 }
 .sig-watch-remove { color: var(--text-faint); cursor: pointer; font-size: 12px; }
 .sig-watch-remove:hover { color: var(--red); }
+
+/* ── Signal detail modal ──
+   No dark scrim and no blur on the backdrop itself — the rest of the page
+   stays completely untouched. The blur is a frosted-glass effect on the
+   modal card's own (semi-transparent) background instead, so only what's
+   directly behind the card is softened. The close button sits above the
+   modal panel (in the backdrop's own top padding), not inside it
+   overlapping the header. */
+@keyframes sig-modal-fade { from { opacity: 0; } to { opacity: 1; } }
+.sig-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px 24px;
+  animation: sig-modal-fade 0.15s ease;
+}
+.sig-modal-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  max-height: min(600px, 100%);
+  display: flex;
+}
+.sig-modal {
+  background: rgba(36, 40, 52, 0.78);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+  width: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.sig-modal::-webkit-scrollbar { display: none; }
+@media (max-width: 640px) {
+  .sig-modal-backdrop { padding: 56px 12px 12px; }
+  .sig-modal { padding: 16px; }
+}
+.sig-modal-close {
+  position: absolute;
+  top: -44px;
+  right: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.sig-modal-close:hover { background: rgba(255, 255, 255, 0.22); color: var(--text); }
 

@@ -8,6 +8,7 @@ import {
   signalsTraderStatus, walletReturn, profileUrl, traderLabel, timeAgo, marketUrl,
 } from './helpers'
 import { PriceChart } from './PriceChart'
+import { SkelCard, SkelListRow, SkelBlock, SkelDrillRows } from './Skeleton'
 
 function SignalsDemo({ category }: { category: string }) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
@@ -19,6 +20,7 @@ function SignalsDemo({ category }: { category: string }) {
   const [chartHistory, setChartHistory]   = useState<ChartPoint[]>([])
   const [chartLoading, setChartLoading]   = useState(false)
   const [ticker, setTicker]               = useState<TickerTrade[]>([])
+  const [tickerLoading, setTickerLoading] = useState(true)
   const [tab, setTab]                     = useState<'ticker' | 'vetted' | 'tracked'>('ticker')
   const [userId, setUserId]               = useState<string | null>(null)
   const [trackedPicks, setTrackedPicks]   = useState<Set<string>>(new Set())
@@ -193,8 +195,12 @@ function SignalsDemo({ category }: { category: string }) {
     let cancelled = false
     const load = () => {
       Promise.resolve(supabase.from('ticker').select('*').order('epoch', { ascending: false }).limit(200))
-        .then(({ data }) => { if (!cancelled) setTicker((data ?? []) as TickerTrade[]) })
-        .catch(() => {})
+        .then(({ data }) => {
+          if (cancelled) return
+          setTicker((data ?? []) as TickerTrade[])
+          setTickerLoading(false)
+        })
+        .catch(() => { if (!cancelled) setTickerLoading(false) })
     }
     load()
     const channel = supabase
@@ -398,7 +404,7 @@ function SignalsDemo({ category }: { category: string }) {
         {isOpen && (
           <div className="sig-drill" onClick={e => e.stopPropagation()}>
             <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
-            {chartLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>Loading chart…</div>}
+            {chartLoading && <SkelBlock height={220} style={{ marginBottom: 16 }} />}
             {!chartLoading && chartHistory.length < 2 && (
               <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>No price history available for this market.</div>
             )}
@@ -409,7 +415,7 @@ function SignalsDemo({ category }: { category: string }) {
             )}
 
             <div className="sig-drill-label">Contributing traders</div>
-            {walletsLoading && <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>Loading contributors…</div>}
+            {walletsLoading && <SkelDrillRows count={5} />}
             {!walletsLoading && wallets.length === 0 && (
               <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
             )}
@@ -589,10 +595,11 @@ function SignalsDemo({ category }: { category: string }) {
 
         {tab === 'ticker' && (
           <div className="sig-list">
-            {filteredTicker.length === 0 && (
+            {tickerLoading && Array.from({ length: 8 }).map((_, i) => <SkelListRow key={i} />)}
+            {!tickerLoading && filteredTicker.length === 0 && (
               <div className="sig-empty">Waiting for a big trade…</div>
             )}
-            {filteredTicker.map(t => {
+            {!tickerLoading && filteredTicker.map(t => {
               const ic = categoryIcon(t.category)
               return (
                 <div key={t.id} className="sig-row">
@@ -635,7 +642,7 @@ function SignalsDemo({ category }: { category: string }) {
               <div className={sortMode === 'profit' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('profit')}>Most profitable</div>
             </div>
           <div className="sig-grid">
-            {loading && <div className="sig-empty">Connecting to the live signal feed…</div>}
+            {loading && Array.from({ length: 8 }).map((_, i) => <SkelCard key={i} />)}
             {!loading && filteredOpportunities.length === 0 && (
               <div className="sig-empty">No opportunities detected yet — the live backend hasn't caught a tracked trader's trade yet. This is normal; keep it running.</div>
             )}

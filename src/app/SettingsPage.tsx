@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { SkelBlock } from './Skeleton'
 
 /* ── Settings ── */
 interface AppSettings {
@@ -79,6 +80,17 @@ function SettingsPage() {
       <div className="sig-panel" style={{ maxWidth: 560 }}>
         {error && (
           <div style={{ color: '#ff3b5c', padding: '0 0 20px', fontSize: '0.875rem' }}>{error}</div>
+        )}
+
+        {loading && !error && (
+          <>
+            {[140, 100, 220, 260].map((w, i) => (
+              <div key={i} style={{ marginBottom: 24 }}>
+                <SkelBlock width={w} height={10} style={{ marginBottom: 8 }} />
+                <SkelBlock height={36} radius={6} />
+              </div>
+            ))}
+          </>
         )}
 
         {!loading && !error && (

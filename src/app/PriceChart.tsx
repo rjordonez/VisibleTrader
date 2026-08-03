@@ -123,21 +123,84 @@ export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallet
   )
 }
 
+function fmtCum(v: number) {
+  return `${v >= 0 ? '+' : '-'}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+}
+
 export function CumulativeChart({ data }: { data: { d: string; cum: number }[] }) {
-  const width = 1000, height = 160, padding = 20
+  const [hoverI, setHoverI] = useState<number | null>(null)
+  if (data.length < 2) return null
+
+  const chartData = data.map((d, i) => ({ i, cum: d.cum, d: d.d }))
   const values = data.map(d => d.cum)
-  const min = Math.min(0, ...values)
-  const max = Math.max(0, ...values)
-  const range = max - min || 1
-  const xStep = (width - padding * 2) / Math.max(1, data.length - 1)
-  const yFor = (v: number) => height - padding - ((v - min) / range) * (height - padding * 2)
-  const points = data.map((d, i) => `${padding + i * xStep},${yFor(d.cum)}`).join(' ')
+  const minV = Math.min(0, ...values)
+  const maxV = Math.max(0, ...values)
+  const pad = Math.max(1, (maxV - minV) * 0.1)
+  const domainMin = minV - pad
+  const domainMax = maxV + pad
+  const lastIndex = chartData.length - 1
   const last = values[values.length - 1] ?? 0
   const lineColor = last >= 0 ? '#00d17a' : '#ff3b5c'
+
+  // `d` is a plain day-string ("2026-08-01") for the Profits summary but not
+  // always a parseable date elsewhere it's reused — fall back to the raw
+  // value rather than showing "Invalid Date" on the axis.
+  const fmtTick = (i: number) => {
+    const raw = data[Math.round(i)]?.d
+    if (!raw) return ''
+    const dt = new Date(raw)
+    return Number.isNaN(dt.getTime()) ? raw : dt.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  }
+
+  const hoverPoint = hoverI != null ? chartData[hoverI] : null
+
   return (
-    <svg className="sig-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-      <line x1={padding} y1={yFor(0)} x2={width - padding} y2={yFor(0)} stroke="var(--border)" strokeWidth={1} />
-      <polyline points={points} fill="none" stroke={lineColor} strokeWidth={2} />
-    </svg>
+    <div style={{ marginBottom: 24 }}>
+      <ResponsiveContainer width="100%" height={220}>
+        <ComposedChart
+          data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+          onMouseMove={(state: { activeLabel?: string | number }) => {
+            if (state.activeLabel == null) return
+            const i = Math.round(Number(state.activeLabel))
+            if (!Number.isNaN(i)) setHoverI(i)
+          }}
+          onMouseLeave={() => setHoverI(null)}
+        >
+          <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" vertical={false} />
+          <XAxis
+            dataKey="i" type="number" domain={[0, lastIndex]}
+            tickFormatter={fmtTick} stroke="var(--text-faint)" fontSize={10}
+            tickLine={false} axisLine={false} minTickGap={40}
+          />
+          <YAxis
+            domain={[domainMin, domainMax]} tickCount={5} orientation="right"
+            tickFormatter={fmtCum}
+            stroke="var(--text-faint)" fontSize={10}
+            tickLine={false} axisLine={false} width={64}
+          />
+          <ReferenceLine y={0} stroke="var(--border)" />
+          <Line
+            type="monotone" dataKey="cum" stroke={lineColor} strokeWidth={1.5}
+            dot={false} activeDot={false} isAnimationActive={false}
+          />
+          <ReferenceDot x={lastIndex} y={last} r={5.5} fill="none" stroke={lineColor} strokeWidth={1.5} ifOverflow="extendDomain" />
+          <ReferenceDot x={lastIndex} y={last} r={3} fill={lineColor} stroke="var(--bg)" strokeWidth={1.5} ifOverflow="extendDomain" />
+          {hoverPoint && (
+            <>
+              <ReferenceLine x={hoverPoint.i} stroke="var(--text-faint)" strokeDasharray="3 3" ifOverflow="extendDomain" />
+              <ReferenceDot
+                x={hoverPoint.i} y={hoverPoint.cum} r={5} fill={lineColor} stroke="var(--bg)" strokeWidth={2}
+                ifOverflow="extendDomain"
+                label={{
+                  value: fmtCum(hoverPoint.cum),
+                  position: 'top', offset: 10,
+                  fill: 'var(--text)', fontSize: 12, fontWeight: 600,
+                }}
+              />
+            </>
+          )}
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
   )
 }

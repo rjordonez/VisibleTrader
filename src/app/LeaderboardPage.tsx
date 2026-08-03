@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { onTabVisible, traderLabel, profileUrl, fmtFull, fmtSigned } from './helpers'
+import { SkelTableRows } from './Skeleton'
 
 /* ── Leaderboard ── */
 interface LeaderboardRow {
@@ -64,7 +65,7 @@ function LeaderboardPage({ onSelectWallet }: { onSelectWallet: (wallet: string) 
           <div className="sig-empty">No resolved positions yet.</div>
         )}
 
-        {!loading && !error && rows.length > 0 && (
+        {(loading || (!error && rows.length > 0)) && (
           <div className="sig-table-wrap">
             <table className="sig-table">
               <thead>
@@ -80,7 +81,8 @@ function LeaderboardPage({ onSelectWallet }: { onSelectWallet: (wallet: string) 
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => {
+                {loading && <SkelTableRows cols={8} count={10} />}
+                {!loading && rows.map((r, i) => {
                   const winRate = r.won + r.lost > 0 ? (r.won / (r.won + r.lost)) * 100 : 0
                   const usdWinRate = r.deployed > 0 ? (r.won_usd / r.deployed) * 100 : 0
                   const roi = r.deployed > 0 ? (r.net_profit / r.deployed) * 100 : 0

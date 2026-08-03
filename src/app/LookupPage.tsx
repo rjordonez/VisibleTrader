@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { traderLabel, profileUrl, fmtFull } from './helpers'
+import { SkelTableRows } from './Skeleton'
 
 /* ── Lookup ── */
 interface DirectoryResult {
@@ -121,7 +122,7 @@ function LookupPage({ onSelectWallet }: { onSelectWallet: (wallet: string) => vo
         {error && <div style={{ color: '#ff3b5c', marginBottom: 20, fontSize: '0.875rem' }}>{error}</div>}
         {!loading && !error && results.length === 0 && <div className="sig-empty">No results yet — search above.</div>}
 
-        {results.length > 0 && (
+        {(loading || results.length > 0) && (
           <div className="sig-table-wrap">
             <table className="sig-table">
               <thead>
@@ -133,7 +134,8 @@ function LookupPage({ onSelectWallet }: { onSelectWallet: (wallet: string) => vo
                 </tr>
               </thead>
               <tbody>
-                {results.map(r => {
+                {loading && <SkelTableRows cols={4} count={5} />}
+                {!loading && results.map(r => {
                   const s = status[r.wallet]
                   const inRoster = s && s.pnlRank !== null && s.pnlRank <= rosterSize
                   const tracked = inRoster || s?.manuallyTracked

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { onTabVisible, fmtSigned, fmtFull, profileUrl, traderLabel, timeAgo } from './helpers'
 import { CumulativeChart } from './PriceChart'
+import { SkelStatsRow, SkelBlock, SkelTableRows } from './Skeleton'
 
 /* ── Profits ── */
 interface ProfitsSummary {
@@ -92,6 +93,31 @@ function ProfitsPage() {
       <div className="sig-panel">
         {error && (
           <div style={{ color: '#ff3b5c', padding: '0 0 20px', fontSize: '0.875rem' }}>{error}</div>
+        )}
+
+        {loading && !error && (
+          <>
+            <SkelStatsRow count={4} />
+            <SkelBlock height={220} style={{ marginBottom: 24 }} />
+            <div className="sig-table-wrap">
+              <table className="sig-table">
+                <thead>
+                  <tr>
+                    <th>Market</th>
+                    <th>Trader</th>
+                    <th className="num">Stake</th>
+                    <th className="num">Price</th>
+                    <th>Result</th>
+                    <th className="num">Profit</th>
+                    <th className="num">Resolved</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <SkelTableRows cols={7} count={8} />
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {!loading && !error && summary && summary.resolved_n > 0 && (
