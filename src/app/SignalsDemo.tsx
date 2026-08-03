@@ -56,36 +56,39 @@ function SignalsDemo({ category }: { category: string }) {
   // filtering the already-fetched page client-side — a narrow filter (e.g.
   // 9+ traders) previously showed nothing until you'd paged deep enough to
   // stumble onto a match, since it only ever searched whatever was already
-  // in the browser. Rebuilt fresh each render (cheap — just query-builder
-  // calls, no network) and read through a ref so the mount-once effect
-  // below (which owns the Realtime subscription) always uses the current
-  // filter state without needing to tear down and resubscribe on every
-  // slider tick.
+  // in the browser. Rebuilt whenever a filter changes (cheap — just
+  // query-builder calls, no network) and read through a ref so the
+  // mount-once effect below (which owns the Realtime subscription) always
+  // uses the current filter state without needing to tear down and
+  // resubscribe on every slider tick.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const buildQueryRef = useRef<() => any>(() => supabase.from('opportunities_live').select('*'))
-  buildQueryRef.current = () => {
-    let q = supabase.from('opportunities_live').select('*')
-    if (category !== 'all') {
-      q = category === 'other' ? q.or('category.eq.other,category.is.null') : q.eq('category', category)
+  useEffect(() => {
+    buildQueryRef.current = () => {
+      let q = supabase.from('opportunities_live').select('*')
+      if (category !== 'all') {
+        q = category === 'other' ? q.or('category.eq.other,category.is.null') : q.eq('category', category)
+      }
+      if (todayOnly) {
+        const startOfToday = new Date()
+        startOfToday.setHours(0, 0, 0, 0)
+        q = q.gte('first_seen', startOfToday.toISOString())
+      }
+      if (minWinRate > 0) q = q.gte('best_win_rate', minWinRate / 100)
+      if (minBetRatio > 0) q = q.gte('best_bet_ratio', minBetRatio / 100)
+      q = q.gte('latest_price', minPrice / 100).lte('latest_price', maxPrice / 100)
+      q = q.gte('cumulative_usd', minTotal)
+      if (maxTotal < TOTAL_CAP) q = q.lte('cumulative_usd', maxTotal)
+      if (minWon > WON_FLOOR) q = q.gte('total_profit', minWon)
+      if (maxWon < WON_CAP) q = q.lte('total_profit', maxWon)
+      q = q.gte('wallet_count', minTraders)
+      if (maxTraders < TRADERS_CAP) q = q.lte('wallet_count', maxTraders)
+      return sortMode === 'profit'
+        ? q.order('total_profit', { ascending: false }).order('id', { ascending: false })
+        : q.order('last_updated', { ascending: false }).order('id', { ascending: false })
     }
-    if (todayOnly) {
-      const startOfToday = new Date()
-      startOfToday.setHours(0, 0, 0, 0)
-      q = q.gte('first_seen', startOfToday.toISOString())
-    }
-    if (minWinRate > 0) q = q.gte('best_win_rate', minWinRate / 100)
-    if (minBetRatio > 0) q = q.gte('best_bet_ratio', minBetRatio / 100)
-    q = q.gte('latest_price', minPrice / 100).lte('latest_price', maxPrice / 100)
-    q = q.gte('cumulative_usd', minTotal)
-    if (maxTotal < TOTAL_CAP) q = q.lte('cumulative_usd', maxTotal)
-    if (minWon > WON_FLOOR) q = q.gte('total_profit', minWon)
-    if (maxWon < WON_CAP) q = q.lte('total_profit', maxWon)
-    q = q.gte('wallet_count', minTraders)
-    if (maxTraders < TRADERS_CAP) q = q.lte('wallet_count', maxTraders)
-    return sortMode === 'profit'
-      ? q.order('total_profit', { ascending: false }).order('id', { ascending: false })
-      : q.order('last_updated', { ascending: false }).order('id', { ascending: false })
-  }
+  }, [category, todayOnly, minWinRate, minBetRatio, minPrice, maxPrice,
+      minTotal, maxTotal, minWon, maxWon, minTraders, maxTraders, sortMode, WON_FLOOR])
 
   // How many rows are currently loaded for the active filter set — a
   // background refresh re-fetches this many instead of collapsing back to
@@ -242,8 +245,11 @@ function SignalsDemo({ category }: { category: string }) {
   }, [])
 
   useEffect(() => {
-    if (!userId) { setTrackedPicks(new Set()); return }
-    Promise.resolve(supabase.from('tracked_picks').select('condition_id, outcome'))
+    Promise.resolve(
+      userId
+        ? supabase.from('tracked_picks').select('condition_id, outcome')
+        : Promise.resolve({ data: [] as { condition_id: string; outcome: string }[] })
+    )
       .then(({ data }) => {
         const rows = (data ?? []) as { condition_id: string; outcome: string }[]
         setTrackedPicks(new Set(rows.map(r => `${r.condition_id}::${r.outcome}`)))

@@ -57,26 +57,22 @@ function DropdownSection({ label, items }: { label: string; items: typeof tools 
   )
 }
 
-export default function Navbar() {
-  const [menu, setMenu] = useState<Menu>('closed')
-
-  useEffect(() => {
-    document.body.style.overflow = menu !== 'closed' ? 'hidden' : ''
-    return () => { document.body.style.overflow = '' }
-  }, [menu])
-
-  const close = () => setMenu('closed')
-
-  const DrawerSubLevel = ({ title, items, onBack }: { title: string; items: typeof tools; onBack: () => void }) => (
+function DrawerSubLevel({ title, items, onBack, onClose }: {
+  title: string
+  items: typeof tools
+  onBack: () => void
+  onClose: () => void
+}) {
+  return (
     <>
       <div className="nav-drawer-header">
         <button className="nav-drawer-back" onClick={onBack}><ChevronLeft /> Back</button>
         <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{title}</span>
-        <button className="nav-drawer-close" onClick={close}>✕</button>
+        <button className="nav-drawer-close" onClick={onClose}>✕</button>
       </div>
       <div className="nav-drawer-body">
         {items.map(t => (
-          <a key={t.name} href={t.href} className="nav-drawer-tool" onClick={close}>
+          <a key={t.name} href={t.href} className="nav-drawer-tool" onClick={onClose}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span className="nav-dropdown-dot" style={{ background: t.color }} />
               <span className="nav-drawer-tool-name">{t.name}</span>
@@ -87,6 +83,17 @@ export default function Navbar() {
       </div>
     </>
   )
+}
+
+export default function Navbar() {
+  const [menu, setMenu] = useState<Menu>('closed')
+
+  useEffect(() => {
+    document.body.style.overflow = menu !== 'closed' ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [menu])
+
+  const close = () => setMenu('closed')
 
   return (
     <>
@@ -144,8 +151,8 @@ export default function Navbar() {
             </div>
           </>
         )}
-        {menu === 'tools'     && <DrawerSubLevel title="Tools"     items={tools}       onBack={() => setMenu('main')} />}
-        {menu === 'resources' && <DrawerSubLevel title="Resources" items={calculators} onBack={() => setMenu('main')} />}
+        {menu === 'tools'     && <DrawerSubLevel title="Tools"     items={tools}       onBack={() => setMenu('main')} onClose={close} />}
+        {menu === 'resources' && <DrawerSubLevel title="Resources" items={calculators} onBack={() => setMenu('main')} onClose={close} />}
       </div>
     </>
   )

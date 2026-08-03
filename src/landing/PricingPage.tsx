@@ -32,7 +32,7 @@ const plans = [
       'Unlimited Live Ticker',
       'Full Vetted Picks with price charts',
       'Full Leaderboard + trader detail pages',
-      'Profits page — real, payout-adjusted P&L',
+      'Profits page: real, payout-adjusted P&L',
       'Browser alerts on your watchlist',
       'Configurable roster size & conviction tiers',
       '24/7 live chat support',

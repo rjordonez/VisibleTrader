@@ -100,6 +100,10 @@ export function categoryLabel(category: string) {
   return category.charAt(0).toUpperCase() + category.slice(1)
 }
 
+// Fixed taxonomy (not derived from live data) since the category filter
+// renders before any page has fetched its own category counts.
+export const NAV_CATEGORIES = ['politics', 'sports', 'crypto', 'esports', 'finance', 'economics', 'tech', 'culture', 'weather', 'mentions']
+
 export function fmtAbbrev(n: number) {
   return n >= 1000 ? '$' + (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'k' : '$' + Math.round(n)
 }

@@ -23,7 +23,7 @@ export default function Features() {
 
         <div className="bento-grid">
 
-          {/* ── Live Ticker — large left ── */}
+          {/* Live Ticker (large left) */}
           <Link to="/features/live-ticker" className="bento-card bento-arb">
             <span className="bento-label bento-label-green">LIVE TICKER →</span>
             <h3 className="bento-title">Watch the tape, live</h3>
@@ -62,21 +62,21 @@ export default function Features() {
             <p className="bento-sub">When multiple top wallets pile into the same side, we rank it.</p>
             <div className="bento-mock bento-mock-ev">
               <div className="ev-row">
-                <span className="ev-market">9 top traders — Diamondbacks</span>
+                <span className="ev-market">9 top traders: Diamondbacks</span>
                 <span className="ev-badge">$91.9k</span>
               </div>
               <div className="ev-row">
-                <span className="ev-market">6 top traders — CF América</span>
+                <span className="ev-market">6 top traders: CF América</span>
                 <span className="ev-badge">$21.2k</span>
               </div>
               <div className="ev-row">
-                <span className="ev-market">5 top traders — US x Iran</span>
+                <span className="ev-market">5 top traders: US x Iran</span>
                 <span className="ev-badge">$2.2k</span>
               </div>
             </div>
           </Link>
 
-          {/* ── Alerts — small left ── */}
+          {/* Alerts (small left) */}
           <Link to="/features/alerts" className="bento-card bento-alerts">
             <span className="bento-label bento-label-blue">ALERTS →</span>
             <h3 className="bento-title">Never miss a move</h3>
@@ -104,7 +104,7 @@ export default function Features() {
           <Link to="/features/leaderboard" className="bento-card bento-port">
             <span className="bento-label bento-label-teal">LEADERBOARD →</span>
             <h3 className="bento-title">Real, verified track records</h3>
-            <p className="bento-sub">Win rate by trade count and by dollars deployed — not their claimed PnL.</p>
+            <p className="bento-sub">Win rate by trade count and by dollars deployed, not their claimed PnL.</p>
             <div className="bento-mock bento-mock-port">
               <div className="port-stats">
                 <div className="port-stat">
@@ -151,7 +151,7 @@ export default function Features() {
           <Link to="/features/settings" className="bento-card bento-coach">
             <span className="bento-label bento-label-gray">CONFIGURABLE →</span>
             <h3 className="bento-title">Tune it to<br />your risk appetite.</h3>
-            <p className="bento-sub">Set roster size, conviction tiers, and scalp windows — applied live, no restart.</p>
+            <p className="bento-sub">Set roster size, conviction tiers, and scalp windows, applied live, no restart.</p>
           </Link>
 
         </div>

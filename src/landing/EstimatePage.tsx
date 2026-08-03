@@ -107,7 +107,7 @@ export default function EstimatePage() {
               a live example from the dashboard.
             </h1>
 
-            <p className="ep-sub">No spam — just a preview of what you'd see.</p>
+            <p className="ep-sub">No spam, just a preview of what you'd see.</p>
 
             <form onSubmit={submitEmail} className="ep-email-form">
               <input
@@ -151,7 +151,7 @@ export default function EstimatePage() {
             </div>
 
             <p className="ep-plus-line">
-              This is a real example, not a projection of what you'll personally earn — individual results vary and every trade carries risk.
+              This is a real example, not a projection of what you'll personally earn. Individual results vary and every trade carries risk.
             </p>
 
             <a href="/pricing" className="ep-btn" style={{ display: 'inline-block' }}>Try for free</a>

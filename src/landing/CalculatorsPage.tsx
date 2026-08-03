@@ -17,7 +17,7 @@ function EVCalc() {
       <div className={`calc-result ${good ? 'calc-result-green' : 'calc-result-red'}`}>
         <div className="calc-result-label">Expected Value</div>
         <div className="calc-result-value">{ev >= 0 ? '+' : ''}{ev.toFixed(2)}%</div>
-        <div className="calc-result-note">{good ? 'Positive edge — worth taking.' : 'Negative edge — avoid this contract.'}</div>
+        <div className="calc-result-note">{good ? 'Positive edge, worth taking.' : 'Negative edge, avoid this contract.'}</div>
       </div>
     </div>
   )
@@ -94,7 +94,9 @@ function OddsConverter() {
       else { prob = Math.abs(val) / (Math.abs(val) + 100) * 100; decimal = 100 / Math.abs(val) + 1 }
       american = val
     }
-  } catch {}
+  } catch {
+    // ignore malformed input, fields just show 0
+  }
   return (
     <div className="calc-widget">
       <div className="calc-fields">
@@ -181,7 +183,7 @@ Use this calculator to sanity-check a contract's price against your own probabil
   {
     id: 'arbitrage', name: 'Arbitrage Calculator',
     component: ArbCalc,
-    howTo: `Arbitrage (arb) in prediction markets occurs when the same event is priced differently on two platforms. If Kalshi prices YES at 62¢ and Polymarket prices NO at 41¢, the combined cost is only 103¢ — but both sides together guarantee a $1 payout. You've locked in 3¢ of profit per $1 staked, regardless of outcome.
+    howTo: `Arbitrage (arb) in prediction markets occurs when the same event is priced differently on two platforms. If Kalshi prices YES at 62¢ and Polymarket prices NO at 41¢, the combined cost is only 103¢, but both sides together guarantee a $1 payout. You've locked in 3¢ of profit per $1 staked, regardless of outcome.
 
 Enter the YES price on one platform and the NO price on another. The calculator tells you whether an arb exists and how to split your stake for maximum guaranteed return.
 
@@ -189,8 +191,8 @@ The formula: profit % = (100 − YES − NO) / (YES + NO) × 100. Stakes split p
 
 Spreads like this can close within seconds once other traders notice them, so cross-check live prices on each platform right before you place both legs.`,
     faqs: [
-      { q: 'Is arbitrage risk-free?', a: 'Yes — as long as both trades execute before prices move. The main risk is price slippage between placing the two legs.' },
-      { q: 'How often do arb opportunities appear?', a: 'It varies widely by platform liquidity and market volatility — there\'s no fixed rate, and they tend to close quickly once noticed.' },
+      { q: 'Is arbitrage risk-free?', a: 'Yes, as long as both trades execute before prices move. The main risk is price slippage between placing the two legs.' },
+      { q: 'How often do arb opportunities appear?', a: 'It varies widely by platform liquidity and market volatility. There\'s no fixed rate, and they tend to close quickly once noticed.' },
       { q: 'Do platforms allow arbitrage?', a: 'Prediction market platforms generally allow arb trading since it improves price discovery. Unlike sportsbooks, they rarely limit winners.' },
     ],
   },
@@ -227,7 +229,7 @@ Use this calculator when comparing prediction market prices against external pro
   {
     id: 'no-vig', name: 'No-Vig Calculator',
     component: NoVigCalc,
-    howTo: `Prediction market platforms build a margin into two-sided markets. If YES is priced at 55¢ and NO at 52¢, the combined price is 107¢ — meaning the platform collects 7¢ per $1 resolved. The no-vig calculator strips this margin to reveal the true implied probabilities.
+    howTo: `Prediction market platforms build a margin into two-sided markets. If YES is priced at 55¢ and NO at 52¢, the combined price is 107¢, meaning the platform collects 7¢ per $1 resolved. The no-vig calculator strips this margin to reveal the true implied probabilities.
 
 Enter both sides of a market. The calculator removes the platform's edge and outputs the fair-value probability for each side. This is especially useful when comparing a market's true odds against your own probability model.
 
@@ -249,9 +251,9 @@ Enter the bonus amount, rollover multiplier, and expected win probability on you
 
 Work through the calculator before committing to a bonus so you know the required trades in advance, rather than discovering the rollover terms mid-way through.`,
     faqs: [
-      { q: 'Are platform bonuses actually profitable?', a: 'Often yes — most sign-up bonuses on prediction market platforms have positive expected value when combined with smart rollover trades, though the exact value depends on the specific terms.' },
+      { q: 'Are platform bonuses actually profitable?', a: 'Often yes: most sign-up bonuses on prediction market platforms have positive expected value when combined with smart rollover trades, though the exact value depends on the specific terms.' },
       { q: 'What is a rollover requirement?', a: 'A rollover (or playthrough) requires you to trade a multiple of the bonus before withdrawing. A 1x rollover on a $200 bonus means you must trade $200.' },
-      { q: 'Can I use arbitrage to meet rollover?', a: 'Often yes — if a platform allows multi-leg trades, you can use arb to fulfill rollover requirements with near-zero risk while retaining the full bonus value.' },
+      { q: 'Can I use arbitrage to meet rollover?', a: 'Often yes: if a platform allows multi-leg trades, you can use arb to fulfill rollover requirements with near-zero risk while retaining the full bonus value.' },
     ],
   },
 ]

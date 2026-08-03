@@ -32,12 +32,12 @@ const TickerRows = [
 ]
 
 const VettedRows = [
-  { market: '9 top traders — Diamondbacks', total: '$91.9k', profit: '+$80,533' },
-  { market: '6 top traders — CF América', total: '$21.2k', profit: '+$42,516' },
-  { market: '9 top traders — Braves', total: '$26.4k', profit: '+$42,460' },
-  { market: '2 top traders — Reds/Cardinals U7.5', total: '$29.1k', profit: '+$21,154' },
-  { market: '5 top traders — US x Iran', total: '$2.2k', profit: '+$331' },
-  { market: '2 top traders — LoL: LOUD', total: '$23.3k', profit: '+$13,931' },
+  { market: '9 top traders: Diamondbacks', total: '$91.9k', profit: '+$80,533' },
+  { market: '6 top traders: CF América', total: '$21.2k', profit: '+$42,516' },
+  { market: '9 top traders: Braves', total: '$26.4k', profit: '+$42,460' },
+  { market: '2 top traders: Reds/Cardinals U7.5', total: '$29.1k', profit: '+$21,154' },
+  { market: '5 top traders: US x Iran', total: '$2.2k', profit: '+$331' },
+  { market: '2 top traders: LoL: LOUD', total: '$23.3k', profit: '+$13,931' },
 ]
 
 const AlertRows = [
@@ -46,7 +46,7 @@ const AlertRows = [
   { title: 'Watched wallet exited', body: 'Held 4.2h, scalp classified', time: '8m' },
   { title: '🔥 9 traders converged', body: 'Atlanta Braves vs. Baltimore Orioles', time: '14m' },
   { title: 'New solo pick', body: 'Bitcoin above $67,500, 93¢', time: '21m' },
-  { title: 'Market resolved', body: 'Won — position settled', time: '35m' },
+  { title: 'Market resolved', body: 'Won, position settled', time: '35m' },
 ]
 
 const LeaderboardRows = [
@@ -69,12 +69,12 @@ const features: Record<string, {
     label: 'LIVE TICKER',
     labelClass: 'bento-label-blue',
     title: 'Watch the tape, live',
-    sub: 'Every qualifying trade on Polymarket, streamed the moment it happens — sub-second, straight off the order book.',
+    sub: 'Every qualifying trade on Polymarket, streamed the moment it happens: sub-second, straight off the order book.',
     bullets: [
       'Real-time trade feed via direct market WebSocket',
       'Filter by category, size, or wallet',
       'Every trade traces back to a real on-chain transaction',
-      'No polling delay — sub-second from tick to card',
+      'No polling delay, sub-second from tick to card',
     ],
     lockedTitle: 'Sign up to watch the live ticker',
     panel: (
@@ -126,7 +126,7 @@ const features: Record<string, {
     label: 'ALERTS',
     labelClass: 'bento-label-blue',
     title: 'Never miss a move',
-    sub: 'Build a watchlist of wallets and conviction tiers. Get a browser notification the instant something on your list fires — while the tab is open.',
+    sub: 'Build a watchlist of wallets and conviction tiers. Get a browser notification the instant something on your list fires, while the tab is open.',
     bullets: [
       'Watch specific wallets or a minimum conviction tier',
       'Browser notifications, no app install required',
@@ -154,7 +154,7 @@ const features: Record<string, {
     label: 'LEADERBOARD',
     labelClass: 'bento-label-teal',
     title: 'Real, verified track records',
-    sub: "Win rate by trade count, and win rate weighted by dollars deployed — not a platform's claimed all-time PnL, and not cherry-picked.",
+    sub: "Win rate by trade count, and win rate weighted by dollars deployed. Not a platform's claimed all-time PnL, and not cherry-picked.",
     bullets: [
       'Win rate (#) and win rate ($) side by side',
       'Payout-adjusted net profit, not just win/loss count',
@@ -182,7 +182,7 @@ const features: Record<string, {
     label: 'PROFITS',
     labelClass: 'bento-label-orange',
     title: 'Payout-adjusted P&L',
-    sub: 'Real resolved profit and loss across every tracked position — accounts for actual payout ratio, not just a win/loss count. Open positions are marked to market against the live price.',
+    sub: 'Real resolved profit and loss across every tracked position, accounting for actual payout ratio, not just a win/loss count. Open positions are marked to market against the live price.',
     bullets: [
       'Net P&L, win rate, and ROI on resolved positions',
       'Daily cumulative P&L chart',
@@ -226,12 +226,12 @@ const features: Record<string, {
     label: 'CONFIGURABLE',
     labelClass: 'bento-label-gray',
     title: 'Tune it to your risk appetite',
-    sub: 'Set how many wallets get tracked, where conviction tiers sit, and what counts as a scalp — changes apply live, no restart needed.',
+    sub: 'Set how many wallets get tracked, where conviction tiers sit, and what counts as a scalp. Changes apply live, no restart needed.',
     bullets: [
-      'Roster size — how many top wallets get tracked',
-      'Conviction tiers — the $ thresholds that define a signal',
-      'Ticker minimum — the size floor for the live feed',
-      'Scalp window — how fast a round-trip counts as a scalp',
+      'Roster size: how many top wallets get tracked',
+      'Conviction tiers: the $ thresholds that define a signal',
+      'Ticker minimum: the size floor for the live feed',
+      'Scalp window: how fast a round-trip counts as a scalp',
     ],
     lockedTitle: 'Sign up to configure your roster',
     panel: (

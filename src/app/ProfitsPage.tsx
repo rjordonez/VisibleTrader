@@ -70,11 +70,11 @@ function ProfitsPage() {
   const winRate = summary && summary.won + summary.lost > 0 ? (summary.won / (summary.won + summary.lost)) * 100 : 0
   const roi = summary && summary.deployed > 0 ? (summary.net_profit / summary.deployed) * 100 : 0
 
-  let running = 0
-  const cumulative = daily.map(d => {
-    running += d.day_profit
-    return { d: d.d, cum: running }
-  })
+  const cumulative = daily.reduce<{ d: string; cum: number }[]>((acc, d) => {
+    const prevCum = acc.length > 0 ? acc[acc.length - 1].cum : 0
+    acc.push({ d: d.d, cum: prevCum + d.day_profit })
+    return acc
+  }, [])
 
   return (
     <div className="sig-page">

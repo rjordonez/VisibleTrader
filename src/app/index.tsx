@@ -1,10 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { TrendingUp, BarChart2, Bell, Radar, Settings, Search, Home } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import type { User } from '@supabase/supabase-js'
-import { categoryLabel } from './helpers'
 import SignalsDemo from './SignalsDemo'
 import HomePage from './HomePage'
 import ProfitsPage from './ProfitsPage'
@@ -16,13 +14,12 @@ import LookupPage from './LookupPage'
 import './app.css'
 
 const navItems = [
-  { id: 'home',        label: 'Home',         Icon: Home       },
-  { id: 'signals',     label: 'Signals',     Icon: Radar      },
-  { id: 'profits',     label: 'Profits',     Icon: TrendingUp },
-  { id: 'leaderboard', label: 'Leaderboard', Icon: BarChart2  },
-  { id: 'alerts',      label: 'Alerts',      Icon: Bell       },
-  { id: 'lookup',      label: 'Lookup',      Icon: Search     },
-  { id: 'settings',    label: 'Settings',    Icon: Settings   },
+  { id: 'home',        label: 'Home'        },
+  { id: 'signals',     label: 'Signals'     },
+  { id: 'profits',     label: 'Profits'     },
+  { id: 'leaderboard', label: 'Leaderboard' },
+  { id: 'alerts',      label: 'Alerts'      },
+  { id: 'lookup',      label: 'Lookup'      },
 ]
 
 const demos: Record<string, () => ReactElement> = {
@@ -31,10 +28,6 @@ const demos: Record<string, () => ReactElement> = {
   settings:    SettingsPage,
 }
 
-// Fixed taxonomy (not derived from live data) since this now lives in the
-// header nav, rendered before any page has fetched its own category counts.
-const NAV_CATEGORIES = ['politics', 'sports', 'crypto', 'esports', 'finance', 'economics', 'tech', 'culture', 'weather', 'mentions']
-
 /* ── App Shell ── */
 export default function AppShell() {
   const navigate = useNavigate()
@@ -42,6 +35,8 @@ export default function AppShell() {
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [category, setCategory] = useState('all')
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null))
@@ -51,6 +46,15 @@ export default function AppShell() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
+  useEffect(() => {
+    if (!userMenuOpen) return
+    const onClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setUserMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [userMenuOpen])
+
   const signOut = async () => {
     await supabase.auth.signOut()
     navigate('/login')
@@ -58,9 +62,9 @@ export default function AppShell() {
 
   let page: ReactElement
   if (selectedWallet) {
-    page = <TraderDetailPage wallet={selectedWallet} onBack={() => setSelectedWallet(null)} />
+    page = <TraderDetailPage key={selectedWallet} wallet={selectedWallet} onBack={() => setSelectedWallet(null)} />
   } else if (active === 'home') {
-    page = <HomePage onOpenSignals={() => setActive('signals')} category={category} />
+    page = <HomePage onOpenSignals={() => setActive('signals')} category={category} onCategoryChange={setCategory} />
   } else if (active === 'signals') {
     page = <SignalsDemo category={category} />
   } else if (active === 'leaderboard') {
@@ -77,48 +81,40 @@ export default function AppShell() {
       <header className="app-header">
         <div className="app-header-inner">
           <div className="app-header-logo">VisibleTrader</div>
-          {isProdDb && <div className="app-prod-badge">⚠ PROD DATA</div>}
           <nav className="app-header-nav">
-            {navItems.map(({ id, label, Icon }) => (
+            {navItems.map(({ id, label }) => (
               <button
                 key={id}
                 className={`app-nav-item ${active === id && !selectedWallet ? 'active' : ''}`}
                 onClick={() => { setActive(id); setSelectedWallet(null) }}
               >
-                <span className="app-nav-icon"><Icon size={15} strokeWidth={1.6} /></span>
                 {label}
-              </button>
-            ))}
-
-            <span className="app-nav-divider" />
-
-            <button
-              className={`app-nav-item app-nav-cat ${category === 'all' ? 'active' : ''}`}
-              onClick={() => setCategory('all')}
-            >
-              All
-            </button>
-            {NAV_CATEGORIES.map(c => (
-              <button
-                key={c}
-                className={`app-nav-item app-nav-cat ${category === c ? 'active' : ''}`}
-                onClick={() => {
-                  setCategory(c)
-                  if (active !== 'home' && active !== 'signals') { setActive('home'); setSelectedWallet(null) }
-                }}
-              >
-                {categoryLabel(c)}
               </button>
             ))}
           </nav>
 
           {user && (
-            <div className="app-header-user">
-              <div className="app-user-row">
-                <div className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</div>
-                <div className="app-user-name">{user.email}</div>
-              </div>
-              <button className="app-nav-item" style={{ color: '#f87171' }} onClick={signOut}>Sign out</button>
+            <div className="app-user-menu" ref={userMenuRef}>
+              <button
+                type="button"
+                className="app-avatar-btn"
+                onClick={() => setUserMenuOpen(o => !o)}
+                aria-label="Account menu"
+              >
+                <span className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</span>
+                {isProdDb && <span className="app-prod-dot" title="Connected to production data" />}
+              </button>
+              {userMenuOpen && (
+                <div className="app-user-dropdown">
+                  <button
+                    className="app-user-dropdown-item"
+                    onClick={() => { setActive('settings'); setSelectedWallet(null); setUserMenuOpen(false) }}
+                  >
+                    Settings
+                  </button>
+                  <button className="app-user-dropdown-item danger" onClick={signOut}>Sign out</button>
+                </div>
+              )}
             </div>
           )}
         </div>

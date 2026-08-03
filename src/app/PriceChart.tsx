@@ -1,44 +1,22 @@
+import { useState } from 'react'
 import {
-  ResponsiveContainer, ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ComposedChart, Line, XAxis, YAxis, CartesianGrid, ReferenceDot, ReferenceLine,
 } from 'recharts'
 import type { ChartPoint, WalletContribution } from './types'
-import { signalsTraderStatus, traderLabel, fmtFull } from './helpers'
+import { signalsTraderStatus } from './helpers'
 
-interface ChartMarker { t: number; p: number; color: string; label: string }
-
-function PriceChartTooltip({ active, payload }: { active?: boolean; payload?: { payload: ChartPoint | ChartMarker }[] }) {
-  if (!active || !payload || !payload.length) return null
-  const point = payload[0].payload
-  // Marker points carry a `label` (see markers below); plain price-history
-  // points don't — same Tooltip renders either depending on which series
-  // is being hovered.
-  if ('label' in point) {
-    return <div className="sig-chart-tooltip">{point.label}</div>
-  }
-  return (
-    <div className="sig-chart-tooltip">
-      <div className="sig-chart-tooltip-price">{Math.round(point.p * 100)}%</div>
-      <div className="sig-chart-tooltip-time">{fmtChartTime(point.t)}</div>
-    </div>
-  )
-}
+interface ChartMarker { t: number; p: number; color: string }
 
 function fmtChartTime(t: number) {
   return new Date(t * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-function ChartMarkerDot(props: { cx?: number; cy?: number; payload?: ChartMarker }) {
-  const { cx, cy, payload } = props
-  if (cx == null || cy == null || !payload) return null
-  return <circle cx={cx} cy={cy} r={3.5} fill={payload.color} stroke="var(--bg)" strokeWidth={1.5} />
-}
-
 export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallets: WalletContribution[] }) {
+  const [hoverT, setHoverT] = useState<number | null>(null)
   if (history.length < 2) return null
   const times = history.map(h => h.t)
   const minT = Math.min(...times)
   const maxT = Math.max(...times)
-  const lastIndex = history.length - 1
 
   // stepAfter interpolation holds each point's price until the next one —
   // a trader's own recorded buy price can differ slightly from the line's
@@ -62,10 +40,7 @@ export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallet
       const t = new Date(w.ts).getTime() / 1000
       if (t < minT || t > maxT) return null
       const st = signalsTraderStatus(w)
-      return {
-        t, p: priceOnLineAt(t), color: st.color,
-        label: `${traderLabel(w.wallet, w.wallet_name)} — ${st.label} — ${fmtFull(w.usd)} at ${Math.round(w.price * 100)}¢`,
-      }
+      return { t, p: priceOnLineAt(t), color: st.color }
     })
     .filter((m): m is ChartMarker => m !== null)
 
@@ -81,22 +56,27 @@ export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallet
 
   // Only the current/last price gets a dot — mirrors Polymarket's own chart,
   // where the line itself carries the history and a single endpoint marker
-  // calls out "this is where it is now."
-  const renderEndpointDot = (props: { cx?: number; cy?: number; index?: number }) => {
-    const { cx, cy, index } = props
-    if (index !== lastIndex || cx == null || cy == null) return <g key={`dot-${index}`} />
-    return (
-      <g key={`dot-${index}`}>
-        <circle cx={cx} cy={cy} r={5.5} fill="none" stroke="#2f6fed" strokeWidth={1.5} />
-        <circle cx={cx} cy={cy} r={3} fill="#2f6fed" stroke="var(--bg)" strokeWidth={1.5} />
-      </g>
-    )
-  }
+  // calls out "this is where it is now." Pinned via ReferenceDot (a single
+  // element at one specific coordinate) rather than Line's per-point `dot`
+  // callback — that callback gets invoked once for every data point (not
+  // just on hover), and something about it rendering-then-self-suppressing
+  // for all but the last point was leaving visible artifacts on markets
+  // with many points, even with no hover involved. ReferenceDot sidesteps
+  // that mechanism entirely.
+  const endpoint = sortedHistory[sortedHistory.length - 1]
 
   return (
     <div>
       <ResponsiveContainer width="100%" height={220}>
-        <ComposedChart data={history} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+        <ComposedChart
+          data={history} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+          onMouseMove={(state: { activeLabel?: string | number }) => {
+            if (state.activeLabel == null) return
+            const t = Number(state.activeLabel)
+            if (!Number.isNaN(t)) setHoverT(t)
+          }}
+          onMouseLeave={() => setHoverT(null)}
+        >
           <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" vertical={false} />
           <XAxis
             dataKey="t" type="number" domain={[minT, maxT]}
@@ -109,12 +89,29 @@ export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallet
             stroke="var(--text-faint)" fontSize={10}
             tickLine={false} axisLine={false} width={36}
           />
-          <Tooltip content={<PriceChartTooltip />} cursor={{ stroke: 'var(--text-faint)', strokeDasharray: '3 3' }} />
           <Line
             type="stepAfter" dataKey="p" stroke="#2f6fed" strokeWidth={1.5}
-            dot={renderEndpointDot} isAnimationActive={false}
+            dot={false} activeDot={false} isAnimationActive={false}
           />
-          <Scatter data={markers} dataKey="p" shape={<ChartMarkerDot />} isAnimationActive={false} />
+          {markers.map((m, i) => (
+            <ReferenceDot key={i} x={m.t} y={m.p} r={3.5} fill={m.color} stroke="var(--bg)" strokeWidth={1.5} ifOverflow="extendDomain" />
+          ))}
+          <ReferenceDot x={endpoint.t} y={endpoint.p} r={5.5} fill="none" stroke="#2f6fed" strokeWidth={1.5} ifOverflow="extendDomain" />
+          <ReferenceDot x={endpoint.t} y={endpoint.p} r={3} fill="#2f6fed" stroke="var(--bg)" strokeWidth={1.5} ifOverflow="extendDomain" />
+          {hoverT != null && (
+            <>
+              <ReferenceLine x={hoverT} stroke="var(--text-faint)" strokeDasharray="3 3" ifOverflow="extendDomain" />
+              <ReferenceDot
+                x={hoverT} y={priceOnLineAt(hoverT)} r={5} fill="#2f6fed" stroke="var(--bg)" strokeWidth={2}
+                ifOverflow="extendDomain"
+                label={{
+                  value: `${Math.round(priceOnLineAt(hoverT) * 100)}%`,
+                  position: 'top', offset: 10,
+                  fill: 'var(--text)', fontSize: 12, fontWeight: 600,
+                }}
+              />
+            </>
+          )}
         </ComposedChart>
       </ResponsiveContainer>
       <div className="sig-chart-legend">

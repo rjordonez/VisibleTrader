@@ -12,7 +12,7 @@ export default function Hero() {
       <div className="hero-cols">
         {/* Left */}
         <div className="hero-copy">
-          {/* Trust row — top */}
+          {/* Trust row (top) */}
           <div className="hero-trust-row" style={{ marginBottom: '1.25rem' }}>
             <p className="hero-trust-text">
               Built on <strong>100% on-chain</strong> Polymarket trade data
@@ -27,7 +27,7 @@ export default function Hero() {
 
           <p className="hero-sub">
             VisibleTrader watches the top-performing wallets on Polymarket in real time and
-            surfaces what they're buying — the moment they buy it.
+            surfaces what they're buying, the moment they buy it.
           </p>
 
           <form
@@ -49,7 +49,7 @@ export default function Hero() {
           </form>
         </div>
 
-        {/* Right — live signal preview card */}
+        {/* Right: live signal preview card */}
         <div className="hero-card-wrap">
           <ProfitCard />
         </div>

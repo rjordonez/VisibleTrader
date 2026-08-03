@@ -1,15 +1,19 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Opportunity, WalletContribution, ChartPoint } from './types'
 import {
   onTabVisible, byCategory, fetchWallets, fetchChart, PAGE_SIZE,
-  categoryIcon, signalsTag, fmtFull, fmtSigned, signalsTraderStatus, walletReturn,
-  profileUrl, traderLabel, timeAgo,
+  categoryIcon, categoryLabel, signalsTag, fmtFull, fmtSigned, signalsTraderStatus, walletReturn,
+  profileUrl, traderLabel, timeAgo, NAV_CATEGORIES,
 } from './helpers'
 import { PriceChart } from './PriceChart'
 
 /* ── Home (Polymarket-homepage-style overview: hero + top movers + grid) ── */
-function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; category: string }) {
+function HomePage({ onOpenSignals, category, onCategoryChange }: {
+  onOpenSignals: () => void
+  category: string
+  onCategoryChange: (category: string) => void
+}) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -17,11 +21,12 @@ function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; cate
   // Every hero-carousel candidate's wallets/chart, keyed by condition_id::outcome,
   // fetched up front rather than one-at-a-time on rotation — the carousel advances
   // every 6s, and fetching only the newly-shown slot on each rotation produced a
-  // visible blank/skeleton flash every single time. heroCacheVersion exists purely
-  // to force a re-render when the ref (mutated in place, so React can't see it) gets
-  // new entries.
-  const heroCacheRef = useRef<Map<string, { wallets: WalletContribution[]; chartHistory: ChartPoint[]; fetchedAt: number }>>(new Map())
-  const [heroCacheVersion, setHeroCacheVersion] = useState(0)
+  // visible blank/skeleton flash every single time.
+  const [heroCache, setHeroCache] = useState<Map<string, { wallets: WalletContribution[]; chartHistory: ChartPoint[]; fetchedAt: number }>>(new Map())
+  // Bumped on a timer purely to re-trigger the staleness-check effect below —
+  // heroCache itself isn't a dependency there so a fresh cache entry doesn't
+  // immediately retrigger a redundant re-check.
+  const [heroCacheTick, setHeroCacheTick] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -69,17 +74,21 @@ function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; cate
     }
   }, [])
 
-  const rankedByConviction = byCategory([...opportunities].sort((a, b) => b.cumulative_usd - a.cumulative_usd), category)
+  // Hero / Top Movers / Smart Plays intentionally ignore the category filter —
+  // only the "Signals" grid below is scoped to it.
+  const sortedByConviction = [...opportunities].sort((a, b) => b.cumulative_usd - a.cumulative_usd)
   // Hero rotates through the top 5 signals every few seconds (matching the
   // reference's carousel) instead of sitting on one static market forever.
-  const heroPool = rankedByConviction.slice(0, 5)
+  const heroPool = sortedByConviction.slice(0, 5)
   const heroSignal = heroPool[heroIndex % Math.max(1, heroPool.length)] ?? null
   const heroKey = heroSignal ? `${heroSignal.condition_id}::${heroSignal.outcome}` : null
-  const topMovers = rankedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 7)
-  const gridItems = rankedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 24)
+  const topMovers = sortedByConviction.filter(o => `${o.condition_id}::${o.outcome}` !== heroKey).slice(0, 7)
+  const gridItems = byCategory(sortedByConviction, category)
+    .filter(o => `${o.condition_id}::${o.outcome}` !== heroKey)
+    .slice(0, 24)
   // Smart Plays: not just biggest $ (that's Top Movers) — multiple traders
   // converging on the same side AND actually in the green right now.
-  const smartPlays = rankedByConviction
+  const smartPlays = sortedByConviction
     .filter(o => `${o.condition_id}::${o.outcome}` !== heroKey && o.wallet_count >= 2 && o.total_profit > 0)
     .sort((a, b) => b.total_profit - a.total_profit)
     .slice(0, 5)
@@ -97,10 +106,9 @@ function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; cate
 
   useEffect(() => {
     let cancelled = false
-    const now = Date.now()
     const stale = heroPool.filter(o => {
-      const entry = heroCacheRef.current.get(`${o.condition_id}::${o.outcome}`)
-      return !entry || now - entry.fetchedAt > HERO_CACHE_TTL_MS
+      const entry = heroCache.get(`${o.condition_id}::${o.outcome}`)
+      return !entry || Date.now() - entry.fetchedAt > HERO_CACHE_TTL_MS
     })
     if (stale.length === 0) return
     Promise.all(stale.map(o => {
@@ -108,25 +116,30 @@ function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; cate
       return Promise.all([
         fetchWallets(o.condition_id, o.outcome),
         fetchChart(o.condition_id, o.outcome),
-      ]).then(([wallets, chartHistory]) => {
-        heroCacheRef.current.set(key, { wallets, chartHistory, fetchedAt: Date.now() })
+      ]).then(([wallets, chartHistory]) => ({ key, wallets, chartHistory, fetchedAt: Date.now() }))
+    })).then(results => {
+      if (cancelled) return
+      setHeroCache(prev => {
+        const next = new Map(prev)
+        for (const r of results) next.set(r.key, { wallets: r.wallets, chartHistory: r.chartHistory, fetchedAt: r.fetchedAt })
+        return next
       })
-    })).then(() => { if (!cancelled) setHeroCacheVersion(v => v + 1) })
+    })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heroPoolKeys, heroCacheVersion])
+  }, [heroPoolKeys, heroCacheTick])
 
   // heroPoolKeys only changes when the top-5 set itself changes — this keeps
   // re-checking staleness on a timer so a slot that's been sitting in the
   // carousel gets refreshed in the background too, without ever clearing it.
   useEffect(() => {
-    const recheck = () => setHeroCacheVersion(v => v + 1)
+    const recheck = () => setHeroCacheTick(v => v + 1)
     const t = setInterval(recheck, 10000)
     const unsubVisible = onTabVisible(recheck)
     return () => { clearInterval(t); unsubVisible() }
   }, [])
 
-  const heroCacheEntry = heroKey ? heroCacheRef.current.get(heroKey) : undefined
+  const heroCacheEntry = heroKey ? heroCache.get(heroKey) : undefined
   const heroWallets = heroCacheEntry?.wallets ?? []
   const heroChartHistory = heroCacheEntry?.chartHistory ?? []
   const heroLoading = heroKey != null && !heroCacheEntry
@@ -265,8 +278,25 @@ function HomePage({ onOpenSignals, category }: { onOpenSignals: () => void; cate
 
       <div className="sig-panel" style={{ maxWidth: 'none' }}>
         <div className="app-section-header" style={{ marginBottom: 12 }}>
-          <div>
-            <h1 className="app-section-title" style={{ fontSize: '1.05rem' }}>All signals</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <h1 className="app-section-title" style={{ fontSize: '1.05rem', margin: 0 }}>Signals</h1>
+            <div className="sig-cat-chips">
+              <div
+                className={category === 'all' ? 'sig-cat-chip active' : 'sig-cat-chip'}
+                onClick={() => onCategoryChange('all')}
+              >
+                All
+              </div>
+              {NAV_CATEGORIES.map(c => (
+                <div
+                  key={c}
+                  className={category === c ? 'sig-cat-chip active' : 'sig-cat-chip'}
+                  onClick={() => onCategoryChange(c)}
+                >
+                  {categoryLabel(c)}
+                </div>
+              ))}
+            </div>
           </div>
           <button className="sig-btn secondary" onClick={onOpenSignals}>Open full Signals page →</button>
         </div>

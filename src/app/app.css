@@ -6,14 +6,12 @@
    this is a real, visible step up (RGB ~20 vs ~11). */
 .app-shell {
   --shell-bg: #15181f;
-  --shell-surface: #1c202a;
-  --shell-border: rgba(255,255,255,0.08);
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   background: var(--shell-bg);
   color: var(--text-1);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Manrope', system-ui, sans-serif;
 }
 
 /* ── Top header ──
@@ -27,8 +25,7 @@
   left: 0;
   right: 0;
   height: 60px;
-  background: var(--shell-surface);
-  border-bottom: 1px solid var(--shell-border);
+  background: var(--shell-bg);
   z-index: 50;
 }
 
@@ -43,33 +40,13 @@
 }
 
 .app-header-logo {
-  font-family: 'Sora', sans-serif;
+  font-family: 'Manrope', sans-serif;
   font-size: 1rem;
   font-weight: 800;
   color: var(--text-1);
   letter-spacing: -0.02em;
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-/* Only ever renders when VITE_USE_PROD_DB=true — a deliberately loud,
-   impossible-to-miss warning that this local session is reading/writing
-   real production data, not the dev database. */
-.app-prod-badge {
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  color: #ff3b5c;
-  background: rgba(255, 59, 92, 0.14);
-  border: 1px solid rgba(255, 59, 92, 0.4);
-  border-radius: 6px;
-  padding: 0.2rem 0.5rem;
-  flex-shrink: 0;
-  animation: prod-badge-pulse 2s ease-in-out infinite;
-}
-@keyframes prod-badge-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
 }
 
 .app-header-nav {
@@ -85,9 +62,7 @@
 .app-nav-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
   padding: 0.5rem 0.75rem;
-  border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-2);
@@ -95,84 +70,93 @@
   border: none;
   background: none;
   white-space: nowrap;
-  transition: background 0.12s, color 0.12s;
+  transition: color 0.12s;
 }
 
 .app-nav-item:hover {
-  background: rgba(255, 255, 255, 0.05);
   color: var(--text-1);
 }
 
-.app-nav-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-}
-
 .app-nav-item.active {
-  background: rgba(99, 102, 241, 0.12);
-  color: var(--accent);
+  color: var(--text-1);
   font-weight: 600;
 }
 
-/* Market-category segment appended after the primary sections — a single
-   continuous scrollable row, same pattern Polymarket uses (site nav | a
-   divider | market categories) instead of a second header row. */
-.app-nav-divider {
-  width: 1px;
-  height: 20px;
-  background: var(--shell-border);
-  flex-shrink: 0;
-  margin: 0 4px;
-}
-
-.app-nav-cat {
-  font-size: 0.8rem;
-  color: var(--text-2);
-  opacity: 0.8;
-}
-.app-nav-cat:hover { opacity: 1; }
-.app-nav-cat.active { opacity: 1; }
-
-.app-header-user {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+.app-user-menu {
+  position: relative;
   flex-shrink: 0;
 }
 
-.app-user-row {
+.app-avatar-btn {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
 }
 
 .app-avatar {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: linear-gradient(135deg, #6366f1, #818cf8);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: #fff;
   flex-shrink: 0;
 }
 
-.app-user-name {
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--text-2);
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Only ever renders when VITE_USE_PROD_DB=true — a quiet but
+   impossible-to-miss marker that this session is reading/writing real
+   production data, not the dev database. */
+.app-prod-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff3b5c;
+  border: 2px solid var(--shell-bg);
 }
+
+.app-user-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 160px;
+  background: var(--shell-bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 60;
+}
+
+.app-user-dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: var(--text-2);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.app-user-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-1);
+}
+.app-user-dropdown-item.danger { color: #f87171; }
+.app-user-dropdown-item.danger:hover { background: rgba(248, 113, 113, 0.1); }
 
 /* ── Main Content ── */
 .app-main {
@@ -191,6 +175,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 1.75rem;
 }
 
@@ -227,7 +213,7 @@
   --gold: #f2b73f;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .sig-panel { max-width: 1040px; }
@@ -296,6 +282,15 @@
   border-radius: 4px; cursor: pointer; white-space: nowrap;
 }
 .sig-chip.active { background: var(--surface-2); border-color: var(--blue); color: var(--text); }
+
+/* Category filter row next to "All signals" — plain text, no chip box. */
+.sig-cat-chips { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.sig-cat-chip {
+  font-size: 12.5px; font-weight: 600; color: var(--text-dim);
+  cursor: pointer; white-space: nowrap; transition: color 0.12s;
+}
+.sig-cat-chip:hover { color: var(--text); }
+.sig-cat-chip.active { color: var(--text); }
 
 /* Dual-handle range slider — two native <input type="range"> stacked on
    the same track, each thumb independently draggable. The inputs

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Opportunity, TickerTrade } from './types'
 import { onTabVisible, PAGE_SIZE, traderLabel, fmtFull, timeAgo } from './helpers'
@@ -34,12 +34,12 @@ function AlertsPage() {
   useEffect(() => { localStorage.setItem(WATCHED_WALLETS_KEY, JSON.stringify(watchedWallets)) }, [watchedWallets])
   useEffect(() => { localStorage.setItem(WATCHED_TIER_KEY, String(minTier)) }, [minTier])
 
-  const fire = (text: string) => {
+  const fire = useCallback((text: string) => {
     setHistory(h => [{ id: `${Date.now()}-${Math.random()}`, text, ts: Date.now() }, ...h].slice(0, 50))
     if (permission === 'granted' && 'Notification' in window) {
       new Notification('VisibleTrader Signals', { body: text })
     }
-  }
+  }, [permission])
 
   useEffect(() => {
     if (watchedWallets.length === 0) return
@@ -62,7 +62,7 @@ function AlertsPage() {
     const interval = setInterval(load, 5000)
     const unsubVisible = onTabVisible(load)
     return () => { cancelled = true; clearInterval(interval); unsubVisible() }
-  }, [watchedWallets, permission])
+  }, [watchedWallets, permission, fire])
 
   useEffect(() => {
     let cancelled = false
@@ -86,7 +86,7 @@ function AlertsPage() {
     const interval = setInterval(load, 5000)
     const unsubVisible = onTabVisible(load)
     return () => { cancelled = true; clearInterval(interval); unsubVisible() }
-  }, [minTier, permission])
+  }, [minTier, permission, fire])
 
   const requestPermission = () => {
     if (!('Notification' in window)) return

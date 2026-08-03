@@ -21,8 +21,8 @@ export default function SignupPage() {
       setError(signUpError.message)
       return
     }
-    // If email confirmation is on (Supabase default), there's no session yet —
-    // tell the user to check their inbox instead of silently doing nothing.
+    // If email confirmation is on (Supabase default), there's no session yet,
+    // so tell the user to check their inbox instead of silently doing nothing.
     if (!data.session) {
       setConfirmSent(true)
       return
@@ -46,7 +46,7 @@ export default function SignupPage() {
     <div className="auth-content">
       <div className="auth-card">
         <h1 className="auth-title">Create your account</h1>
-        <p className="auth-sub">Start free — upgrade whenever you're ready.</p>
+        <p className="auth-sub">Start free, upgrade whenever you're ready.</p>
 
         <form className="auth-form" onSubmit={submit}>
           <label className="auth-label">Email</label>

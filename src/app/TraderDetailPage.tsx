@@ -75,10 +75,6 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setLivePositions([])
-    setLiveClosed([])
-    setLiveTrades([])
     Promise.all([
       supabase.from('leaderboard').select('*').ilike('wallet', wallet).maybeSingle(),
       supabase.from('wallet_positions').select('*').ilike('wallet', wallet).eq('market_closed', true).order('resolved_ts', { ascending: false }),
