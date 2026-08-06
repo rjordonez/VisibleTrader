@@ -58,6 +58,23 @@ state_lock = threading.Lock()  # guards in-memory state only (stats/conviction/t
 # resolved_markets/roster_set) — DB writes go through Database's connection pool, which
 # lets Postgres's own MVCC handle write concurrency instead of serializing through Python.
 stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trades': 0}
+
+# Updated once per inner listen-loop tick (see main()) as proof the event loop is
+# still alive. watchdog() below is a last-resort safety net independent of any
+# specific bug — if something we haven't anticipated blocks forever anywhere in
+# the connect/listen path, this notices and force-exits so systemd (Restart=always,
+# see live-signal-service.service) brings us back up clean, instead of the process
+# sitting "active" but silently dead until someone happens to check.
+last_activity = {'ts': time.time()}
+
+
+def watchdog(threshold_seconds=180):
+    while True:
+        time.sleep(30)
+        stale_for = time.time() - last_activity['ts']
+        if stale_for > threshold_seconds:
+            print(f'[watchdog] no activity in {stale_for:.0f}s (> {threshold_seconds}s) — exiting so systemd restarts us.')
+            os._exit(1)
 conviction = defaultdict(list)  # (conditionId, outcome) -> [(ts, wallet, usd, price), ...]
 tiers_hit = defaultdict(set)    # (conditionId, outcome) -> {tiers already recorded}
 resolved_markets = set()        # (conditionId, outcome) already resolved — mark-to-market writes
@@ -384,9 +401,20 @@ def ws_connect():
     ctx = ssl.create_default_context()
     sock = socket.create_connection((WS_HOST, 443), timeout=15)
     ssock = ctx.wrap_socket(sock, server_hostname=WS_HOST)
+    # Bound the handshake read explicitly, before the byte-at-a-time loop below —
+    # previously this was only set after the loop, so a peer that accepted the
+    # connection and TLS handshake but then stalled mid-response (no more data,
+    # no close) left recv(1) blocking with no timeout at all. That's what caused
+    # a real 6-hour production hang: the process stayed "active" per systemd but
+    # never logged another line. The deadline check is defense-in-depth against
+    # a slow trickle of single bytes that individually never time out.
+    ssock.settimeout(15)
     ssock.send(req.encode())
     resp = b''
+    deadline = time.time() + 15
     while b'\r\n\r\n' not in resp:
+        if time.time() > deadline:
+            raise ConnectionError('handshake response timed out')
         resp += ssock.recv(1)
     if b'101' not in resp.split(b'\r\n')[0]:
         raise ConnectionError(f'handshake failed: {resp[:200]}')
@@ -1109,6 +1137,9 @@ def main():
     last_config_reload = time.time()
     last_balance_refresh = 0.0  # fire once on startup, not just after the first interval
 
+    last_activity['ts'] = time.time()
+    threading.Thread(target=watchdog, daemon=True).start()
+
     while True:
         try:
             print('Connecting to market WebSocket...')
@@ -1121,6 +1152,7 @@ def main():
 
             while True:
                 now = time.time()
+                last_activity['ts'] = now
                 if now - last_ping > 10:
                     send_frame(ssock, b'PING')
                     last_ping = now
