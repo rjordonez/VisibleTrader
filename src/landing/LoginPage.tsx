@@ -40,6 +40,7 @@ export default function LoginPage() {
             className="auth-input" type="password" placeholder="Your password"
             value={password} onChange={e => setPassword(e.target.value)} required
           />
+          <Link to="/forgot-password" className="auth-forgot">Forgot password?</Link>
           {error && <div style={{ color: '#f87171', fontSize: '0.82rem', marginTop: '0.6rem' }}>{error}</div>}
           <button type="submit" className="btn-primary auth-submit" disabled={submitting}>
             {submitting ? 'Logging in…' : 'Log in'}

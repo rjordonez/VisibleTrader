@@ -31,7 +31,7 @@ export default function HowItWorks() {
       lastY     = y
       const target = Math.min(vel * 1.2, 20)
       current += (target - current) * 0.08
-      innerRef.current!.style.transform = `translateY(${-current}px)`
+      if (innerRef.current) innerRef.current.style.transform = `translateY(${-current}px)`
       rafId = requestAnimationFrame(tick)
     }
 

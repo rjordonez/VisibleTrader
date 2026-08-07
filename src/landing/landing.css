@@ -935,6 +935,16 @@
 .auth-input::placeholder { color: var(--text-3); }
 .auth-input:focus { border-color: var(--accent); }
 
+.auth-forgot {
+  align-self: flex-end;
+  font-size: 0.8rem;
+  color: var(--text-3);
+  text-decoration: none;
+  margin-top: 0.4rem;
+}
+
+.auth-forgot:hover { color: var(--accent); text-decoration: underline; }
+
 .auth-submit {
   margin-top: 1.25rem;
   width: 100%;
