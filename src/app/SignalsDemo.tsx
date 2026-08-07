@@ -153,7 +153,7 @@ function SignalsDemo({ category }: { category: string }) {
       .channel('opportunities-live-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedRefresh)
       .subscribe()
-    const interval = setInterval(refreshKeepingDepth, 5000)
+    const interval = setInterval(refreshKeepingDepth, 60000)
     const unsubVisible = onTabVisible(refreshKeepingDepth)
     return () => {
       cancelled = true

@@ -66,7 +66,7 @@ function HomePage({ onOpenSignals, category, onCategoryChange }: {
       .channel('home-opportunities-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedLoad)
       .subscribe()
-    const interval = setInterval(load, 5000)
+    const interval = setInterval(load, 60000)
     const unsubVisible = onTabVisible(load)
     return () => {
       cancelled = true
