@@ -152,8 +152,8 @@ function LookupPage({ onSelectWallet }: { onSelectWallet: (wallet: string) => vo
                           ↗
                         </a>
                       </td>
-                      <td className="num">{r.best_pnl != null ? fmtFull(r.best_pnl) : '—'}</td>
-                      <td>
+                      <td className="num" data-label="Best PnL">{r.best_pnl != null ? fmtFull(r.best_pnl) : '—'}</td>
+                      <td data-label="Status">
                         {!s ? '…' :
                           inRoster ? `Tracked · top ${s.pnlRank} by PnL` :
                           s.manuallyTracked ? 'Tracked · manually added' :

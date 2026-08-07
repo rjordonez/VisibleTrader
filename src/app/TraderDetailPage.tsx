@@ -215,9 +215,9 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
                         return (
                           <tr key={c.category}>
                             <td>{categoryLabel(c.category)}</td>
-                            <td className="num">{c.n}</td>
-                            <td className="num">{cwr.toFixed(0)}%</td>
-                            <td className="num" style={{ color: c.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(c.profit)}</td>
+                            <td className="num" data-label="Trades">{c.n}</td>
+                            <td className="num" data-label="Win Rate">{cwr.toFixed(0)}%</td>
+                            <td className="num" data-label="Profit" style={{ color: c.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(c.profit)}</td>
                           </tr>
                         )
                       })}
@@ -237,11 +237,11 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
                   {positions.map((p, i) => (
                     <tr key={i}>
                       <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                      <td className="num">{fmtFull(p.usd)}</td>
-                      <td className="num">{Math.round(p.price * 100)}¢</td>
-                      <td style={{ color: p.resolved_win ? 'var(--green)' : 'var(--red)' }}>{p.resolved_win ? 'Won' : 'Lost'}</td>
-                      <td className="num" style={{ color: p.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.profit)}</td>
-                      <td className="num" style={{ color: 'var(--text-dim)' }}>{timeAgo(p.resolved_ts)}</td>
+                      <td className="num" data-label="Stake">{fmtFull(p.usd)}</td>
+                      <td className="num" data-label="Price">{Math.round(p.price * 100)}¢</td>
+                      <td data-label="Result" style={{ color: p.resolved_win ? 'var(--green)' : 'var(--red)' }}>{p.resolved_win ? 'Won' : 'Lost'}</td>
+                      <td className="num" data-label="Profit" style={{ color: p.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.profit)}</td>
+                      <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(p.resolved_ts)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -314,9 +314,9 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
                       {livePositions.map((p, i) => (
                         <tr key={i}>
                           <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                          <td className="num">{Math.round(p.avgPrice * 100)}¢</td>
-                          <td className="num">{Math.round(p.curPrice * 100)}¢</td>
-                          <td className="num" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.cashPnl)}</td>
+                          <td className="num" data-label="Avg Price">{Math.round(p.avgPrice * 100)}¢</td>
+                          <td className="num" data-label="Current Price">{Math.round(p.curPrice * 100)}¢</td>
+                          <td className="num" data-label="Unrealized P&L" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.cashPnl)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -337,9 +337,9 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
                       {[...liveClosed].sort((a, b) => b.timestamp - a.timestamp).map((p, i) => (
                         <tr key={i}>
                           <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                          <td style={{ color: p.curPrice >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{p.curPrice >= 0.5 ? 'Won' : 'Lost'}</td>
-                          <td className="num" style={{ color: p.realizedPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.realizedPnl)}</td>
-                          <td className="num" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(p.timestamp * 1000).toISOString())}</td>
+                          <td data-label="Result" style={{ color: p.curPrice >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{p.curPrice >= 0.5 ? 'Won' : 'Lost'}</td>
+                          <td className="num" data-label="Profit" style={{ color: p.realizedPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.realizedPnl)}</td>
+                          <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(p.timestamp * 1000).toISOString())}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -360,10 +360,10 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
                       {liveTrades.map((t, i) => (
                         <tr key={i}>
                           <td>{t.title} <span style={{ color: 'var(--text-dim)' }}>— {t.outcome}</span></td>
-                          <td style={{ color: t.side === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.side}</td>
-                          <td className="num">{t.size.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                          <td className="num">{Math.round(t.price * 100)}¢</td>
-                          <td className="num" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(t.timestamp * 1000).toISOString())}</td>
+                          <td data-label="Side" style={{ color: t.side === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.side}</td>
+                          <td className="num" data-label="Size">{t.size.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                          <td className="num" data-label="Price">{Math.round(t.price * 100)}¢</td>
+                          <td className="num" data-label="When" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(t.timestamp * 1000).toISOString())}</td>
                         </tr>
                       ))}
                     </tbody>

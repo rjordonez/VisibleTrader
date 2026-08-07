@@ -37,6 +37,8 @@ export default function AppShell() {
   const [category, setCategory] = useState('all')
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const mobileNavRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null))
@@ -54,6 +56,17 @@ export default function AppShell() {
     document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [userMenuOpen])
+
+  useEffect(() => {
+    if (!mobileNavOpen) return
+    const onClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (target.closest('.app-mobile-nav-toggle')) return
+      if (mobileNavRef.current && !mobileNavRef.current.contains(target)) setMobileNavOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [mobileNavOpen])
 
   const signOut = async () => {
     await supabase.auth.signOut()
@@ -93,6 +106,15 @@ export default function AppShell() {
             ))}
           </nav>
 
+          <button
+            type="button"
+            className="app-mobile-nav-toggle"
+            onClick={() => setMobileNavOpen(o => !o)}
+            aria-label="Menu"
+          >
+            {mobileNavOpen ? '✕' : '☰'}
+          </button>
+
           {user && (
             <div className="app-user-menu" ref={userMenuRef}>
               <button
@@ -118,6 +140,32 @@ export default function AppShell() {
             </div>
           )}
         </div>
+
+        {mobileNavOpen && (
+          <nav className="app-mobile-nav" ref={mobileNavRef}>
+            {navItems.map(({ id, label }) => (
+              <button
+                key={id}
+                className={`app-mobile-nav-item ${active === id && !selectedWallet ? 'active' : ''}`}
+                onClick={() => { setActive(id); setSelectedWallet(null); setMobileNavOpen(false) }}
+              >
+                {label}
+              </button>
+            ))}
+            {user && (
+              <>
+                <div className="app-mobile-nav-divider" />
+                <button
+                  className={`app-mobile-nav-item ${active === 'settings' && !selectedWallet ? 'active' : ''}`}
+                  onClick={() => { setActive('settings'); setSelectedWallet(null); setMobileNavOpen(false) }}
+                >
+                  Settings
+                </button>
+                <button className="app-mobile-nav-item danger" onClick={signOut}>Sign out</button>
+              </>
+            )}
+          </nav>
+        )}
       </header>
 
       <main className="app-main">

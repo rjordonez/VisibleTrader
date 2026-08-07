@@ -2,3 +2,9 @@ project_id = "vohtqodprqpobvvcdypy"
 
 [functions.price-chart]
 verify_jwt = false
+
+[functions.stripe-webhook]
+# Stripe can't send a Supabase auth header — this endpoint's own HMAC
+# signature check (see index.ts) is the real security boundary, replacing
+# the platform-level JWT gate.
+verify_jwt = false

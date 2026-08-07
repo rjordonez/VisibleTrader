@@ -1,5 +1,7 @@
 import './landing.css'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 
 const platformLogos = [
   { name: 'Polymarket', src: '/polymarket.png' },
@@ -20,6 +22,8 @@ const plans = [
     ],
     cta: 'Get started free',
     href: '/signup',
+    priceIdMonthly: undefined as string | undefined,
+    priceIdYearly: undefined as string | undefined,
     highlighted: false,
   },
   {
@@ -39,6 +43,8 @@ const plans = [
     ],
     cta: 'Start 7-day free trial',
     href: '/signup',
+    priceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY as string | undefined,
+    priceIdYearly: import.meta.env.VITE_STRIPE_PRICE_PRO_YEARLY as string | undefined,
     highlighted: true,
   },
   {
@@ -56,12 +62,47 @@ const plans = [
     ],
     cta: 'Contact us',
     href: 'mailto:hello@visibletrader.io',
+    priceIdMonthly: undefined as string | undefined,
+    priceIdYearly: undefined as string | undefined,
     highlighted: false,
   },
 ]
 
 export default function PricingPage() {
   const [yearly, setYearly] = useState(true)
+  const [checkingOut, setCheckingOut] = useState(false)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
+  const navigate = useNavigate()
+
+  // The actual redirect is an effect, not inline in the handler below — a
+  // full-page navigation is exactly the kind of external-system side effect
+  // effects are for, same reasoning as this session's earlier Date.now()-in-
+  // effect fixes.
+  useEffect(() => {
+    if (checkoutUrl) window.location.href = checkoutUrl
+  }, [checkoutUrl])
+
+  const startCheckout = async (priceId: string) => {
+    setCheckingOut(true)
+    setCheckoutError(null)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      // Not signed in yet — sign up first, then come straight back here so
+      // the same click-to-trial flow can pick up where it left off.
+      navigate('/signup?next=/pricing')
+      return
+    }
+    const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+      body: { price_id: priceId },
+    })
+    if (error || !data?.url) {
+      setCheckingOut(false)
+      setCheckoutError('Could not start checkout — please try again in a moment.')
+      return
+    }
+    setCheckoutUrl(data.url)
+  }
 
   return (
     <div className="pricing-content">
@@ -113,9 +154,23 @@ export default function PricingPage() {
 
             <p className="pricing-desc">{plan.desc}</p>
 
-            <a href={plan.href} className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}>
-              {plan.cta}
-            </a>
+            {plan.priceIdMonthly && plan.priceIdYearly ? (
+              <button
+                type="button"
+                className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}
+                onClick={() => startCheckout(yearly ? plan.priceIdYearly! : plan.priceIdMonthly!)}
+                disabled={checkingOut}
+              >
+                {checkingOut ? 'Starting checkout…' : plan.cta}
+              </button>
+            ) : (
+              <a href={plan.href} className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}>
+                {plan.cta}
+              </a>
+            )}
+            {plan.highlighted && checkoutError && (
+              <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>{checkoutError}</p>
+            )}
 
             <ul className="pricing-features">
               {plan.features.map(f => (

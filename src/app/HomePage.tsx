@@ -162,7 +162,7 @@ function HomePage({ onOpenSignals, category, onCategoryChange }: {
                 <div key={heroKey} className="sig-hero-fade">
                   <div className="sig-hero-top">
                     <div className="sig-card-icon" style={{ background: ic.bg, width: 44, height: 44, fontSize: 20 }}>{ic.emoji}</div>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="sig-hero-q">{heroSignal.title} <span className="sig-out">— {heroSignal.outcome}</span></div>
                       <div className="sig-card-meta">{heroSignal.wallet_count} top trader{heroSignal.wallet_count > 1 ? 's' : ''} · <span className={`sig-tag ${tag.cls}`} style={{ marginTop: 0 }}>{tag.label}</span></div>
                     </div>

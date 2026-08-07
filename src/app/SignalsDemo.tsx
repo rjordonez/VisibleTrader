@@ -484,22 +484,26 @@ function SignalsDemo({ category }: { category: string }) {
             </div>
           </div>
 
-          <div className="sig-chips" style={{ marginTop: 10 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-faint)', marginRight: 2, alignSelf: 'center' }}>Win rate</span>
-            {[0, 50, 65, 80].map(v => (
-              <div key={v} className={minWinRate === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinWinRate(v)}>
-                {v === 0 ? 'Any' : `${v}%+`}
-              </div>
-            ))}
+          <div style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Win rate</span>
+            <div className="sig-chips">
+              {[0, 50, 65, 80].map(v => (
+                <div key={v} className={minWinRate === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinWinRate(v)}>
+                  {v === 0 ? 'Any' : `${v}%+`}
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="sig-chips" style={{ marginTop: 6 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-faint)', marginRight: 2, alignSelf: 'center' }}>Bet vs wallet balance</span>
-            {[0, 5, 15, 30].map(v => (
-              <div key={v} className={minBetRatio === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinBetRatio(v)}>
-                {v === 0 ? 'Any' : `${v}%+`}
-              </div>
-            ))}
+          <div style={{ marginTop: 6 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Bet vs wallet balance</span>
+            <div className="sig-chips">
+              {[0, 5, 15, 30].map(v => (
+                <div key={v} className={minBetRatio === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinBetRatio(v)}>
+                  {v === 0 ? 'Any' : `${v}%+`}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="sig-price-range" style={{ marginTop: 10 }}>

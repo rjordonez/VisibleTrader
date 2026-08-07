@@ -1,10 +1,17 @@
 import './landing.css'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 export default function SignupPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  // e.g. /signup?next=/pricing so a "start trial" click that requires an
+  // account first lands back where it was headed instead of always /app.
+  // Only helps when email confirmation is off / already has a session —
+  // the confirm-email path below has no way to carry this across that
+  // round trip, so it just falls back to a manual return visit.
+  const next = searchParams.get('next') || '/app'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -27,7 +34,7 @@ export default function SignupPage() {
       setConfirmSent(true)
       return
     }
-    navigate('/app')
+    navigate(next)
   }
 
   if (confirmSent) {

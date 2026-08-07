@@ -44,10 +44,9 @@
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  padding: 0 2.5rem;
-}
-@media (max-width: 640px) {
-  .app-header-inner { padding: 0 1rem; }
+  /* Fluid instead of a breakpoint — scales continuously with viewport width
+     rather than needing a guessed pixel threshold to snap at. */
+  padding: 0 clamp(1rem, 4vw, 2.5rem);
 }
 
 .app-header-logo {
@@ -91,6 +90,68 @@
 .app-nav-item.active {
   color: var(--text-1);
   font-weight: 600;
+}
+
+/* Hamburger menu — hidden on desktop, replaces the horizontal (scrolling)
+   nav row below 768px with a proper stacked dropdown instead of relying on
+   side-scroll for the primary nav. */
+.app-mobile-nav-toggle {
+  display: none;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-1);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.app-mobile-nav {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  right: 0;
+  z-index: 49;
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0.5rem;
+  background: var(--shell-bg);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+}
+
+.app-mobile-nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--text-2);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.app-mobile-nav-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-1); }
+.app-mobile-nav-item.active { background: rgba(255, 255, 255, 0.06); color: var(--text-1); font-weight: 700; }
+.app-mobile-nav-item.danger { color: #f87171; }
+.app-mobile-nav-item.danger:hover { background: rgba(248, 113, 113, 0.1); }
+.app-mobile-nav-divider { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 6px 4px; }
+
+@media (max-width: 768px) {
+  .app-header-nav { display: none; }
+  .app-mobile-nav-toggle { display: flex; margin-left: auto; }
+  /* Account access (Settings/Sign out) moves into the hamburger menu on
+     mobile instead of a separate avatar dropdown competing for header space. */
+  .app-user-menu { display: none; }
 }
 
 .app-user-menu {
@@ -173,15 +234,23 @@
 .app-main {
   margin-top: 60px;
   flex: 1;
+  /* The actual bug: .app-main is a flex item of .app-shell (column-direction,
+     default align-items:stretch), but margin-left/right:auto — needed to
+     center it once max-width:1600px caps out on huge screens — puts auto
+     margins on the cross axis. Per the flexbox spec, cross-axis auto margins
+     disable stretch and fall back to shrink-to-fit sizing based on content
+     instead of the container. That's why this was measuring ~880px on a
+     411px viewport regardless of any content-level fix: the container itself
+     was never being sized to the viewport in the first place. Explicit
+     width:100% overrides that fallback and forces the intended stretch. */
+  width: 100%;
+  min-width: 0;
   min-height: calc(100vh - 60px);
   background: var(--shell-bg);
   max-width: 1600px;
   margin-left: auto;
   margin-right: auto;
-  padding: 2rem 2.5rem;
-}
-@media (max-width: 640px) {
-  .app-main { padding: 1.25rem 1rem; }
+  padding: clamp(1.25rem, 4vw, 2rem) clamp(1rem, 4vw, 2.5rem);
 }
 
 /* ── Section Header ── */
@@ -240,6 +309,12 @@
 .sig-hero {
   background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 10px; padding: 20px;
+  /* Grid items default to a content-based automatic minimum width, which
+     let a long unwrapped title force this whole card (and the chart inside
+     it, which measures its parent's pixel width) wider than the viewport
+     on mobile — classic CSS Grid "blowout." min-width:0 lets it actually
+     shrink to the 1fr track instead. */
+  min-width: 0;
 }
 .sig-hero-top { display: flex; gap: 12px; align-items: flex-start; }
 /* Reserves 2 lines' worth of height always — the hero rotates through
@@ -256,7 +331,7 @@
 }
 .sig-hero-dots span.active { background: var(--blue); width: 18px; border-radius: 3px; }
 
-.sig-sidebar-col { display: flex; flex-direction: column; gap: 16px; height: 100%; }
+.sig-sidebar-col { display: flex; flex-direction: column; gap: 16px; height: 100%; min-width: 0; }
 
 .sig-movers {
   background: var(--surface-2); border: 1px solid var(--border);
@@ -280,11 +355,13 @@
 }
 .sig-live::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: sig-pulse 1.6s infinite; }
 @keyframes sig-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
-.sig-seg { display: flex; gap: 24px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.sig-seg { display: flex; gap: 24px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; scrollbar-width: none; }
+.sig-seg::-webkit-scrollbar { display: none; }
 .sig-seg-btn {
   padding: 10px 2px; margin-bottom: -1px;
   font-size: 13.5px; font-weight: 600; color: var(--text-dim); cursor: pointer;
   border-bottom: 2px solid transparent;
+  white-space: nowrap; flex-shrink: 0;
 }
 .sig-seg-btn.active { color: var(--text); font-weight: 700; border-bottom-color: var(--blue); }
 
@@ -358,7 +435,7 @@
 .sig-mid { min-width: 0; }
 .sig-q { font-size: 14px; font-weight: 600; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sig-q .sig-out { color: var(--text-dim); font-weight: 500; }
-.sig-meta { font-size: 12.5px; color: var(--text-faint); margin-top: 5px; display: flex; align-items: center; gap: 7px; }
+.sig-meta { font-size: 12.5px; color: var(--text-faint); margin-top: 5px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; row-gap: 2px; }
 .sig-trk { color: var(--blue); font-weight: 700; }
 
 .sig-right { text-align: right; }
@@ -368,8 +445,7 @@
 .sig-rowprice { font-size: 15px; font-weight: 700; }
 .sig-rowsize { font-size: 12px; color: var(--text-faint); margin-top: 3px; }
 
-.sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 4px 0; }
-@media (max-width: 640px) { .sig-grid { grid-template-columns: 1fr; } }
+.sig-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; padding: 4px 0; }
 
 .sig-card {
   background: var(--surface-2); border: 1px solid var(--border);
@@ -448,21 +524,18 @@
 .sig-skel { background: rgba(255, 255, 255, 0.09); border-radius: 6px; animation: sig-shimmer 1.4s ease-in-out infinite; }
 .sig-skel-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
 .sig-skel-row:not(:first-child) { border-top: 1px solid var(--border); }
-.sig-drill-name { font-weight: 700; width: 100px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--blue); text-decoration: none; }
+.sig-drill-name { font-weight: 700; width: clamp(60px, 22vw, 100px); flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--blue); text-decoration: none; }
 .sig-drill-name:hover { text-decoration: underline; }
 .sig-drill-detail { flex: 1; color: var(--text-dim); }
-@media (max-width: 480px) {
-  .sig-drill-name { width: 72px; font-size: 11.5px; }
-}
 .sig-drill-status { font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 4px; flex-shrink: 0; }
 
 /* ── Dashboard shared: stat cells, data tables (Profits/Leaderboard) ── */
-.sig-stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
-.sig-stat-cell { background: var(--surface-2); padding: 16px 18px; }
-@media (max-width: 640px) {
-  .sig-stats-row { grid-template-columns: repeat(2, 1fr); }
-  .sig-stat-cell { padding: 12px 14px; }
-}
+/* auto-fit/minmax instead of a fixed column count behind a guessed
+   breakpoint — this adapts to whatever the real available width is (which
+   turned out not to match any of the pixel breakpoints below), same
+   self-responsive pattern .sig-grid-dense already uses successfully. */
+.sig-stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
+.sig-stat-cell { background: var(--surface-2); padding: 12px 14px; }
 .sig-stat-cell-label { font-size: 11px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
 .sig-stat-cell-val { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
 .sig-stat-cell-val.g { color: var(--green); }
@@ -482,6 +555,62 @@
 .sig-table tr:hover td { background: rgba(255,255,255,0.02); }
 .sig-table a { color: var(--blue); text-decoration: none; }
 .sig-table a:hover { text-decoration: underline; }
+
+/* Below 640px every .sig-table becomes a stack of cards instead of a
+   horizontally-scrolling table — each <tr> is a card, each <td> a labeled
+   key/value row (label comes from a data-label attribute on the <td>, set
+   per-table in JSX to match that column's <th>). The first <td> in each row
+   is the card's identifying field (market/trader/category) and gets styled
+   as a title instead of a labeled row. */
+@media (max-width: 640px) {
+  .sig-table-wrap { overflow-x: visible; border: none; background: none; }
+  .sig-table, .sig-table tbody, .sig-table tr, .sig-table td { display: block; width: 100%; }
+  .sig-table thead { display: none; }
+  .sig-table tr {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    padding: 4px 14px;
+  }
+  .sig-table tr:last-child { margin-bottom: 0; }
+  .sig-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    text-align: right;
+    /* Values like wallet addresses have no spaces to wrap at — without this
+       the flex item refuses to shrink below that unbroken string's width
+       and bleeds past the card edge. overflow-wrap:anywhere (not just
+       break-word) also lowers the flex item's automatic minimum size, not
+       just how it renders, which is what actually fixes the overflow. */
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .sig-table tr:hover td { background: none; }
+  .sig-table td:last-child { border-bottom: none; }
+  .sig-table td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: left;
+  }
+  .sig-table td:first-child {
+    font-weight: 700;
+    font-size: 14px;
+    justify-content: flex-start;
+    text-align: left;
+    padding-top: 12px;
+  }
+  .sig-table td:first-child::before { content: none; }
+}
 
 .sig-chart { width: 100%; height: 160px; margin-bottom: 24px; }
 
@@ -536,7 +665,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 64px 24px 24px;
+  padding: clamp(12px, 8vw, 64px) clamp(12px, 4vw, 24px) clamp(12px, 4vw, 24px);
   animation: sig-modal-fade 0.15s ease;
 }
 .sig-modal-wrap {
@@ -552,17 +681,13 @@
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 24px;
+  padding: clamp(16px, 4vw, 24px);
   width: 100%;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: none;
 }
 .sig-modal::-webkit-scrollbar { display: none; }
-@media (max-width: 640px) {
-  .sig-modal-backdrop { padding: 56px 12px 12px; }
-  .sig-modal { padding: 16px; }
-}
 .sig-modal-close {
   position: absolute;
   top: -44px;

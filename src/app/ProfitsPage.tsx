@@ -160,18 +160,18 @@ function ProfitsPage() {
                   {positions.map((p, i) => (
                     <tr key={i}>
                       <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                      <td>
+                      <td data-label="Trader">
                         {p.wallet ? (
                           <a href={profileUrl(p.wallet)!} target="_blank" rel="noopener noreferrer">
                             {traderLabel(p.wallet, p.wallet_name)}
                           </a>
                         ) : '—'}
                       </td>
-                      <td className="num">{fmtFull(p.usd)}</td>
-                      <td className="num">{Math.round(p.price * 100)}¢</td>
-                      <td style={{ color: p.resolved_win ? 'var(--green)' : 'var(--red)' }}>{p.resolved_win ? 'Won' : 'Lost'}</td>
-                      <td className="num" style={{ color: p.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.profit)}</td>
-                      <td className="num" style={{ color: 'var(--text-dim)' }}>{timeAgo(p.resolved_ts)}</td>
+                      <td className="num" data-label="Stake">{fmtFull(p.usd)}</td>
+                      <td className="num" data-label="Price">{Math.round(p.price * 100)}¢</td>
+                      <td data-label="Result" style={{ color: p.resolved_win ? 'var(--green)' : 'var(--red)' }}>{p.resolved_win ? 'Won' : 'Lost'}</td>
+                      <td className="num" data-label="Profit" style={{ color: p.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.profit)}</td>
+                      <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(p.resolved_ts)}</td>
                     </tr>
                   ))}
                 </tbody>

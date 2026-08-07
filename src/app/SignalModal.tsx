@@ -38,7 +38,7 @@ export function SignalModal({ opportunity: o, onClose }: { opportunity: Opportun
         <div className="sig-modal">
         <div className="sig-hero-top">
           <div className="sig-card-icon" style={{ background: ic.bg, width: 44, height: 44, fontSize: 20 }}>{ic.emoji}</div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div className="sig-hero-q">{o.title} <span className="sig-out">— {o.outcome}</span></div>
             <div className="sig-card-meta">
               {o.wallet_count} top trader{o.wallet_count > 1 ? 's' : ''} · <span className={`sig-tag ${tag.cls}`} style={{ marginTop: 0 }}>{tag.label}</span>

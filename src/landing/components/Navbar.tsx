@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { supabase } from '../../lib/supabase'
 
 const ChevronDown = () => (
   <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ marginLeft: 3, flexShrink: 0 }}>
@@ -87,11 +88,18 @@ function DrawerSubLevel({ title, items, onBack, onClose }: {
 
 export default function Navbar() {
   const [menu, setMenu] = useState<Menu>('closed')
+  const [signedIn, setSignedIn] = useState(false)
 
   useEffect(() => {
     document.body.style.overflow = menu !== 'closed' ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
   }, [menu])
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSignedIn(!!data.session))
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => setSignedIn(!!session))
+    return () => sub.subscription.unsubscribe()
+  }, [])
 
   const close = () => setMenu('closed')
 
@@ -115,8 +123,14 @@ export default function Navbar() {
         </div>
 
         <div className="nav-actions">
-          <Link to="/login" className="btn-ghost">Log in</Link>
-          <Link to="/pricing" className="btn-primary">Try for free</Link>
+          {signedIn ? (
+            <Link to="/app" className="btn-primary">Go to app</Link>
+          ) : (
+            <>
+              <Link to="/login" className="btn-ghost">Log in</Link>
+              <Link to="/pricing" className="btn-primary">Try for free</Link>
+            </>
+          )}
         </div>
 
         <button className="nav-hamburger" onClick={() => setMenu('main')} aria-label="Open menu">
@@ -146,8 +160,14 @@ export default function Navbar() {
                 <ChevronRight />
               </button>
               <div className="nav-drawer-divider" />
-              <Link to="/login" className="nav-drawer-link" onClick={close}>Log in</Link>
-              <Link to="/pricing" className="nav-drawer-link" style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={close}>Try for free</Link>
+              {signedIn ? (
+                <Link to="/app" className="nav-drawer-link" style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={close}>Go to app</Link>
+              ) : (
+                <>
+                  <Link to="/login" className="nav-drawer-link" onClick={close}>Log in</Link>
+                  <Link to="/pricing" className="nav-drawer-link" style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={close}>Try for free</Link>
+                </>
+              )}
             </div>
           </>
         )}

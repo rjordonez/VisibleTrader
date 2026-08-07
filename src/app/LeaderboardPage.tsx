@@ -89,7 +89,7 @@ function LeaderboardPage({ onSelectWallet }: { onSelectWallet: (wallet: string) 
                   return (
                     <tr key={r.wallet}>
                       <td className="num" style={{ color: 'var(--text-dim)' }}>{i + 1}</td>
-                      <td>
+                      <td data-label="Trader">
                         <a href="#" onClick={e => { e.preventDefault(); onSelectWallet(r.wallet) }}>
                           {traderLabel(r.wallet, r.wallet_name)}
                         </a>
@@ -100,12 +100,12 @@ function LeaderboardPage({ onSelectWallet }: { onSelectWallet: (wallet: string) 
                           ↗
                         </a>
                       </td>
-                      <td className="num">{r.n}</td>
-                      <td className="num">{winRate.toFixed(0)}%</td>
-                      <td className="num">{usdWinRate.toFixed(0)}%</td>
-                      <td className="num">{fmtFull(r.deployed)}</td>
-                      <td className="num" style={{ color: r.net_profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(r.net_profit)}</td>
-                      <td className="num" style={{ color: roi >= 0 ? 'var(--green)' : 'var(--red)' }}>{roi >= 0 ? '+' : ''}{roi.toFixed(1)}%</td>
+                      <td className="num" data-label="Trades">{r.n}</td>
+                      <td className="num" data-label="Win Rate (#)">{winRate.toFixed(0)}%</td>
+                      <td className="num" data-label="Win Rate ($)">{usdWinRate.toFixed(0)}%</td>
+                      <td className="num" data-label="Deployed">{fmtFull(r.deployed)}</td>
+                      <td className="num" data-label="Profit" style={{ color: r.net_profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(r.net_profit)}</td>
+                      <td className="num" data-label="ROI" style={{ color: roi >= 0 ? 'var(--green)' : 'var(--red)' }}>{roi >= 0 ? '+' : ''}{roi.toFixed(1)}%</td>
                     </tr>
                   )
                 })}
