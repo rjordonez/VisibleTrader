@@ -25,13 +25,30 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   useEffect(() => {
     if (status !== 'authed') return
     let cancelled = false
+    // Landing here straight off a successful Stripe checkout, the webhook
+    // that actually writes the subscriptions row can still be a few
+    // seconds behind the redirect — retry for a while instead of bouncing
+    // a customer who just paid straight back to pricing on the first miss.
+    const justCheckedOut = new URLSearchParams(window.location.search).get('checkout') === 'success'
+    const maxAttempts = justCheckedOut ? 8 : 1
+    let attempt = 0
+
     // No .eq(user_id, ...) needed — RLS on subscriptions already scopes this
     // to "auth.uid() = user_id", so this can only ever return the caller's
     // own row (or none).
-    supabase.from('subscriptions').select('status').maybeSingle().then(({ data }) => {
-      if (cancelled) return
-      setSubActive(!!data && ACTIVE_SUB_STATUSES.has(data.status))
-    })
+    const check = () => {
+      supabase.from('subscriptions').select('status').maybeSingle().then(({ data }) => {
+        if (cancelled) return
+        const active = !!data && ACTIVE_SUB_STATUSES.has(data.status)
+        attempt++
+        if (active || attempt >= maxAttempts) {
+          setSubActive(active)
+        } else {
+          setTimeout(check, 1500)
+        }
+      })
+    }
+    check()
     return () => { cancelled = true }
   }, [status])
 
