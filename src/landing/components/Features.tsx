@@ -57,7 +57,7 @@ export default function Features() {
             </div>
           </Link>
           <Link to="/features/vetted-picks" className="bento-card bento-ev">
-            <span className="bento-label bento-label-purple">VETTED PICKS →</span>
+            <span className="bento-label bento-label-accent">VETTED PICKS →</span>
             <h3 className="bento-title">Capital-weighted conviction</h3>
             <p className="bento-sub">When multiple top wallets pile into the same side, we rank it.</p>
             <div className="bento-mock bento-mock-ev">

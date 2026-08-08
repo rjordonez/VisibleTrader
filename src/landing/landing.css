@@ -5,8 +5,8 @@
   --bg-3: #111827;
   --surface: #161b28;
   --border: rgba(255, 255, 255, 0.07);
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
+  --accent: #1e8f0d;
+  --accent-hover: #56ab4a;
   --green: #10b981;
   --text-1: #f9fafb;
   --text-2: #d1d5db;
@@ -500,7 +500,7 @@
 /* ── Profit Card (shared shell) ── */
 .profit-card {
   background: var(--surface);
-  border: 1px solid rgba(99,102,241,0.22);
+  border: 1px solid rgba(30,143,13,0.22);
   border-radius: var(--radius);
   padding: 1.5rem;
   box-shadow: 0 24px 60px rgba(0,0,0,0.5);
@@ -736,8 +736,8 @@
 }
 
 .pricing-card-pro {
-  border-color: rgba(99,102,241,0.4);
-  background: rgba(99,102,241,0.05);
+  border-color: rgba(30,143,13,0.4);
+  background: rgba(30,143,13,0.05);
 }
 
 .pricing-popular {
@@ -1105,7 +1105,7 @@
 
 .ep-option-selected {
   border-color: var(--accent) !important;
-  background: rgba(99,102,241,0.1) !important;
+  background: rgba(30,143,13,0.1) !important;
   color: var(--text-1) !important;
 }
 
@@ -1294,7 +1294,7 @@
      outside the box clipped off. Keeping the glow entirely out of the
      lower half means there's nothing back there to show through. */
   inset: -90px -180px 50% -180px;
-  background: radial-gradient(ellipse at center, rgba(99,102,241,0.55), transparent 70%);
+  background: radial-gradient(ellipse at center, rgba(30,143,13,0.55), transparent 70%);
   filter: blur(55px);
   /* blur bleeds past its own box on every side by default — clip-path
      enforces the hard stop. Top/sides stay generous (unchanged bleed);
@@ -1388,7 +1388,7 @@
 }
 
 .dash-nav-item.active {
-  background: rgba(99,102,241,0.15);
+  background: rgba(30,143,13,0.15);
   color: var(--accent-hover);
   font-weight: 600;
 }
@@ -1436,8 +1436,8 @@
 }
 
 .dash-filter.active {
-  background: rgba(99,102,241,0.15);
-  border-color: rgba(99,102,241,0.4);
+  background: rgba(30,143,13,0.15);
+  border-color: rgba(30,143,13,0.4);
   color: var(--accent-hover);
 }
 
@@ -1465,8 +1465,8 @@
   width: 26px;
   height: 26px;
   border-radius: 7px;
-  background: rgba(99,102,241,0.15);
-  color: #818cf8;
+  background: rgba(30,143,13,0.15);
+  color: var(--accent-hover);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1678,7 +1678,7 @@
 }
 
 .bento-label-green  { color: #10b981; }
-.bento-label-purple { color: #818cf8; }
+.bento-label-accent { color: var(--accent); }
 .bento-label-blue   { color: #38bdf8; }
 .bento-label-teal   { color: #2dd4bf; }
 .bento-label-orange { color: #fb923c; }
@@ -1798,8 +1798,8 @@
 .ev-badge {
   font-size: 0.75rem;
   font-weight: 700;
-  color: #818cf8;
-  background: rgba(99,102,241,0.15);
+  color: var(--accent-hover);
+  background: rgba(30,143,13,0.15);
   padding: 2px 7px;
   border-radius: 6px;
   white-space: nowrap;
@@ -1877,7 +1877,7 @@
 
 .port-bar {
   flex: 1;
-  background: linear-gradient(to top, var(--accent), rgba(99,102,241,0.3));
+  background: linear-gradient(to top, var(--accent), rgba(30,143,13,0.3));
   border-radius: 3px 3px 0 0;
   min-height: 4px;
 }
@@ -2190,8 +2190,8 @@
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  background: rgba(99,102,241,0.12);
-  border: 1px solid rgba(99,102,241,0.2);
+  background: rgba(30,143,13,0.12);
+  border: 1px solid rgba(30,143,13,0.2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2633,7 +2633,7 @@
 }
 
 .calc-sidebar-item:hover { background: rgba(255,255,255,0.05); color: var(--text-1); }
-.calc-sidebar-item.active { background: rgba(99,102,241,0.12); color: var(--accent); font-weight: 600; }
+.calc-sidebar-item.active { background: rgba(30,143,13,0.12); color: var(--accent); font-weight: 600; }
 
 .calc-main {
   min-width: 0;
