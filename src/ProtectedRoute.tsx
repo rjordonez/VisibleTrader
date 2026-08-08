@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
-import PaywallPage from './app/PaywallPage'
+import PaywallPage from './PaywallPage'
 
 // Any status Stripe reports that should still count as "let them in" —
 // trialing and active are the only ones; past_due/canceled/unpaid/etc all
