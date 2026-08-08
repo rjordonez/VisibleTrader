@@ -511,7 +511,7 @@
    data we already built (holding/scalped/exited), restyled to the v4 palette */
 .sig-drill { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 14px; cursor: default; }
 .sig-drill-label { font-size: 10px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 10px; }
-.sig-drill-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
+.sig-drill-row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
 .sig-drill-row:first-child { border-top: none; }
 
 /* ── Loading skeletons — reserve real content's footprint so nothing
@@ -524,10 +524,20 @@
 .sig-skel { background: rgba(255, 255, 255, 0.09); border-radius: 6px; animation: sig-shimmer 1.4s ease-in-out infinite; }
 .sig-skel-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
 .sig-skel-row:not(:first-child) { border-top: 1px solid var(--border); }
-.sig-drill-name { font-weight: 700; width: clamp(60px, 22vw, 100px); flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--blue); text-decoration: none; }
+.sig-drill-name { font-weight: 700; width: clamp(60px, 22vw, 100px); flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--blue); text-decoration: none; padding-top: 1px; }
 .sig-drill-name:hover { text-decoration: underline; }
-.sig-drill-detail { flex: 1; color: var(--text-dim); }
+/* Detail text and the profit/status line stack as a column next to the
+   name, instead of all four sitting as siblings in one flex row — that
+   older layout had no reliable width to hand .sig-drill-detail (it lives
+   inside cards whose width comes from a responsive grid column, not the
+   viewport, so a @media breakpoint here couldn't tell a narrow card on a
+   wide desktop from a wide one) and, once fixed to always wrap, left the
+   profit/status line floating unaligned under nothing. This way both
+   lines share the same left edge, indented under the name. */
+.sig-drill-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.sig-drill-detail { color: var(--text-dim); }
 .sig-drill-status { font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 4px; flex-shrink: 0; }
+.sig-drill-meta { display: flex; align-items: center; gap: 8px; }
 
 /* ── Dashboard shared: stat cells, data tables (Profits/Leaderboard) ── */
 /* auto-fit/minmax instead of a fixed column count behind a guessed

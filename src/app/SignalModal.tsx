@@ -93,11 +93,15 @@ export function SignalModal({ opportunity: o, onClose }: { opportunity: Opportun
                 <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name">
                   {traderLabel(w.wallet, w.wallet_name)}
                 </a>
-                <div className="sig-drill-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}</div>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
-                  {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
+                <div className="sig-drill-body">
+                  <div className="sig-drill-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}</div>
+                  <div className="sig-drill-meta">
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+                      {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
+                    </div>
+                    <div className="sig-drill-status" style={{ color: st.color, background: st.color + '26' }}>{st.label}</div>
+                  </div>
                 </div>
-                <div className="sig-drill-status" style={{ color: st.color, background: st.color + '26' }}>{st.label}</div>
               </div>
             )
           })}
