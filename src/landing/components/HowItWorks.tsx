@@ -54,7 +54,7 @@ export default function HowItWorks() {
           ))}
         </div>
 
-        <div className="platforms-wrap">
+        {/* <div className="platforms-wrap">
           <p className="platforms-label">Built on Polymarket</p>
           <div className="platforms">
             {[
@@ -63,7 +63,7 @@ export default function HowItWorks() {
               <img key={p.name} src={p.src} alt={p.name} className="platform-logo-sq" />
             ))}
           </div>
-        </div>
+        </div> */}
       </div>
 
       <div className="hiw-bar hiw-bar-bot" />

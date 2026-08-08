@@ -31,7 +31,7 @@ export default function Features() {
             <div className="bento-mock bento-mock-arb">
               <div className="arb-row">
                 <div className="arb-platform">
-                  <img src="/polymarket.png" alt="Polymarket" className="arb-logo" />
+                  {/* <img src="/polymarket.png" alt="Polymarket" className="arb-logo" /> */}
                   <span>Arizona Diamondbacks</span>
                 </div>
                 <div className="arb-prices">
@@ -42,7 +42,7 @@ export default function Features() {
               <div className="arb-divider" />
               <div className="arb-row">
                 <div className="arb-platform">
-                  <img src="/polymarket.png" alt="Polymarket" className="arb-logo" />
+                  {/* <img src="/polymarket.png" alt="Polymarket" className="arb-logo" /> */}
                   <span>CF América</span>
                 </div>
                 <div className="arb-prices">
@@ -135,7 +135,7 @@ export default function Features() {
             <div className="bento-mock bento-mock-promo">
               <div className="promo-card">
                 <div className="promo-platform">
-                  <img src="/polymarket.png" alt="Polymarket" className="arb-logo" />
+                  {/* <img src="/polymarket.png" alt="Polymarket" className="arb-logo" /> */}
                   <span>Resolved positions, payout-adjusted</span>
                 </div>
                 <div className="promo-amount">Net P&L</div>

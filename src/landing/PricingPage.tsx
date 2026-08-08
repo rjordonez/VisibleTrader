@@ -3,9 +3,9 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { appUrl, marketingUrl } from '../lib/domains'
 
-const platformLogos = [
-  { name: 'Polymarket', src: '/polymarket.png' },
-]
+// const platformLogos = [
+//   { name: 'Polymarket', src: '/polymarket.png' },
+// ]
 
 const plans = [
   {
@@ -163,11 +163,11 @@ export default function PricingPage() {
               ))}
             </ul>
 
-            <div className="pricing-card-logos">
+            {/* <div className="pricing-card-logos">
               {platformLogos.map(p => (
                 <img key={p.name} src={p.src} alt={p.name} className="pricing-card-logo" />
               ))}
-            </div>
+            </div> */}
           </div>
         ))}
       </div>

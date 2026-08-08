@@ -6,10 +6,11 @@ export default function ProfitCard() {
   return (
     <div className="profit-card-outer">
 
-    {/* ── Platform logo – floating top-right corner ── */}
+    {/* ── Platform logo – floating top-right corner ──
     <div className="profit-platform-logos">
       <img src="/polymarket.png" alt="Polymarket"  className="profit-logo profit-logo-poly"   />
     </div>
+    */}
 
     <div className="profit-locked-card">
       {/* Blurred background content */}
