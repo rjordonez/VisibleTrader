@@ -55,6 +55,27 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Without this, a double-click or a revisit to pricing while already
+    // subscribed creates a second Stripe subscription for the same person
+    // — Stripe would bill both, but the subscriptions table is unique on
+    // user_id, so the second webhook write silently overwrites the first,
+    // orphaning it in Stripe with no local record.
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    )
+    const { data: existing } = await serviceClient
+      .from('subscriptions')
+      .select('status')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (existing && (existing.status === 'trialing' || existing.status === 'active')) {
+      return new Response(JSON.stringify({ error: 'already subscribed' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'content-type': 'application/json' },
+      })
+    }
+
     // success_url must land on the app subdomain regardless of where
     // checkout was initiated (the pricing page lives on the marketing
     // domain) — APP_URL is set explicitly for that. cancel_url stays

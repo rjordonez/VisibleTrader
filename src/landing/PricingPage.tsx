@@ -9,24 +9,6 @@ const platformLogos = [
 
 const plans = [
   {
-    name: 'Free',
-    dayMonthly: null,
-    dayYearly: null,
-    fullMonthly: null,
-    desc: 'Get started and see real tracked-wallet activity for yourself.',
-    features: [
-      'Live Ticker (delayed)',
-      'Vetted Picks (top 3/day)',
-      'Leaderboard, read-only',
-      'Discord community access',
-    ],
-    cta: 'Get started free',
-    href: appUrl('/signup'),
-    priceIdMonthly: undefined as string | undefined,
-    priceIdYearly: undefined as string | undefined,
-    highlighted: false,
-  },
-  {
     name: 'Pro',
     dayMonthly: '1.63',
     dayYearly: '1.30',
@@ -108,7 +90,7 @@ export default function PricingPage() {
     <div className="pricing-content">
       <div className="pricing-header">
         <h1 className="pricing-title">Simple, transparent pricing</h1>
-        <p className="pricing-sub">Start free. Upgrade when you're ready to go all in.</p>
+        <p className="pricing-sub">Pick the plan that fits how deep you want to go.</p>
 
         <div className="pricing-toggle">
           <button
