@@ -9,3 +9,10 @@ export const appUrl = (path: string) =>
 
 export const marketingUrl = (path: string) =>
   import.meta.env.DEV ? path : `https://visibletrader.com${path}`
+
+// Path to a route *inside* the dashboard itself (AppShell) — for
+// navigate()/<Link to>, not a full URL. Same origin always; just needs
+// the dev-only /app prefix mirroring wherever AppShell is mounted (see
+// App.tsx's isAppHost / the AppRoutes wildcard route).
+export const dashboardPath = (path: string) =>
+  import.meta.env.DEV ? `/app${path}` : path

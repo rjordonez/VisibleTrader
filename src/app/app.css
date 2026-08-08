@@ -65,6 +65,11 @@
   align-items: center;
   gap: 2px;
   overflow-x: auto;
+  /* Explicit, not just relying on the default — overflow-x: auto with an
+     unset overflow-y computes overflow-y to auto too per spec, which was
+     clipping the active-tab underline below (a box-shadow, so it doesn't
+     affect layout/centering the way a border would). */
+  overflow-y: visible;
   scrollbar-width: none;
 }
 .app-header-nav::-webkit-scrollbar { display: none; }
@@ -80,6 +85,7 @@
   border: none;
   background: none;
   white-space: nowrap;
+  text-decoration: none;
   transition: color 0.12s;
 }
 
@@ -90,6 +96,7 @@
 .app-nav-item.active {
   color: var(--text-1);
   font-weight: 600;
+  box-shadow: 0 2px 0 0 var(--accent);
 }
 
 /* Hamburger menu — hidden on desktop, replaces the horizontal (scrolling)
@@ -139,6 +146,7 @@
   font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
+  text-decoration: none;
 }
 .app-mobile-nav-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-1); }
 .app-mobile-nav-item.active { background: rgba(255, 255, 255, 0.06); color: var(--text-1); font-weight: 700; }
@@ -221,6 +229,7 @@
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
+  text-decoration: none;
   transition: background 0.12s, color 0.12s;
 }
 .app-user-dropdown-item:hover {

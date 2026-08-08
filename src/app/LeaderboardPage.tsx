@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { dashboardPath } from '../lib/domains'
 import { onTabVisible, traderLabel, profileUrl, fmtFull, fmtSigned } from './helpers'
 import { SkelTableRows } from './Skeleton'
 
@@ -15,7 +17,8 @@ interface LeaderboardRow {
   net_profit: number
 }
 
-function LeaderboardPage({ onSelectWallet }: { onSelectWallet: (wallet: string) => void }) {
+function LeaderboardPage() {
+  const navigate = useNavigate()
   const [rows, setRows] = useState<LeaderboardRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -90,7 +93,7 @@ function LeaderboardPage({ onSelectWallet }: { onSelectWallet: (wallet: string) 
                     <tr key={r.wallet}>
                       <td className="num" style={{ color: 'var(--text-dim)' }}>{i + 1}</td>
                       <td data-label="Trader">
-                        <a href="#" onClick={e => { e.preventDefault(); onSelectWallet(r.wallet) }}>
+                        <a href="#" onClick={e => { e.preventDefault(); navigate(dashboardPath(`/trader/${r.wallet}`)) }}>
                           {traderLabel(r.wallet, r.wallet_name)}
                         </a>
                         <a

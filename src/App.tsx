@@ -74,7 +74,12 @@ function AppRoutes() {
           <Route path="/app/reset-password" element={<ResetPasswordPage />} />
         </>
       )}
-      <Route path="/*" element={<ProtectedRoute><AppShell /></ProtectedRoute>} />
+      {/* AppShell renders its own nested <Routes> for /signals, /profits,
+          etc. — a descendant <Routes> automatically matches against
+          whatever's left after the parent Route's own match, so in dev
+          this needs to be /app/* (consuming the /app prefix) for that
+          remainder to line up with prod, where there's no prefix at all. */}
+      <Route path={import.meta.env.DEV ? '/app/*' : '/*'} element={<ProtectedRoute><AppShell /></ProtectedRoute>} />
     </Routes>
   )
 }

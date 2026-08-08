@@ -31,7 +31,7 @@ export default function DashboardPreview() {
         <div className="chrome-dots">
           <span /><span /><span />
         </div>
-        <div className="chrome-bar">app.visibletrader.io/signals</div>
+        <div className="chrome-bar">app.visibletrader.com/signals</div>
         <div className="chrome-spacer" />
       </div>
 

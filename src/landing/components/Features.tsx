@@ -83,7 +83,7 @@ export default function Features() {
             <p className="bento-sub">Browser alerts the moment a wallet on your watchlist crosses a tier.</p>
             <div className="bento-mock bento-mock-alerts">
               <div className="alert-notif">
-                <div className="alert-app-icon">V</div>
+                <img src="/favicon.svg" className="alert-app-icon" alt="" />
                 <div className="alert-body">
                   <div className="alert-title-row">VisibleTrader Alert</div>
                   <div className="alert-text">🔥 Watched wallet crossed $20k tier</div>
@@ -91,7 +91,7 @@ export default function Features() {
                 <div className="alert-time">now</div>
               </div>
               <div className="alert-notif alert-notif-dim">
-                <div className="alert-app-icon">V</div>
+                <img src="/favicon.svg" className="alert-app-icon" alt="" />
                 <div className="alert-body">
                   <div className="alert-title-row">VisibleTrader Alert</div>
                   <div className="alert-text">New solo pick: US x Iran ceasefire</div>

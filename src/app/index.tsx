@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import type { ReactElement } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { supabase, isProdDb } from '../lib/supabase'
+import { dashboardPath } from '../lib/domains'
 import type { User } from '@supabase/supabase-js'
 import SignalsDemo from './SignalsDemo'
 import HomePage from './HomePage'
@@ -14,25 +14,40 @@ import LookupPage from './LookupPage'
 import './app.css'
 
 const navItems = [
-  { id: 'home',        label: 'Home'        },
-  { id: 'signals',     label: 'Signals'     },
-  { id: 'profits',     label: 'Profits'     },
-  { id: 'leaderboard', label: 'Leaderboard' },
-  { id: 'alerts',      label: 'Alerts'      },
-  { id: 'lookup',      label: 'Lookup'      },
+  { id: 'home',        label: 'Home',        path: '/'            },
+  { id: 'signals',     label: 'Signals',     path: '/signals'     },
+  { id: 'profits',     label: 'Profits',     path: '/profits'     },
+  { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard' },
+  { id: 'alerts',      label: 'Alerts',      path: '/alerts'      },
+  { id: 'lookup',      label: 'Lookup',      path: '/lookup'      },
 ]
 
-const demos: Record<string, () => ReactElement> = {
-  profits:     ProfitsPage,
-  alerts:      AlertsPage,
-  settings:    SettingsPage,
+// Wraps TraderDetailPage so it can live at a real /trader/:wallet URL —
+// wallet addresses are plain hex, safe unencoded in a path segment.
+// navigate(-1) reproduces the old "back returns to whichever tab you
+// came from" behavior via normal browser history, and as a side effect
+// this URL is now directly linkable/shareable, which it wasn't before.
+function TraderDetailRoute() {
+  const { wallet } = useParams<{ wallet: string }>()
+  const navigate = useNavigate()
+  if (!wallet) return <Navigate to={dashboardPath('/')} replace />
+  return <TraderDetailPage key={wallet} wallet={wallet} onBack={() => navigate(-1)} />
 }
 
-/* ── App Shell ── */
+/* ── App Shell ──
+   The <Routes> below use relative paths (no leading slash, `index` for
+   home) on purpose — this component is mounted by App.tsx at a wildcard
+   route (`/*` in prod, `/app/*` in dev, since there's no real subdomain
+   locally), and only relative child routes automatically resolve against
+   however much of the URL that ancestor match already consumed. Absolute
+   paths here would always match against the true root and silently break
+   in dev, where the real URL carries a leading /app it can't see past.
+   Anywhere this file navigates (Link/navigate), it goes through
+   dashboardPath() instead, which adds that same /app prefix explicitly —
+   see src/lib/domains.ts. */
 export default function AppShell() {
   const navigate = useNavigate()
-  const [active, setActive] = useState('home')
-  const [selectedWallet, setSelectedWallet] = useState<string | null>(null)
+  const location = useLocation()
   const [user, setUser] = useState<User | null>(null)
   const [category, setCategory] = useState('all')
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -73,21 +88,7 @@ export default function AppShell() {
     navigate('/login')
   }
 
-  let page: ReactElement
-  if (selectedWallet) {
-    page = <TraderDetailPage key={selectedWallet} wallet={selectedWallet} onBack={() => setSelectedWallet(null)} />
-  } else if (active === 'home') {
-    page = <HomePage onOpenSignals={() => setActive('signals')} category={category} onCategoryChange={setCategory} />
-  } else if (active === 'signals') {
-    page = <SignalsDemo category={category} />
-  } else if (active === 'leaderboard') {
-    page = <LeaderboardPage onSelectWallet={setSelectedWallet} />
-  } else if (active === 'lookup') {
-    page = <LookupPage onSelectWallet={setSelectedWallet} />
-  } else {
-    const Demo = demos[active]
-    page = <Demo />
-  }
+  const settingsPath = dashboardPath('/settings')
 
   return (
     <div className="app-shell">
@@ -95,15 +96,18 @@ export default function AppShell() {
         <div className="app-header-inner">
           <div className="app-header-logo">VisibleTrader</div>
           <nav className="app-header-nav">
-            {navItems.map(({ id, label }) => (
-              <button
-                key={id}
-                className={`app-nav-item ${active === id && !selectedWallet ? 'active' : ''}`}
-                onClick={() => { setActive(id); setSelectedWallet(null) }}
-              >
-                {label}
-              </button>
-            ))}
+            {navItems.map(({ id, label, path }) => {
+              const target = dashboardPath(path)
+              return (
+                <Link
+                  key={id}
+                  to={target}
+                  className={`app-nav-item ${location.pathname === target ? 'active' : ''}`}
+                >
+                  {label}
+                </Link>
+              )
+            })}
           </nav>
 
           <button
@@ -128,12 +132,13 @@ export default function AppShell() {
               </button>
               {userMenuOpen && (
                 <div className="app-user-dropdown">
-                  <button
+                  <Link
+                    to={settingsPath}
                     className="app-user-dropdown-item"
-                    onClick={() => { setActive('settings'); setSelectedWallet(null); setUserMenuOpen(false) }}
+                    onClick={() => setUserMenuOpen(false)}
                   >
                     Settings
-                  </button>
+                  </Link>
                   <button className="app-user-dropdown-item danger" onClick={signOut}>Sign out</button>
                 </div>
               )}
@@ -143,24 +148,29 @@ export default function AppShell() {
 
         {mobileNavOpen && (
           <nav className="app-mobile-nav" ref={mobileNavRef}>
-            {navItems.map(({ id, label }) => (
-              <button
-                key={id}
-                className={`app-mobile-nav-item ${active === id && !selectedWallet ? 'active' : ''}`}
-                onClick={() => { setActive(id); setSelectedWallet(null); setMobileNavOpen(false) }}
-              >
-                {label}
-              </button>
-            ))}
+            {navItems.map(({ id, label, path }) => {
+              const target = dashboardPath(path)
+              return (
+                <Link
+                  key={id}
+                  to={target}
+                  className={`app-mobile-nav-item ${location.pathname === target ? 'active' : ''}`}
+                  onClick={() => setMobileNavOpen(false)}
+                >
+                  {label}
+                </Link>
+              )
+            })}
             {user && (
               <>
                 <div className="app-mobile-nav-divider" />
-                <button
-                  className={`app-mobile-nav-item ${active === 'settings' && !selectedWallet ? 'active' : ''}`}
-                  onClick={() => { setActive('settings'); setSelectedWallet(null); setMobileNavOpen(false) }}
+                <Link
+                  to={settingsPath}
+                  className={`app-mobile-nav-item ${location.pathname === settingsPath ? 'active' : ''}`}
+                  onClick={() => setMobileNavOpen(false)}
                 >
                   Settings
-                </button>
+                </Link>
                 <button className="app-mobile-nav-item danger" onClick={signOut}>Sign out</button>
               </>
             )}
@@ -169,7 +179,17 @@ export default function AppShell() {
       </header>
 
       <main className="app-main">
-        {page}
+        <Routes>
+          <Route index element={<HomePage onOpenSignals={() => navigate(dashboardPath('/signals'))} category={category} onCategoryChange={setCategory} />} />
+          <Route path="signals" element={<SignalsDemo category={category} />} />
+          <Route path="profits" element={<ProfitsPage />} />
+          <Route path="leaderboard" element={<LeaderboardPage />} />
+          <Route path="alerts" element={<AlertsPage />} />
+          <Route path="lookup" element={<LookupPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="trader/:wallet" element={<TraderDetailRoute />} />
+          <Route path="*" element={<Navigate to={dashboardPath('/')} replace />} />
+        </Routes>
       </main>
     </div>
   )

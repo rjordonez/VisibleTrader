@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { dashboardPath } from '../lib/domains'
 import { traderLabel, profileUrl, fmtFull } from './helpers'
 import { SkelTableRows } from './Skeleton'
 
@@ -15,7 +17,8 @@ interface LookupStatus {
   pnlRank: number | null
 }
 
-function LookupPage({ onSelectWallet }: { onSelectWallet: (wallet: string) => void }) {
+function LookupPage() {
+  const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<DirectoryResult[]>([])
   const [status, setStatus] = useState<Record<string, LookupStatus>>({})
@@ -142,7 +145,7 @@ function LookupPage({ onSelectWallet }: { onSelectWallet: (wallet: string) => vo
                   return (
                     <tr key={r.wallet}>
                       <td>
-                        <a href="#" onClick={e => { e.preventDefault(); onSelectWallet(r.wallet) }}>
+                        <a href="#" onClick={e => { e.preventDefault(); navigate(dashboardPath(`/trader/${r.wallet}`)) }}>
                           {traderLabel(r.wallet, r.username)}
                         </a>
                         <a
