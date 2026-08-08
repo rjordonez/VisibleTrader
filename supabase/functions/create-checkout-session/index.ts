@@ -55,7 +55,12 @@ Deno.serve(async (req) => {
       })
     }
 
-    const origin = req.headers.get('origin') || Deno.env.get('APP_URL') || 'https://visibletrader.com'
+    // success_url must land on the app subdomain regardless of where
+    // checkout was initiated (the pricing page lives on the marketing
+    // domain) — APP_URL is set explicitly for that. cancel_url stays
+    // origin-based since it correctly returns to wherever checkout started.
+    const origin = req.headers.get('origin') || 'https://visibletrader.com'
+    const appOrigin = Deno.env.get('APP_URL') || origin
     const params = new URLSearchParams({
       mode: 'subscription',
       'line_items[0][price]': price_id,
@@ -68,7 +73,7 @@ Deno.serve(async (req) => {
       'metadata[supabase_user_id]': user.id,
       'subscription_data[metadata][supabase_user_id]': user.id,
       customer_email: user.email ?? '',
-      success_url: `${origin}/app?checkout=success`,
+      success_url: `${appOrigin}/?checkout=success`,
       cancel_url: `${origin}/pricing?checkout=cancelled`,
     })
 

@@ -1,5 +1,5 @@
 import './landing.css'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
@@ -7,16 +7,24 @@ export default function SignupPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   // e.g. /signup?next=/pricing so a "start trial" click that requires an
-  // account first lands back where it was headed instead of always /app.
-  // Only helps when email confirmation is off / already has a session —
-  // the confirm-email path below has no way to carry this across that
-  // round trip, so it just falls back to a manual return visit.
-  const next = searchParams.get('next') || '/app'
+  // account first lands back where it was headed instead of always the
+  // dashboard root. `next` can be a full cross-origin URL now too — the
+  // pricing page lives on the marketing domain, not here — so it's handled
+  // as a real navigation (below) rather than always going through the
+  // router. Only helps when email confirmation is off / already has a
+  // session — the confirm-email path below has no way to carry this across
+  // that round trip, so it just falls back to a manual return visit.
+  const next = searchParams.get('next') || '/'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [confirmSent, setConfirmSent] = useState(false)
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (redirectUrl) window.location.href = redirectUrl
+  }, [redirectUrl])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,7 +42,8 @@ export default function SignupPage() {
       setConfirmSent(true)
       return
     }
-    navigate(next)
+    if (next.startsWith('http')) setRedirectUrl(next)
+    else navigate(next)
   }
 
   if (confirmSent) {

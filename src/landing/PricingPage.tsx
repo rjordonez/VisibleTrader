@@ -1,7 +1,7 @@
 import './landing.css'
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { appUrl, marketingUrl } from '../lib/domains'
 
 const platformLogos = [
   { name: 'Polymarket', src: '/polymarket.png' },
@@ -21,7 +21,7 @@ const plans = [
       'Discord community access',
     ],
     cta: 'Get started free',
-    href: '/signup',
+    href: appUrl('/signup'),
     priceIdMonthly: undefined as string | undefined,
     priceIdYearly: undefined as string | undefined,
     highlighted: false,
@@ -42,7 +42,7 @@ const plans = [
       '24/7 live chat support',
     ],
     cta: 'Start 7-day free trial',
-    href: '/signup',
+    href: appUrl('/signup'),
     priceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY as string | undefined,
     priceIdYearly: import.meta.env.VITE_STRIPE_PRICE_PRO_YEARLY as string | undefined,
     highlighted: true,
@@ -73,12 +73,12 @@ export default function PricingPage() {
   const [checkingOut, setCheckingOut] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
-  const navigate = useNavigate()
 
   // The actual redirect is an effect, not inline in the handler below — a
   // full-page navigation is exactly the kind of external-system side effect
   // effects are for, same reasoning as this session's earlier Date.now()-in-
-  // effect fixes.
+  // effect fixes. Doubles as the anonymous-user redirect below (also a full
+  // navigation, now cross-origin over to the app subdomain).
   useEffect(() => {
     if (checkoutUrl) window.location.href = checkoutUrl
   }, [checkoutUrl])
@@ -90,7 +90,7 @@ export default function PricingPage() {
     if (!user) {
       // Not signed in yet — sign up first, then come straight back here so
       // the same click-to-trial flow can pick up where it left off.
-      navigate('/signup?next=/pricing')
+      setCheckoutUrl(appUrl(`/signup?next=${encodeURIComponent(marketingUrl('/pricing'))}`))
       return
     }
     const { data, error } = await supabase.functions.invoke('create-checkout-session', {

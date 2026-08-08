@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { SkelBlock } from './Skeleton'
+import { marketingUrl } from '../lib/domains'
 
 /* ── Settings ── */
 interface AppSettings {
@@ -27,7 +27,6 @@ interface Subscription {
 const PLAN_LABEL: Record<string, string> = { pro: 'Pro', elite: 'Elite' }
 
 function SettingsPage() {
-  const navigate = useNavigate()
   const [settings, setSettings] = useState<AppSettings>(SETTINGS_DEFAULT)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -43,12 +42,18 @@ function SettingsPage() {
   const [cancelLoading, setCancelLoading] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
 
+  const [leaveUrl, setLeaveUrl] = useState<string | null>(null)
+
   useEffect(() => {
     // Redirecting the whole page to Stripe's portal is an effect, not
     // inline in the click handler — same reasoning as PricingPage's
     // checkout redirect.
     if (portalUrl) window.location.href = portalUrl
   }, [portalUrl])
+
+  useEffect(() => {
+    if (leaveUrl) window.location.href = leaveUrl
+  }, [leaveUrl])
 
   useEffect(() => {
     Promise.resolve(
@@ -84,10 +89,11 @@ function SettingsPage() {
           return
         }
         // ProtectedRoute only checks subscription status once per auth
-        // change and caches it for the whole mounted /app tree, so it won't
-        // notice this cancellation on its own — send them to /pricing so
-        // re-mounting the route tree re-runs that check and locks them out.
-        navigate('/pricing')
+        // change and caches it for the whole mounted app tree, so it won't
+        // notice this cancellation on its own — send them to the marketing
+        // pricing page (cross-origin now) so a fresh mount re-runs that
+        // check and locks them out.
+        setLeaveUrl(marketingUrl('/pricing'))
       })
   }
 

@@ -55,10 +55,13 @@ Deno.serve(async (req) => {
       })
     }
 
+    // This is always called from the Settings page itself, so `origin` is
+    // already the app subdomain — no /app prefix anymore now that the
+    // dashboard lives at that subdomain's root instead of a path there.
     const origin = req.headers.get('origin') || Deno.env.get('APP_URL') || 'https://visibletrader.com'
     const params = new URLSearchParams({
       customer: sub.stripe_customer_id,
-      return_url: `${origin}/app/settings`,
+      return_url: `${origin}/settings`,
     })
 
     const stripeRes = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {

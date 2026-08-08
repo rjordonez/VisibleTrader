@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { appUrl } from '../../lib/domains'
 
 const ChevronDown = () => (
   <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ marginLeft: 3, flexShrink: 0 }}>
@@ -124,10 +125,10 @@ export default function Navbar() {
 
         <div className="nav-actions">
           {signedIn ? (
-            <Link to="/app" className="btn-primary">Go to app</Link>
+            <a href={appUrl('/')} className="btn-primary">Go to app</a>
           ) : (
             <>
-              <Link to="/login" className="btn-ghost">Log in</Link>
+              <a href={appUrl('/login')} className="btn-ghost">Log in</a>
               <Link to="/pricing" className="btn-primary">Try for free</Link>
             </>
           )}
@@ -161,10 +162,10 @@ export default function Navbar() {
               </button>
               <div className="nav-drawer-divider" />
               {signedIn ? (
-                <Link to="/app" className="nav-drawer-link" style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={close}>Go to app</Link>
+                <a href={appUrl('/')} className="nav-drawer-link" style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={close}>Go to app</a>
               ) : (
                 <>
-                  <Link to="/login" className="nav-drawer-link" onClick={close}>Log in</Link>
+                  <a href={appUrl('/login')} className="nav-drawer-link" onClick={close}>Log in</a>
                   <Link to="/pricing" className="nav-drawer-link" style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={close}>Try for free</Link>
                 </>
               )}

@@ -44,7 +44,7 @@ export default function ResetPasswordPage() {
         <div className="auth-card">
           <h1 className="auth-title">Password updated</h1>
           <p className="auth-sub">You're all set.</p>
-          <button className="btn-primary auth-submit" onClick={() => navigate('/app')}>Go to app</button>
+          <button className="btn-primary auth-submit" onClick={() => navigate('/')}>Go to app</button>
         </div>
       </div>
     )

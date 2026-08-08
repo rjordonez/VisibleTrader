@@ -20,7 +20,7 @@ export default function LoginPage() {
       setError(signInError.message)
       return
     }
-    navigate('/app')
+    navigate('/')
   }
 
   return (
