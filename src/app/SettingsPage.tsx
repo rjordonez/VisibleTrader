@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { SkelBlock } from './Skeleton'
-import { marketingUrl } from '../lib/domains'
 
 /* ── Settings ── */
 interface AppSettings {
@@ -90,10 +89,9 @@ function SettingsPage() {
         }
         // ProtectedRoute only checks subscription status once per auth
         // change and caches it for the whole mounted app tree, so it won't
-        // notice this cancellation on its own — send them to the marketing
-        // pricing page (cross-origin now) so a fresh mount re-runs that
-        // check and locks them out.
-        setLeaveUrl(marketingUrl('/pricing'))
+        // notice this cancellation on its own — force a fresh mount so it
+        // re-runs that check and shows the in-app paywall.
+        setLeaveUrl('/')
       })
   }
 

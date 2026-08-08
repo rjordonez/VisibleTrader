@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
-import { marketingUrl } from './lib/domains'
+import PaywallPage from './app/PaywallPage'
 
 // Any status Stripe reports that should still count as "let them in" —
 // trialing and active are the only ones; past_due/canceled/unpaid/etc all
@@ -65,17 +65,10 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   }
 
   if (!subActive) {
-    // Pricing lives on the marketing domain now, not here — a real
-    // cross-origin navigation, not a router <Navigate>.
-    return <PricingRedirect />
+    // Stay on the app domain rather than bouncing out to marketing — show
+    // the plans (and a way to sign out) right here instead.
+    return <PaywallPage />
   }
 
   return <>{children}</>
-}
-
-function PricingRedirect() {
-  useEffect(() => {
-    window.location.href = marketingUrl('/pricing')
-  }, [])
-  return null
 }
