@@ -49,7 +49,26 @@ Deno.serve(async (req) => {
       })
     }
 
-    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+    // opportunities' RLS now requires an active subscription
+    // (has_active_subscription()) — forward the caller's own auth header
+    // so that check runs against who's *actually* asking, same as every
+    // other endpoint that touches gated data. Not service role: that
+    // would bypass the subscription check entirely instead of enforcing
+    // it, handing chart data to anyone with just the public anon key. No
+    // header, or no active subscription, means this query naturally
+    // returns zero rows — the existing "no price history" empty state
+    // below already covers that case, no separate check needed.
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(JSON.stringify({ history: [] }), {
+        headers: { ...corsHeaders, 'content-type': 'application/json' },
+      })
+    }
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    )
     const { data } = await supabase
       .from('opportunities')
       .select('slug')
