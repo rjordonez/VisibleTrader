@@ -1365,30 +1365,34 @@
 .chrome-spacer { width: 54px; }
 
 .dashboard-body {
-  display: flex;
   background: var(--bg-2);
   min-height: 200px;
 }
 
-.dash-sidebar {
-  width: 160px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--border);
-  padding: 1rem 0.5rem;
+/* The real app moved to a horizontal top nav (see AppShell/app.css's
+   .app-header-nav) — this used to be a left sidebar, which no longer
+   matches what the product actually looks like. */
+.dash-topnav {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-2);
+  padding: 0.6rem 1rem;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.dash-topnav::-webkit-scrollbar { display: none; }
 
 .dash-nav-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0.45rem 0.65rem;
+  gap: 6px;
+  padding: 0.4rem 0.65rem;
   border-radius: 6px;
-  font-size: 0.8125rem;
+  font-size: 0.8rem;
   color: var(--text-3);
   cursor: pointer;
+  white-space: nowrap;
   transition: background 0.12s, color 0.12s;
 }
 
@@ -1398,10 +1402,7 @@
   font-weight: 600;
 }
 
-.dash-nav-icon { display: flex; align-items: center; }
-
 .dash-main {
-  flex: 1;
   padding: 1.25rem 1.5rem;
   overflow: hidden;
 }
@@ -2852,9 +2853,6 @@
   .hero-card-wrap {
     max-width: 100%;
   }
-
-  /* Dashboard: hide sidebar */
-  .dash-sidebar { display: none; }
 
   /* Pricing */
   .pricing-grid { grid-template-columns: 1fr 1fr; }

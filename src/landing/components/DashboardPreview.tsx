@@ -1,6 +1,9 @@
-import { Radar, TrendingUp, BarChart2, Bell, Settings, Activity, Landmark } from 'lucide-react'
+import { Activity, Landmark } from 'lucide-react'
 
-const navIcons = [Radar, TrendingUp, BarChart2, Bell, Settings]
+// Mirrors AppShell's actual top nav (src/app/index.tsx) — Home/Signals/
+// Profits/Leaderboard/Alerts/Lookup, text-only, no Settings (that lives
+// in the account menu, not the main tab row).
+const navItems = ['Home', 'Signals', 'Profits', 'Leaderboard', 'Alerts', 'Lookup']
 
 const cards = [
   { Icon: Activity, market: 'Arizona Diamondbacks', outcome: 'vs. Nationals', wallets: 9, price: '53¢', total: '$91,947', pct: 88, profit: '+$80,533', tag: '$91.9k TIER' },
@@ -35,21 +38,17 @@ export default function DashboardPreview() {
         <div className="chrome-spacer" />
       </div>
 
+      {/* Top nav */}
+      <div className="dash-topnav">
+        {navItems.map(label => (
+          <div key={label} className={`dash-nav-item ${label === 'Signals' ? 'active' : ''}`}>
+            {label}
+          </div>
+        ))}
+      </div>
+
       {/* Dashboard body */}
       <div className="dashboard-body">
-        {/* Sidebar */}
-        <div className="dash-sidebar">
-          {['Signals', 'Profits', 'Leaderboard', 'Alerts', 'Settings'].map((item, i) => {
-            const NavIcon = navIcons[i]
-            return (
-              <div key={item} className={`dash-nav-item ${i === 0 ? 'active' : ''}`}>
-                <span className="dash-nav-icon"><NavIcon size={13} /></span>
-                {item}
-              </div>
-            )
-          })}
-        </div>
-
         {/* Main content */}
         <div className="dash-main">
           <div className="dash-topbar">
