@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Opportunity, WalletContribution, ChartPoint } from './types'
 import {
   fetchWallets, fetchChart, categoryIcon, signalsTag, signalsTraderStatus,
@@ -6,6 +6,108 @@ import {
 } from './helpers'
 import { PriceChart } from './PriceChart'
 import { SkelBlock, SkelDrillRows } from './Skeleton'
+
+interface TraderGroup {
+  wallet: string
+  wallet_name: string | null
+  entries: WalletContribution[]
+}
+
+// A trader with many small buys in the same market (not unusual — someone
+// scaling into a position) used to render one full row per buy, which
+// buried the list under a dozen+ near-identical rows for a single person.
+// Grouped by wallet instead: a single entry renders exactly as before, more
+// than one collapses into one summary row (avg entry, total invested,
+// total P&L) that expands to the individual buys on click.
+function groupByWallet(wallets: WalletContribution[]): TraderGroup[] {
+  const map = new Map<string, TraderGroup>()
+  for (const w of wallets) {
+    const existing = map.get(w.wallet)
+    if (existing) existing.entries.push(w)
+    else map.set(w.wallet, { wallet: w.wallet, wallet_name: w.wallet_name, entries: [w] })
+  }
+  // Biggest positions first — a trader's total stake in this market is a
+  // more useful sort key here than the order individual buys happened in.
+  return Array.from(map.values()).sort(
+    (a, b) => b.entries.reduce((s, e) => s + e.usd, 0) - a.entries.reduce((s, e) => s + e.usd, 0)
+  )
+}
+
+function SingleEntryRow({ w, latestPrice }: { w: WalletContribution; latestPrice: number }) {
+  const st = signalsTraderStatus(w)
+  const ret = walletReturn(w, latestPrice)
+  return (
+    <div className="sig-drill-row">
+      <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name">
+        {traderLabel(w.wallet, w.wallet_name)}
+      </a>
+      <div className="sig-drill-body">
+        <div className="sig-drill-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}</div>
+        <div className="sig-drill-meta">
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+            {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
+          </div>
+          <div className="sig-drill-status" style={{ color: st.color, background: st.color + '26' }}>{st.label}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TraderGroupRow({ group, latestPrice }: { group: TraderGroup; latestPrice: number }) {
+  const [expanded, setExpanded] = useState(false)
+  const { wallet, wallet_name, entries } = group
+
+  if (entries.length === 1) return <SingleEntryRow w={entries[0]} latestPrice={latestPrice} />
+
+  const totalUsd = entries.reduce((s, e) => s + e.usd, 0)
+  const avgPrice = entries.reduce((s, e) => s + e.usd * e.price, 0) / totalUsd
+  const totalProfit = entries.reduce((s, e) => s + walletReturn(e, latestPrice).profit, 0)
+  const allUnrealized = entries.every(e => !walletReturn(e, latestPrice).realized)
+
+  return (
+    <div className="sig-trader-group">
+      <div className="sig-drill-row sig-trader-group-header" onClick={() => setExpanded(e => !e)}>
+        <a
+          href={profileUrl(wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name"
+          onClick={e => e.stopPropagation()}
+        >
+          {traderLabel(wallet, wallet_name)}
+        </a>
+        <div className="sig-drill-body">
+          <div className="sig-drill-detail">
+            {entries.length} buys · avg {Math.round(avgPrice * 100)}¢ · {fmtFull(totalUsd)} invested
+          </div>
+          <div className="sig-drill-meta">
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: totalProfit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
+              {fmtSigned(totalProfit)}{allUnrealized ? ' (unrealized)' : ''}
+            </div>
+            <div className="sig-trader-group-toggle">{expanded ? 'Hide' : 'Show'} {entries.length} ▾</div>
+          </div>
+        </div>
+      </div>
+      {expanded && (
+        <div className="sig-trader-txns" onClick={e => e.stopPropagation()}>
+          {entries.map((w, i) => {
+            const st = signalsTraderStatus(w)
+            const ret = walletReturn(w, latestPrice)
+            return (
+              <div key={i} className="sig-trader-txn-row">
+                <span className="sig-trader-txn-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}</span>
+                <span className="sig-trader-txn-meta">
+                  <span style={{ fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c' }}>
+                    {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
+                  </span>
+                  <span className="sig-drill-status" style={{ color: st.color, background: st.color + '26' }}>{st.label}</span>
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function SignalModal({ opportunity: o, onClose }: { opportunity: Opportunity; onClose: () => void }) {
   const [wallets, setWallets] = useState<WalletContribution[]>([])
@@ -27,6 +129,8 @@ export function SignalModal({ opportunity: o, onClose }: { opportunity: Opportun
       document.body.style.overflow = ''
     }
   }, [onClose])
+
+  const groups = useMemo(() => groupByWallet(wallets), [wallets])
 
   const ic = categoryIcon(o.category)
   const tag = signalsTag(o.tier, o.cumulative_usd)
@@ -85,26 +189,9 @@ export function SignalModal({ opportunity: o, onClose }: { opportunity: Opportun
           {!walletsLoading && wallets.length === 0 && (
             <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
           )}
-          {!walletsLoading && wallets.map((w, i) => {
-            const st = signalsTraderStatus(w)
-            const ret = walletReturn(w, o.latest_price)
-            return (
-              <div key={i} className="sig-drill-row">
-                <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name">
-                  {traderLabel(w.wallet, w.wallet_name)}
-                </a>
-                <div className="sig-drill-body">
-                  <div className="sig-drill-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}</div>
-                  <div className="sig-drill-meta">
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
-                      {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
-                    </div>
-                    <div className="sig-drill-status" style={{ color: st.color, background: st.color + '26' }}>{st.label}</div>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+          {!walletsLoading && groups.map(g => (
+            <TraderGroupRow key={g.wallet} group={g} latestPrice={o.latest_price} />
+          ))}
         </div>
         </div>
       </div>

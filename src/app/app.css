@@ -548,6 +548,21 @@
 .sig-drill-status { font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 4px; flex-shrink: 0; }
 .sig-drill-meta { display: flex; align-items: center; gap: 8px; }
 
+/* ── A trader with several buys in one market collapses to one summary
+   row instead of repeating their name/avatar for every single buy —
+   click to expand the individual transactions underneath. ── */
+.sig-trader-group-header { cursor: pointer; border-radius: 6px; margin: 0 -8px; padding: 7px 8px; }
+.sig-trader-group-header:hover { background: rgba(255,255,255,0.03); }
+.sig-trader-group-toggle { font-size: 10.5px; font-weight: 700; color: var(--text-faint); flex-shrink: 0; white-space: nowrap; }
+.sig-trader-txns {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 0 4px 16px; margin-left: 4px;
+  border-left: 2px solid var(--border);
+}
+.sig-trader-txn-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 11.5px; }
+.sig-trader-txn-detail { color: var(--text-faint); flex: 1; min-width: 0; }
+.sig-trader-txn-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
 /* ── Dashboard shared: stat cells, data tables (Profits/Leaderboard) ── */
 /* auto-fit/minmax instead of a fixed column count behind a guessed
    breakpoint — this adapts to whatever the real available width is (which
