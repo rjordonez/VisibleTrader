@@ -59,11 +59,31 @@ export default function PricingPage() {
   // The actual redirect is an effect, not inline in the handler below — a
   // full-page navigation is exactly the kind of external-system side effect
   // effects are for, same reasoning as this session's earlier Date.now()-in-
-  // effect fixes. Doubles as the anonymous-user redirect below (also a full
-  // navigation, now cross-origin over to the app subdomain).
+  // effect fixes. Doubles as the anonymous-user redirect and the
+  // already-subscribed redirect below (both full navigations, cross-origin
+  // over to the app subdomain).
   useEffect(() => {
     if (checkoutUrl) window.location.href = checkoutUrl
   }, [checkoutUrl])
+
+  // A signed-in visitor who already has an active/trialing subscription
+  // gets sent straight to the dashboard instead of seeing pricing at all —
+  // deliberately not a "Manage subscription" link on this page, since that
+  // surfaces a path toward cancellation right where they came to upgrade,
+  // not what they're here for.
+  useEffect(() => {
+    let cancelled = false
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user || cancelled) return
+      supabase.from('subscriptions').select('status').maybeSingle().then(({ data }) => {
+        if (cancelled) return
+        if (data && (data.status === 'trialing' || data.status === 'active')) {
+          setCheckoutUrl(appUrl('/'))
+        }
+      })
+    })
+    return () => { cancelled = true }
+  }, [])
 
   const startCheckout = async (priceId: string) => {
     setCheckingOut(true)
