@@ -96,7 +96,7 @@ export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallet
           {markers.map((m, i) => (
             <ReferenceDot key={i} x={m.t} y={m.p} r={3.5} fill={m.color} stroke="var(--bg)" strokeWidth={1.5} ifOverflow="extendDomain" />
           ))}
-          <ReferenceDot x={endpoint.t} y={endpoint.p} r={5} fill="#2f6fed" stroke="var(--bg)" strokeWidth={2} ifOverflow="extendDomain" />
+          <ReferenceDot x={endpoint.t} y={endpoint.p} r={5} fill="#2f6fed" stroke="none" ifOverflow="extendDomain" />
           {hoverT != null && (
             <>
               <ReferenceLine x={hoverT} stroke="var(--text-faint)" strokeDasharray="3 3" ifOverflow="extendDomain" />
@@ -182,7 +182,7 @@ export function CumulativeChart({ data }: { data: { d: string; cum: number }[] }
             type="monotone" dataKey="cum" stroke={lineColor} strokeWidth={2.5}
             dot={false} activeDot={false} isAnimationActive={false}
           />
-          <ReferenceDot x={lastIndex} y={last} r={5} fill={lineColor} stroke="var(--bg)" strokeWidth={2} ifOverflow="extendDomain" />
+          <ReferenceDot x={lastIndex} y={last} r={5} fill={lineColor} stroke="none" ifOverflow="extendDomain" />
           {hoverPoint && (
             <>
               <ReferenceLine x={hoverPoint.i} stroke="var(--text-faint)" strokeDasharray="3 3" ifOverflow="extendDomain" />
