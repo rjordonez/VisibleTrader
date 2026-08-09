@@ -551,14 +551,22 @@
 /* ── A trader with several buys in one market collapses to one summary
    row instead of repeating their name/avatar for every single buy —
    click to expand the individual transactions underneath. ── */
-.sig-trader-group-header { cursor: pointer; border-radius: 6px; margin: 0 -8px; padding: 7px 8px; }
+.sig-trader-group-header { cursor: pointer; border-radius: 6px; margin: 0 -8px; padding: 7px 8px; align-items: center; }
 .sig-trader-group-header:hover { background: rgba(255,255,255,0.03); }
+/* Its own trailing slot on the row (not inside .sig-drill-meta) and a
+   plain neutral chevron, not a colored pill — a colored pill there would
+   sit in the exact spot a status pill (Holding/Scalped/etc) occupies on a
+   single-entry row, and people were clicking those expecting them to
+   expand too. */
 .sig-trader-group-toggle {
-  font-size: 10.5px; font-weight: 800; color: var(--blue); flex-shrink: 0; white-space: nowrap;
-  background: rgba(47,111,237,0.16); border: 1px solid rgba(47,111,237,0.35);
-  padding: 3px 8px; border-radius: 4px;
+  display: flex; align-items: center; gap: 5px; flex-shrink: 0;
+  color: var(--text-faint); font-size: 11px; font-weight: 700;
+  margin-left: 8px;
 }
-.sig-trader-group-header:hover .sig-trader-group-toggle { background: rgba(47,111,237,0.28); }
+.sig-trader-group-count { min-width: 14px; text-align: center; }
+.sig-trader-group-chevron { display: inline-block; transition: transform 0.15s; }
+.sig-trader-group-chevron.open { transform: rotate(180deg); }
+.sig-trader-group-header:hover .sig-trader-group-toggle { color: var(--text-dim); }
 .sig-trader-txns {
   display: flex; flex-direction: column; gap: 6px;
   padding: 8px 0 4px 16px; margin-left: 4px;

@@ -82,8 +82,17 @@ function TraderGroupRow({ group, latestPrice }: { group: TraderGroup; latestPric
             <div style={{ fontSize: 11.5, fontWeight: 700, color: totalProfit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
               {fmtSigned(totalProfit)}{allUnrealized ? ' (unrealized)' : ''}
             </div>
-            <div className="sig-trader-group-toggle">{expanded ? 'Hide' : 'Show'} {entries.length} ▾</div>
           </div>
+        </div>
+        {/* Separate from the status-pill slot above on purpose — a colored
+            pill there would sit in the exact same spot a status pill
+            (Holding/Scalped/etc) does on a single-entry row, and people
+            were clicking those expecting them to expand too. A plain
+            chevron + count reads as "this row expands" without looking
+            like a status label. */}
+        <div className="sig-trader-group-toggle">
+          <span className="sig-trader-group-count">{entries.length}</span>
+          <span className={`sig-trader-group-chevron ${expanded ? 'open' : ''}`}>▾</span>
         </div>
       </div>
       {expanded && (
