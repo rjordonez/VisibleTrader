@@ -1,24 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
 import { ExternalLink, Star } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import type { Opportunity, WalletContribution, ChartPoint, TickerTrade } from './types'
+import type { Opportunity, TickerTrade } from './types'
 import {
-  onTabVisible, byCategory, fetchWallets, fetchChart, opportunityCursor, PAGE_SIZE,
+  onTabVisible, byCategory, opportunityCursor, PAGE_SIZE,
   categoryIcon, gaugePct, gaugeColor, signalsTag, fmtFull, fmtSigned, isToday,
-  signalsTraderStatus, walletReturn, profileUrl, traderLabel, timeAgo, marketUrl,
+  profileUrl, traderLabel, timeAgo, marketUrl,
 } from './helpers'
-import { PriceChart } from './PriceChart'
-import { SkelCard, SkelListRow, SkelBlock, SkelDrillRows } from './Skeleton'
+import { SignalModal } from './SignalModal'
+import { SkelCard, SkelListRow } from './Skeleton'
 
 function SignalsDemo({ category }: { category: string }) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [loading, setLoading]             = useState(true)
   const [error, setError]                 = useState<string | null>(null)
-  const [expanded, setExpanded]           = useState<string | null>(null)
-  const [wallets, setWallets]             = useState<WalletContribution[]>([])
-  const [walletsLoading, setWalletsLoading] = useState(false)
-  const [chartHistory, setChartHistory]   = useState<ChartPoint[]>([])
-  const [chartLoading, setChartLoading]   = useState(false)
+  const [modalOpp, setModalOpp]           = useState<Opportunity | null>(null)
   const [ticker, setTicker]               = useState<TickerTrade[]>([])
   const [tickerLoading, setTickerLoading] = useState(true)
   const [tab, setTab]                     = useState<'ticker' | 'vetted' | 'tracked'>('ticker')
@@ -285,19 +281,6 @@ function SignalsDemo({ category }: { category: string }) {
     }).catch(() => {}).finally(() => setTrackBusy(null))
   }
 
-  const toggleExpand = (o: Opportunity) => {
-    const key = `${o.condition_id}::${o.outcome}`
-    if (expanded === key) {
-      setExpanded(null)
-      return
-    }
-    setExpanded(key)
-    setWalletsLoading(true)
-    setChartLoading(true)
-    fetchWallets(o.condition_id, o.outcome).then(setWallets).finally(() => setWalletsLoading(false))
-    fetchChart(o.condition_id, o.outcome).then(setChartHistory).finally(() => setChartLoading(false))
-  }
-
   const filteredTicker = byCategory(ticker, category)
     .filter(t => !todayOnly || isToday(t.ts))
     .filter(t => {
@@ -326,7 +309,6 @@ function SignalsDemo({ category }: { category: string }) {
 
   const renderOpportunityCard = (o: Opportunity) => {
     const key = `${o.condition_id}::${o.outcome}`
-    const isOpen = expanded === key
     const isTracked = trackedPicks.has(key)
     const ic = categoryIcon(o.category)
     const pct = gaugePct(o.entries, o.exited, o.closed)
@@ -339,7 +321,7 @@ function SignalsDemo({ category }: { category: string }) {
     const dash = (pct / 100) * arcLen
     const tag = signalsTag(o.tier, o.cumulative_usd)
     return (
-      <div key={key} className="sig-card" onClick={() => toggleExpand(o)}>
+      <div key={key} className="sig-card" onClick={() => setModalOpp(o)}>
         <div className="sig-card-top">
           <div className="sig-card-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
           <div style={{ flex: 1 }}>
@@ -400,51 +382,6 @@ function SignalsDemo({ category }: { category: string }) {
           </div>
         </div>
         <div className={`sig-tag ${tag.cls}`}>{tag.label}</div>
-
-        {isOpen && (
-          <div className="sig-drill" onClick={e => e.stopPropagation()}>
-            <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
-            {chartLoading && <SkelBlock height={220} style={{ marginBottom: 16 }} />}
-            {!chartLoading && chartHistory.length < 2 && (
-              <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginBottom: 12 }}>No price history available for this market.</div>
-            )}
-            {!chartLoading && chartHistory.length >= 2 && (
-              <div style={{ marginBottom: 16 }}>
-                <PriceChart history={chartHistory} wallets={wallets} />
-              </div>
-            )}
-
-            <div className="sig-drill-label">Contributing traders</div>
-            {walletsLoading && <SkelDrillRows count={5} />}
-            {!walletsLoading && wallets.length === 0 && (
-              <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
-            )}
-            {!walletsLoading && wallets.map((w, i) => {
-              const st = signalsTraderStatus(w)
-              const ret = walletReturn(w, o.latest_price)
-              return (
-                <div key={i} className="sig-drill-row">
-                  <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name">
-                    {traderLabel(w.wallet, w.wallet_name)}
-                  </a>
-                  <div className="sig-drill-body">
-                    <div className="sig-drill-detail">
-                      {fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}
-                    </div>
-                    <div className="sig-drill-meta">
-                      <div style={{ fontSize: 11.5, fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
-                        {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
-                      </div>
-                      <div className="sig-drill-status" style={{ color: st.color, background: st.color + '26' }}>
-                        {st.label}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
       </div>
     )
   }
@@ -680,6 +617,14 @@ function SignalsDemo({ category }: { category: string }) {
           {tab === 'ticker' ? 'Raw trade activity, $100+ · not a recommendation' : 'Positions still open, weighted by trader conviction'}
         </div>
       </div>
+
+      {modalOpp && (
+        <SignalModal
+          key={`${modalOpp.condition_id}::${modalOpp.outcome}`}
+          opportunity={modalOpp}
+          onClose={() => setModalOpp(null)}
+        />
+      )}
     </div>
   )
 }
