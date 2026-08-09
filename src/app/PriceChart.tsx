@@ -90,7 +90,7 @@ export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallet
             tickLine={false} axisLine={false} width={36}
           />
           <Line
-            type="stepAfter" dataKey="p" stroke="#2f6fed" strokeWidth={1.5}
+            type="stepAfter" dataKey="p" stroke="#2f6fed" strokeWidth={2.5}
             dot={false} activeDot={false} isAnimationActive={false}
           />
           {markers.map((m, i) => (
@@ -180,7 +180,7 @@ export function CumulativeChart({ data }: { data: { d: string; cum: number }[] }
           />
           <ReferenceLine y={0} stroke="var(--border)" />
           <Line
-            type="monotone" dataKey="cum" stroke={lineColor} strokeWidth={1.5}
+            type="monotone" dataKey="cum" stroke={lineColor} strokeWidth={2.5}
             dot={false} activeDot={false} isAnimationActive={false}
           />
           <ReferenceDot x={lastIndex} y={last} r={5.5} fill="none" stroke={lineColor} strokeWidth={1.5} ifOverflow="extendDomain" />
