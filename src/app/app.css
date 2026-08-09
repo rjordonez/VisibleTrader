@@ -745,6 +745,28 @@
 @media (max-width: 640px) { .sig-modal-cols { grid-template-columns: 1fr; } }
 .sig-modal-col-main, .sig-modal-col-side { min-width: 0; }
 
+/* The side column here is narrower than .sig-drill-name's fixed-width
+   side-by-side layout was designed for (built when contributing traders
+   had the whole modal width to work with) — a longer name had nowhere to
+   go but an ugly mid-word ellipsis cutoff. Reflow to name-on-its-own-line,
+   toggle top-right, detail/profit/status stacked below spanning full
+   width, scoped to just this column so the wider contexts that still use
+   .sig-drill-row (HomePage's hero, etc) are untouched. */
+.sig-modal-col-side .sig-drill-row,
+.sig-modal-col-side .sig-trader-group-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 8px;
+  row-gap: 3px;
+  align-items: start;
+}
+.sig-modal-col-side .sig-drill-name {
+  grid-column: 1; grid-row: 1;
+  width: auto; white-space: normal; overflow: visible; text-overflow: clip;
+}
+.sig-modal-col-side .sig-drill-body { grid-column: 1 / -1; grid-row: 2; }
+.sig-modal-col-side .sig-trader-group-toggle { grid-column: 2; grid-row: 1; margin-left: 0; }
+
 .sig-activity { margin-bottom: 8px; }
 .sig-activity-row { margin-bottom: 12px; }
 .sig-activity-row:last-child { margin-bottom: 0; }
