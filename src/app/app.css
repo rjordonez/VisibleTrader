@@ -553,7 +553,12 @@
    click to expand the individual transactions underneath. ── */
 .sig-trader-group-header { cursor: pointer; border-radius: 6px; margin: 0 -8px; padding: 7px 8px; }
 .sig-trader-group-header:hover { background: rgba(255,255,255,0.03); }
-.sig-trader-group-toggle { font-size: 10.5px; font-weight: 700; color: var(--text-faint); flex-shrink: 0; white-space: nowrap; }
+.sig-trader-group-toggle {
+  font-size: 10.5px; font-weight: 800; color: var(--blue); flex-shrink: 0; white-space: nowrap;
+  background: rgba(47,111,237,0.16); border: 1px solid rgba(47,111,237,0.35);
+  padding: 3px 8px; border-radius: 4px;
+}
+.sig-trader-group-header:hover .sig-trader-group-toggle { background: rgba(47,111,237,0.28); }
 .sig-trader-txns {
   display: flex; flex-direction: column; gap: 6px;
   padding: 8px 0 4px 16px; margin-left: 4px;

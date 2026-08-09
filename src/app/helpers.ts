@@ -12,7 +12,12 @@ export function timeAgo(iso: string) {
 // Polymarket username when we have one (from the leaderboard scrape), else a
 // shortened wallet address, else "someone" if we haven't resolved it yet.
 export function traderLabel(wallet: string | null, walletName: string | null) {
-  if (walletName) return walletName
+  // Some backfilled names are the raw wallet address with a synthetic
+  // suffix tacked on (e.g. "0x2c3350…a0563-1759935795465") rather than a
+  // real username — cap length defensively so a malformed name can't blow
+  // out the fixed-width name column regardless of its shape. 24 chars
+  // comfortably fits real long usernames (e.g. "ferrariChampions2026").
+  if (walletName) return walletName.length > 24 ? `${walletName.slice(0, 22)}…` : walletName
   if (wallet) return `${wallet.slice(0, 6)}…${wallet.slice(-4)}`
   return 'someone'
 }
