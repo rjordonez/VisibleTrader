@@ -705,7 +705,7 @@
 .sig-modal-wrap {
   position: relative;
   width: 100%;
-  max-width: 720px;
+  max-width: 860px;
   max-height: min(600px, 100%);
   display: flex;
 }
@@ -722,6 +722,25 @@
   scrollbar-width: none;
 }
 .sig-modal::-webkit-scrollbar { display: none; }
+
+/* Chart + activity on the left, contributing traders on the right — same
+   grid/collapse pattern as .sig-hero-row. min-width:0 on both columns for
+   the same reason noted there: grid items default to a content-based
+   minimum width, which lets a long unwrapped row force its column (and
+   the chart inside it) wider than its track. */
+.sig-modal-cols { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; }
+@media (max-width: 640px) { .sig-modal-cols { grid-template-columns: 1fr; } }
+.sig-modal-col-main, .sig-modal-col-side { min-width: 0; }
+
+.sig-activity { margin-bottom: 8px; }
+.sig-activity-row { margin-bottom: 12px; }
+.sig-activity-row:last-child { margin-bottom: 0; }
+.sig-activity-labels { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.sig-activity-sub { color: var(--text-dim); font-weight: 500; }
+.sig-activity-bar { display: flex; height: 5px; border-radius: 3px; overflow: hidden; background: var(--border); gap: 2px; }
+.sig-activity-bar-fill { min-width: 0; }
+.sig-activity-bar-fill.buy { background: #00d17a; }
+.sig-activity-bar-fill.sell { background: #ff3b5c; }
 .sig-modal-close {
   position: absolute;
   top: -44px;

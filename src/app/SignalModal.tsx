@@ -109,6 +109,50 @@ function TraderGroupRow({ group, latestPrice }: { group: TraderGroup; latestPric
   )
 }
 
+function ActivityBarRow({ leftLabel, leftDisplay, leftValue, rightLabel, rightDisplay, rightValue }: {
+  leftLabel: string; leftDisplay: string; leftValue: number
+  rightLabel: string; rightDisplay: string; rightValue: number
+}) {
+  const total = leftValue + rightValue || 1
+  const leftPct = (leftValue / total) * 100
+  return (
+    <div className="sig-activity-row">
+      <div className="sig-activity-labels">
+        <span>{leftDisplay} <span className="sig-activity-sub">{leftLabel}</span></span>
+        <span>{rightDisplay} <span className="sig-activity-sub">{rightLabel}</span></span>
+      </div>
+      <div className="sig-activity-bar">
+        <div className="sig-activity-bar-fill buy" style={{ width: `${leftPct}%` }} />
+        <div className="sig-activity-bar-fill sell" style={{ width: `${100 - leftPct}%` }} />
+      </div>
+    </div>
+  )
+}
+
+// Buys/sells here are each trader's own entry (a "buy") and exit (a "sell")
+// on this specific market — computed from the same contributor rows the
+// list below already has, not a separate fetch.
+function ActivitySummary({ wallets }: { wallets: WalletContribution[] }) {
+  const buys = wallets.length
+  const buyVolume = wallets.reduce((s, w) => s + w.usd, 0)
+  const buyers = new Set(wallets.map(w => w.wallet)).size
+
+  const exits = wallets.filter(w => w.exit_ts)
+  const sells = exits.length
+  const sellVolume = exits.reduce((s, w) => s + (w.exit_usd ?? 0), 0)
+  const sellers = new Set(exits.map(w => w.wallet)).size
+
+  if (buys === 0) return null
+
+  return (
+    <div className="sig-activity">
+      <ActivityBarRow leftLabel="buys" leftDisplay={String(buys)} leftValue={buys} rightLabel="sells" rightDisplay={String(sells)} rightValue={sells} />
+      <ActivityBarRow leftLabel="vol." leftDisplay={fmtFull(buyVolume)} leftValue={buyVolume} rightLabel="vol." rightDisplay={fmtFull(sellVolume)} rightValue={sellVolume} />
+      <ActivityBarRow leftLabel="buyers" leftDisplay={String(buyers)} leftValue={buyers} rightLabel="sellers" rightDisplay={String(sellers)} rightValue={sellers} />
+    </div>
+  )
+}
+
 export function SignalModal({ opportunity: o, onClose }: { opportunity: Opportunity; onClose: () => void }) {
   const [wallets, setWallets] = useState<WalletContribution[]>([])
   const [walletsLoading, setWalletsLoading] = useState(true)
@@ -172,26 +216,39 @@ export function SignalModal({ opportunity: o, onClose }: { opportunity: Opportun
           </div>
         </div>
 
-        <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
-        <div style={{ minHeight: 220, marginBottom: 16 }}>
-          {chartLoading && <SkelBlock height={220} />}
-          {!chartLoading && chartHistory.length < 2 && (
-            <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No price history available for this market.</div>
-          )}
-          {!chartLoading && chartHistory.length >= 2 && (
-            <PriceChart history={chartHistory} wallets={wallets} />
-          )}
-        </div>
+        <div className="sig-modal-cols">
+          <div className="sig-modal-col-main">
+            <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
+            <div style={{ minHeight: 220, marginBottom: 16 }}>
+              {chartLoading && <SkelBlock height={220} />}
+              {!chartLoading && chartHistory.length < 2 && (
+                <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No price history available for this market.</div>
+              )}
+              {!chartLoading && chartHistory.length >= 2 && (
+                <PriceChart history={chartHistory} wallets={wallets} />
+              )}
+            </div>
 
-        <div className="sig-drill-label">Contributing traders</div>
-        <div style={{ minHeight: 5 * 36 }}>
-          {walletsLoading && <SkelDrillRows count={5} />}
-          {!walletsLoading && wallets.length === 0 && (
-            <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
-          )}
-          {!walletsLoading && groups.map(g => (
-            <TraderGroupRow key={g.wallet} group={g} latestPrice={o.latest_price} />
-          ))}
+            {!walletsLoading && wallets.length > 0 && (
+              <>
+                <div className="sig-drill-label">Activity</div>
+                <ActivitySummary wallets={wallets} />
+              </>
+            )}
+          </div>
+
+          <div className="sig-modal-col-side">
+            <div className="sig-drill-label">Contributing traders</div>
+            <div style={{ minHeight: 5 * 36 }}>
+              {walletsLoading && <SkelDrillRows count={5} />}
+              {!walletsLoading && wallets.length === 0 && (
+                <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
+              )}
+              {!walletsLoading && groups.map(g => (
+                <TraderGroupRow key={g.wallet} group={g} latestPrice={o.latest_price} />
+              ))}
+            </div>
+          </div>
         </div>
         </div>
       </div>
