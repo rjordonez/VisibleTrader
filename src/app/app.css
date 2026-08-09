@@ -559,14 +559,14 @@
    single-entry row, and people were clicking those expecting them to
    expand too. */
 .sig-trader-group-toggle {
-  display: flex; align-items: center; gap: 5px; flex-shrink: 0;
-  color: var(--text-faint); font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  color: var(--text-dim); font-size: 15px; font-weight: 800;
   margin-left: 8px;
 }
-.sig-trader-group-count { min-width: 14px; text-align: center; }
-.sig-trader-group-chevron { display: inline-block; transition: transform 0.15s; }
+.sig-trader-group-count { min-width: 16px; text-align: center; }
+.sig-trader-group-chevron { display: inline-block; font-size: 18px; line-height: 1; transition: transform 0.15s; }
 .sig-trader-group-chevron.open { transform: rotate(180deg); }
-.sig-trader-group-header:hover .sig-trader-group-toggle { color: var(--text-dim); }
+.sig-trader-group-header:hover .sig-trader-group-toggle { color: var(--text-1); }
 .sig-trader-txns {
   display: flex; flex-direction: column; gap: 6px;
   padding: 8px 0 4px 16px; margin-left: 4px;
