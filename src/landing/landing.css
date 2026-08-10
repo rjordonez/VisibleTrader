@@ -38,7 +38,6 @@
   padding: 0 2rem;
   height: 60px;
   background: rgba(6, 7, 15, 0.88);
-  backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   font-family: 'Manrope', system-ui, sans-serif;
 }
@@ -616,7 +615,6 @@
   text-align: center;
   padding: 2rem;
   background: rgba(13,17,23,0.55);
-  backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   gap: 1rem;
 }
@@ -645,10 +643,20 @@
   padding: 0.6rem 1.4rem;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   transition: background 0.15s, border-color 0.15s;
   margin-top: 0.25rem;
+}
+
+/* Vite's CSS build (lightningcss) silently collapses a standard property
+   and its -webkit- twin down to just one when both are written in the same
+   rule — and it keeps the -webkit- one, which Chrome doesn't honor alone.
+   Splitting the standard property into its own @supports rule keeps both
+   declarations distinct so neither gets dropped. */
+@supports (backdrop-filter: blur(1px)) {
+  .nav { backdrop-filter: blur(14px); }
+  .profit-glass-overlay { backdrop-filter: blur(12px); }
+  .profit-glass-btn { backdrop-filter: blur(4px); }
 }
 
 .profit-glass-btn:hover {

@@ -11,6 +11,26 @@ function fmtChartTime(t: number) {
   return new Date(t * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
+// Recharts' own tick generation picks a "nice" step (e.g. 20%) from the raw
+// domain but then clamps whichever end tick overshoots the real min/max down
+// to the exact boundary instead of dropping it — that produces a squashed,
+// uneven last gap (e.g. 30/50/70/90% evenly spaced, then 100% half a step
+// later). Generating our own evenly-stepped ticks and rounding the domain
+// out to match them exactly avoids that clamp entirely.
+function niceTicks(min: number, max: number, count: number, clampMin = -Infinity, clampMax = Infinity) {
+  if (min === max) { min -= 1; max += 1 }
+  const rawStep = (max - min) / Math.max(1, count - 1)
+  const exponent = Math.floor(Math.log10(rawStep))
+  const fraction = rawStep / 10 ** exponent
+  const niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10
+  const step = niceFraction * 10 ** exponent
+  const niceMin = Math.max(clampMin, Math.floor(min / step) * step)
+  const niceMax = Math.min(clampMax, Math.ceil(max / step) * step)
+  const ticks: number[] = []
+  for (let v = Math.ceil(niceMin / step) * step; v <= niceMax + step / 2; v += step) ticks.push(v)
+  return { min: niceMin, max: niceMax, ticks }
+}
+
 export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallets: WalletContribution[] }) {
   const [hoverT, setHoverT] = useState<number | null>(null)
   if (history.length < 2) return null
@@ -51,8 +71,9 @@ export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallet
   const minP = Math.min(...prices)
   const maxP = Math.max(...prices)
   const pricePad = Math.max(0.03, (maxP - minP) * 0.2)
-  const domainMin = Math.max(0, minP - pricePad)
-  const domainMax = Math.min(1, maxP + pricePad)
+  const rawMin = Math.max(0, minP - pricePad)
+  const rawMax = Math.min(1, maxP + pricePad)
+  const { min: domainMin, max: domainMax, ticks: yTicks } = niceTicks(rawMin, rawMax, 5, 0, 1)
 
   // Only the current/last price gets a dot — mirrors Polymarket's own chart,
   // where the line itself carries the history and a single endpoint marker
@@ -84,7 +105,7 @@ export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallet
             tickLine={false} axisLine={false} minTickGap={40}
           />
           <YAxis
-            domain={[domainMin, domainMax]} tickCount={5} orientation="right"
+            domain={[domainMin, domainMax]} ticks={yTicks} orientation="right"
             tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
             stroke="var(--text-faint)" fontSize={10}
             tickLine={false} axisLine={false} width={36}
@@ -135,8 +156,7 @@ export function CumulativeChart({ data }: { data: { d: string; cum: number }[] }
   const minV = Math.min(0, ...values)
   const maxV = Math.max(0, ...values)
   const pad = Math.max(1, (maxV - minV) * 0.1)
-  const domainMin = minV - pad
-  const domainMax = maxV + pad
+  const { min: domainMin, max: domainMax, ticks: yTicks } = niceTicks(minV - pad, maxV + pad, 5)
   const lastIndex = chartData.length - 1
   const last = values[values.length - 1] ?? 0
   const lineColor = last >= 0 ? '#00d17a' : '#ff3b5c'
@@ -172,7 +192,7 @@ export function CumulativeChart({ data }: { data: { d: string; cum: number }[] }
             tickLine={false} axisLine={false} minTickGap={40}
           />
           <YAxis
-            domain={[domainMin, domainMax]} tickCount={5} orientation="right"
+            domain={[domainMin, domainMax]} ticks={yTicks} orientation="right"
             tickFormatter={fmtCum}
             stroke="var(--text-faint)" fontSize={10}
             tickLine={false} axisLine={false} width={64}
