@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 import './landing.css'
 
 const questions = [
@@ -45,6 +46,8 @@ export default function EstimatePage() {
 
   function submitEmail(e: React.FormEvent) {
     e.preventDefault()
+    const interest = questions[0].options[answers[0]] ?? null
+    void supabase.from('leads').insert({ email, source: 'estimate_quiz', interest })
     setStep('result')
   }
 
@@ -154,7 +157,7 @@ export default function EstimatePage() {
               This is a real example, not a projection of what you'll personally earn. Individual results vary and every trade carries risk.
             </p>
 
-            <a href="/pricing" className="ep-btn" style={{ display: 'inline-block' }}>Try for free</a>
+            <a href={`/signup?email=${encodeURIComponent(email)}`} className="ep-btn" style={{ display: 'inline-block' }}>Try for free</a>
 
             <div className="ep-links">
               <button className="ep-link" onClick={() => navigate('/#tools')}>See how signals are ranked</button>

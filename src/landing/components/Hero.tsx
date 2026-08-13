@@ -1,9 +1,25 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import ProfitCard from './ProfitCard'
 import DashboardPreview from './DashboardPreview'
+import DashboardPreviewMobile from './DashboardPreviewMobile'
+import { supabase } from '../../lib/supabase'
 
 export default function Hero() {
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  // Capturing the lead is best-effort — a failed insert (network blip, RLS
+  // hiccup) shouldn't trap someone who's ready to sign up on the landing
+  // page. Email carries through as a query param so the signup form only
+  // asks for a password, not the email again.
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitting(true)
+    await supabase.from('leads').insert({ email, source: 'hero_form' })
+    navigate(`/signup?email=${encodeURIComponent(email)}`)
+  }
 
   return (
     <section className="hero">
@@ -30,10 +46,7 @@ export default function Hero() {
             surfaces what they're buying, the moment they buy it.
           </p>
 
-          <form
-            className="hero-form"
-            onSubmit={e => { e.preventDefault(); setEmail('') }}
-          >
+          <form className="hero-form" onSubmit={submit}>
             <div className="hero-form-inner">
               <input
                 type="email"
@@ -42,8 +55,8 @@ export default function Hero() {
                 onChange={e => setEmail(e.target.value)}
                 required
               />
-              <button type="submit" className="btn-primary">
-                Get started free
+              <button type="submit" className="btn-primary" disabled={submitting}>
+                {submitting ? 'One sec…' : 'Get started free'}
               </button>
             </div>
           </form>
@@ -57,6 +70,7 @@ export default function Hero() {
 
       {/* ── Dashboard preview ── */}
       <DashboardPreview />
+      <DashboardPreviewMobile />
 
       {/* ── Trust bar ── */}
       <div className="hero-trust-bar">

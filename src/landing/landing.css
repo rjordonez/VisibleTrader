@@ -1457,6 +1457,26 @@
   color: var(--accent-text);
 }
 
+.dash-chart-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 0.85rem 0;
+  margin-bottom: 0.75rem;
+}
+
+.dash-chart-panel-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.dash-chart-panel-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--green);
+  margin-top: 2px;
+}
+
 .dash-card-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1575,6 +1595,126 @@
   border-radius: 4px;
   padding: 1px 6px;
   display: inline-block;
+}
+
+/* ── Dashboard Preview (mobile phone-frame) ──
+   The desktop browser-chrome mockup hides itself under 768px (too dense
+   for that width) with nothing shown in its place — this is that
+   replacement, a phone-shaped frame instead of a browser window. Hidden by
+   default; the mobile media query below switches it on and hides the
+   desktop version, same toggle pattern already used for .nav-hamburger. */
+.phone-container {
+  display: none;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.phone-frame {
+  position: relative;
+  width: 260px;
+  aspect-ratio: 9 / 19.5;
+  background: linear-gradient(155deg, #2a2f3d, #14161d 65%);
+  border-radius: 2.75rem;
+  padding: 5px;
+  box-shadow:
+    0 24px 60px rgba(0,0,0,0.5),
+    inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+/* Physical side buttons — mute switch + volume rocker on the left, power
+   on the right, like a real iPhone silhouette instead of a plain rounded
+   rectangle. Negative offsets let them protrude slightly past the frame
+   edge. */
+.phone-btn {
+  position: absolute;
+  background: #1c1f28;
+  border-radius: 2px;
+}
+.phone-btn-mute      { left: -3px; top: 108px;  width: 3px; height: 22px; }
+.phone-btn-vol-up    { left: -3px; top: 148px;  width: 3px; height: 40px; }
+.phone-btn-vol-down  { left: -3px; top: 196px;  width: 3px; height: 40px; }
+.phone-btn-power     { right: -3px; top: 150px; width: 3px; height: 64px; }
+
+.phone-island {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 62px;
+  height: 20px;
+  background: #000;
+  border-radius: 100px;
+  z-index: 2;
+}
+
+.phone-screen {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border-radius: 2.25rem;
+  overflow: hidden;
+}
+
+.phone-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 1.9rem 0.75rem 0.5rem;
+}
+
+.phone-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-1);
+  margin-bottom: 0.75rem;
+}
+
+.phone-logo {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.phone-title-row { margin-bottom: 0.6rem; }
+
+.phone-card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.phone-bottom-nav {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-around;
+  padding: 0.5rem 0.25rem 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-2);
+}
+
+.phone-bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-3);
+  font-size: 0.5625rem;
+  font-weight: 600;
+}
+
+.phone-bottom-nav-item.active { color: var(--accent-text); }
+
+.phone-home-indicator {
+  flex-shrink: 0;
+  width: 90px;
+  height: 4px;
+  border-radius: 100px;
+  background: rgba(255,255,255,0.35);
+  margin: 0.5rem auto 0.4rem;
 }
 
 @media (max-width: 640px) {
@@ -2884,13 +3024,26 @@
   .hero-form-inner { flex-direction: column; }
   .hero-form-inner .btn-primary { width: 100%; text-align: center; }
   .hero-trust-bar {
-    gap: 0.75rem 1.5rem;
-    justify-content: flex-start;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
     padding: 1.25rem 0 2rem;
   }
 
-  /* Dashboard: hide on mobile, too dense */
-  .dashboard-wrap { display: none; }
+  /* Dashboard: browser-chrome version hides (too dense at this width),
+     phone-frame version takes its place. Hiding the whole container, not
+     just .dashboard-wrap, since .dashboard-container's ::before glow is a
+     sibling pseudo-element that isn't a child of .dashboard-wrap — it was
+     staying visible (plus the container's own margin/spacing) even with
+     the card itself hidden. */
+  .dashboard-container { display: none; }
+  .phone-container { display: flex; }
+
+  /* ProfitCard: with its title/button already hidden below this width,
+     it was just a blurred card with a floating lock icon and no
+     explanation — drop the whole thing, the phone mockup below it already
+     covers this ground. */
+  .hero-card-wrap { display: none; }
 
   /* Sections */
   .section { padding: 4rem 1.25rem; }
@@ -2958,8 +3111,7 @@
   /* Footer single column */
   .footer-top { grid-template-columns: 1fr; }
 
-  /* Hero trust bar: 2 per row */
-  .hero-trust-bar { gap: 0.6rem 1.25rem; }
+  .hero-trust-bar { gap: 0.6rem; }
 
   /* Pricing */
   .pricing-title { font-size: 1.5rem; }

@@ -15,7 +15,7 @@ export default function SignupPage() {
   // session — the confirm-email path below has no way to carry this across
   // that round trip, so it just falls back to a manual return visit.
   const next = searchParams.get('next') || '/'
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(searchParams.get('email') || '')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -74,6 +74,7 @@ export default function SignupPage() {
           <input
             className="auth-input" type="password" placeholder="At least 8 characters"
             value={password} onChange={e => setPassword(e.target.value)} required minLength={8}
+            autoFocus={!!searchParams.get('email')}
           />
           {error && <div style={{ color: '#f87171', fontSize: '0.82rem', marginTop: '0.6rem' }}>{error}</div>}
           <button type="submit" className="btn-primary auth-submit" disabled={submitting}>

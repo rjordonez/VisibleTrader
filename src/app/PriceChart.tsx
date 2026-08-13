@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  ResponsiveContainer, ComposedChart, Line, XAxis, YAxis, CartesianGrid, ReferenceDot, ReferenceLine,
+  ResponsiveContainer, ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, ReferenceDot, ReferenceLine,
 } from 'recharts'
 import type { ChartPoint, WalletContribution } from './types'
 import { signalsTraderStatus } from './helpers'
@@ -155,8 +155,13 @@ export function CumulativeChart({ data }: { data: { d: string; cum: number }[] }
   const values = data.map(d => d.cum)
   const minV = Math.min(0, ...values)
   const maxV = Math.max(0, ...values)
-  const pad = Math.max(1, (maxV - minV) * 0.1)
-  const { min: domainMin, max: domainMax, ticks: yTicks } = niceTicks(minV - pad, maxV + pad, 5)
+  const pad = Math.max(1, (maxV - minV) * 0.08)
+  // A 5-tick "nice" step tends to round the domain out to a much coarser
+  // boundary than the data needs (e.g. flooring a -$496k low all the way
+  // to a -$1M gridline) — asking for one more tick pushes the algorithm
+  // toward a finer step, so the axis hugs the real range instead of
+  // burying the actual swings (and the endpoint) in dead vertical space.
+  const { min: domainMin, max: domainMax, ticks: yTicks } = niceTicks(minV - pad, maxV + pad, 6)
   const lastIndex = chartData.length - 1
   const last = values[values.length - 1] ?? 0
   const lineColor = last >= 0 ? '#00d17a' : '#ff3b5c'
@@ -185,6 +190,12 @@ export function CumulativeChart({ data }: { data: { d: string; cum: number }[] }
           }}
           onMouseLeave={() => setHoverI(null)}
         >
+          <defs>
+            <linearGradient id="cumFillGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={lineColor} stopOpacity={0.28} />
+              <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
+            </linearGradient>
+          </defs>
           <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" vertical={false} />
           <XAxis
             dataKey="i" type="number" domain={[0, lastIndex]}
@@ -198,6 +209,10 @@ export function CumulativeChart({ data }: { data: { d: string; cum: number }[] }
             tickLine={false} axisLine={false} width={64}
           />
           <ReferenceLine y={0} stroke="var(--border)" />
+          <Area
+            type="monotone" dataKey="cum" stroke="none" fill="url(#cumFillGradient)"
+            isAnimationActive={false}
+          />
           <Line
             type="monotone" dataKey="cum" stroke={lineColor} strokeWidth={2.5}
             dot={false} activeDot={false} isAnimationActive={false}

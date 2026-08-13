@@ -1,4 +1,13 @@
 import { Activity, Landmark } from 'lucide-react'
+import { ResponsiveContainer, AreaChart, Area } from 'recharts'
+
+// Illustrative only — this whole component is a static marketing mockup of
+// the dashboard (fake markets, fake wallet counts, fake everything above),
+// not a view onto real user or trading data. This trend line is the same:
+// hand-picked numbers chosen to read as a clean up-and-to-the-right curve
+// for the landing page, never wired to profits_daily or any other real
+// source. Keep it that way — this file must never import real data fetches.
+const demoTrend = [0, 34000, 29000, 68000, 91000, 82000, 121000, 149000, 138000, 183000, 214000, 251000, 236000, 289000, 331000, 368000, 412558]
 
 // Mirrors AppShell's actual top nav (src/app/index.tsx) — Home/Signals/
 // Profits/Leaderboard/Alerts/Lookup, text-only, no Settings (that lives
@@ -61,6 +70,25 @@ export default function DashboardPreview() {
               <span className="dash-filter">Sports</span>
               <span className="dash-filter">Politics</span>
             </div>
+          </div>
+
+          <div className="dash-chart-panel">
+            <div className="dash-chart-panel-label">Cumulative tracked profit</div>
+            <div className="dash-chart-panel-value">+$412,558</div>
+            <ResponsiveContainer width="100%" height={64}>
+              <AreaChart data={demoTrend.map((v, i) => ({ i, v }))} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="dashTrendGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--green)" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="var(--green)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <Area
+                  type="monotone" dataKey="v" stroke="var(--green)" strokeWidth={2}
+                  fill="url(#dashTrendGradient)" isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
 
           <div className="dash-card-grid">
