@@ -58,7 +58,7 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
       <div className="onboarding-card">
         <div className="onboarding-progress">
           <div className="onboarding-progress-track">
-            <div className="onboarding-progress-fill" style={{ width: `${(step / questions.length) * 100}%` }} />
+            <div className="onboarding-progress-fill" style={{ width: `${((step + 1) / questions.length) * 100}%` }} />
           </div>
           <span className="onboarding-progress-label">{step + 1} of {questions.length}</span>
         </div>
