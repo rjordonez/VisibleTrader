@@ -45,20 +45,30 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
   const choose = (option: string) => {
     const next = { ...answers, [questions[step].key]: option }
     setAnswers(next)
-    if (step + 1 < questions.length) setStep(step + 1)
-    else void finish(next)
+    if (step + 1 < questions.length) {
+      setStep(step + 1)
+    } else {
+      // The last segment's fill is a CSS transition (see app.css) -- give
+      // it time to actually finish playing before finish() unmounts this
+      // page out from under it, instead of cutting the sweep off mid-way.
+      setSaving(true)
+      setTimeout(() => void finish(next), 450)
+    }
   }
 
   const skip = () => void finish(answers)
 
   const current = questions[step]
+  const filledCount = Object.keys(answers).length
 
   return (
     <div className="onboarding-root">
       <div className="onboarding-card">
         <div className="onboarding-progress">
-          <div className="onboarding-progress-track">
-            <div className="onboarding-progress-fill" style={{ width: `${((step + 1) / questions.length) * 100}%` }} />
+          <div className="onboarding-progress-segments">
+            {questions.map((_, i) => (
+              <div key={i} className={`onboarding-progress-segment${i < filledCount ? ' filled' : ''}`} />
+            ))}
           </div>
           <span className="onboarding-progress-label">{step + 1} of {questions.length}</span>
         </div>

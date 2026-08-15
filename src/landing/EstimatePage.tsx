@@ -34,6 +34,10 @@ export default function EstimatePage() {
   const [answers, setAnswers] = useState<number[]>([])
   const [email, setEmail] = useState('')
   const [selected, setSelected] = useState<number | null>(null)
+  // Separate from `selected` (which resets before the q2->email delay
+  // below even finishes) so the options stay disabled for the *entire*
+  // click-to-transition window, not just the first 180ms of it.
+  const [transitioning, setTransitioning] = useState(false)
 
   const qIndex = step === 'q0' ? 0 : step === 'q1' ? 1 : step === 'q2' ? 2 : -1
   const currentQ = qIndex >= 0 ? questions[qIndex] : null
@@ -41,7 +45,17 @@ export default function EstimatePage() {
   function choose(optionIndex: number) {
     setSelected(null)
     setAnswers(prev => [...prev, optionIndex])
-    setStep(nextStep[step] as Step)
+    if (step === 'q2') {
+      // Let the last progress segment's fill transition (see landing.css)
+      // actually finish playing before advancing to the email step
+      // unmounts this whole question block out from under it. Left
+      // `transitioning` as true deliberately -- this block unmounts
+      // right after, so there's nothing left to re-enable.
+      setTimeout(() => setStep('email'), 450)
+    } else {
+      setStep(nextStep[step] as Step)
+      setTransitioning(false)
+    }
   }
 
   function submitEmail(e: React.FormEvent) {
@@ -69,8 +83,10 @@ export default function EstimatePage() {
         {currentQ && (
           <div className="ep-fade-in">
             <div className="ep-progress">
-              <div className="ep-progress-track">
-                <div className="ep-progress-fill" style={{ width: `${(qIndex / 3) * 100}%` }} />
+              <div className="ep-progress-segments">
+                {questions.map((_, i) => (
+                  <div key={i} className={`ep-progress-segment${i < answers.length ? ' filled' : ''}`} />
+                ))}
               </div>
               <span className="ep-progress-label">{qIndex + 1} of 3</span>
             </div>
@@ -82,8 +98,10 @@ export default function EstimatePage() {
                 <button
                   key={opt}
                   className={`ep-option ${selected === i ? 'ep-option-selected' : ''}`}
+                  disabled={transitioning}
                   onClick={() => {
                     setSelected(i)
+                    setTransitioning(true)
                     setTimeout(() => choose(i), 180)
                   }}
                 >

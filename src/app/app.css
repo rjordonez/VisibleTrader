@@ -827,19 +827,22 @@
   margin-bottom: 24px;
 }
 
-.onboarding-progress-track {
+.onboarding-progress-segments {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+}
+
+.onboarding-progress-segment {
   flex: 1;
   height: 4px;
   border-radius: 100px;
-  background: var(--border);
-  overflow: hidden;
+  background: #ffffff26;
+  transition: background-color 0.4s ease;
 }
 
-.onboarding-progress-fill {
-  height: 100%;
-  background: var(--blue);
-  border-radius: 100px;
-  transition: width 0.25s ease;
+.onboarding-progress-segment.filled {
+  background: #2f6fed;
 }
 
 .onboarding-progress-label {

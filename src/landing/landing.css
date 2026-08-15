@@ -1102,19 +1102,22 @@
   max-width: 320px;
 }
 
-.ep-progress-track {
+.ep-progress-segments {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+}
+
+.ep-progress-segment {
   flex: 1;
   height: 3px;
   background: rgba(255,255,255,0.08);
   border-radius: 2px;
-  overflow: hidden;
+  transition: background-color 0.4s ease;
 }
 
-.ep-progress-fill {
-  height: 100%;
+.ep-progress-segment.filled {
   background: var(--accent);
-  border-radius: 2px;
-  transition: width 0.35s ease;
 }
 
 .ep-progress-label {
