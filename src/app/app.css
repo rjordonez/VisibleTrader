@@ -805,3 +805,92 @@
   .sig-modal-close { backdrop-filter: blur(12px); }
 }
 
+/* ── Onboarding gate (OnboardingPage.tsx) ── */
+.onboarding-root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--bg);
+}
+
+.onboarding-card {
+  width: 100%;
+  max-width: 460px;
+}
+
+.onboarding-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.onboarding-progress-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 100px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.onboarding-progress-fill {
+  height: 100%;
+  background: var(--blue);
+  border-radius: 100px;
+  transition: width 0.25s ease;
+}
+
+.onboarding-progress-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.onboarding-q {
+  font-size: 1.375rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin: 0 0 20px;
+}
+
+.onboarding-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onboarding-option {
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.onboarding-option:hover:not(:disabled) { background: var(--surface-2); border-color: rgba(255,255,255,0.16); }
+.onboarding-option:disabled { opacity: 0.6; cursor: default; }
+
+.onboarding-skip {
+  display: block;
+  margin: 20px auto 0;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.onboarding-skip:hover:not(:disabled) { color: var(--text-dim); }
+.onboarding-skip:disabled { opacity: 0.6; cursor: default; }
+
