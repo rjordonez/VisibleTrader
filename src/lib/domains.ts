@@ -16,3 +16,9 @@ export const marketingUrl = (path: string) =>
 // App.tsx's isAppHost / the AppRoutes wildcard route).
 export const dashboardPath = (path: string) =>
   import.meta.env.DEV ? `/app${path}` : path
+
+// OAuth providers (Google/Apple) redirect the browser to a literal
+// absolute URL after consent — appUrl()'s relative dev-mode output
+// doesn't work for that, so this always returns a full URL in both envs.
+export const oauthRedirectUrl = () =>
+  import.meta.env.DEV ? `${window.location.origin}/app/` : 'https://app.visibletrader.com/'

@@ -2,6 +2,7 @@ import './landing.css'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import OAuthButtons from './components/OAuthButtons'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -28,6 +29,8 @@ export default function LoginPage() {
       <div className="auth-card">
         <h1 className="auth-title">Log in</h1>
         <p className="auth-sub">Welcome back.</p>
+
+        <OAuthButtons onError={setError} />
 
         <form className="auth-form" onSubmit={submit}>
           <label className="auth-label">Email</label>

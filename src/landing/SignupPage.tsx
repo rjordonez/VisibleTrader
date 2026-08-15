@@ -2,6 +2,7 @@ import './landing.css'
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import OAuthButtons from './components/OAuthButtons'
 
 export default function SignupPage() {
   const navigate = useNavigate()
@@ -63,6 +64,8 @@ export default function SignupPage() {
       <div className="auth-card">
         <h1 className="auth-title">Create your account</h1>
         <p className="auth-sub">Start free, upgrade whenever you're ready.</p>
+
+        <OAuthButtons onError={setError} />
 
         <form className="auth-form" onSubmit={submit}>
           <label className="auth-label">Email</label>
