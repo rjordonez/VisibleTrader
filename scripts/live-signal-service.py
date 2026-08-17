@@ -32,6 +32,7 @@ RPC_PROVIDERS = [
 USDC_CONTRACT = '0x2791bca1f2de4661ed88a30c99a7a9449aa84174'
 BALANCE_OF_SELECTOR = '0x70a08231'  # balanceOf(address)
 BALANCE_REFRESH_SECONDS = 15 * 60
+AGGREGATE_REFRESH_SECONDS = 90  # opportunities_live's best_win_rate/best_bet_ratio join — see refresh_opportunity_aggregates()
 ROSTER_SIZE = 500
 TIERS = [1000, 5000, 20000, 50000, 100000]
 SOLO_TIER = 0  # sentinel: first tracked-trader entry into a market, fires immediately (keeps the feed active between rarer multi-wallet tier crossings)
@@ -770,6 +771,41 @@ def refresh_wallet_balances(db, wallets):
     print(f'  [balances] refreshed {len(results)}/{len(wallets)} wallet balances')
 
 
+def refresh_opportunity_aggregates(db):
+    """Runs periodically (AGGREGATE_REFRESH_SECONDS, see main()) — recomputes
+    the two per-(condition_id, outcome) aggregates opportunities_live joins
+    against (best_win_rate, best_bet_ratio). These used to be computed
+    inline in that view via CTEs re-aggregated on every single API request;
+    under real traffic a cold connection could spike past PostgREST's 8s
+    statement_timeout (57014 -> 500 to the frontend). Precomputing here and
+    letting the view do a plain indexed join instead keeps every request
+    fast regardless of connection/cache state — see
+    supabase/migrations/20260817010000_precompute_opportunity_aggregates.sql
+    for the full story and the query this mirrors."""
+    now = datetime.now(timezone.utc)
+    db.execute('''
+        INSERT INTO opportunity_best_win_rate (condition_id, outcome, best_win_rate, updated_at)
+        SELECT oc.condition_id, oc.outcome,
+          MAX(CASE WHEN (ls.won + ls.lost) > 0 THEN ls.won::numeric / (ls.won + ls.lost)::numeric ELSE NULL END),
+          %s
+        FROM opportunity_contributors oc
+        LEFT JOIN leaderboard ls ON ls.wallet = oc.wallet
+        GROUP BY oc.condition_id, oc.outcome
+        ON CONFLICT (condition_id, outcome) DO UPDATE SET
+          best_win_rate = EXCLUDED.best_win_rate, updated_at = EXCLUDED.updated_at
+    ''', (now,))
+    db.execute('''
+        INSERT INTO opportunity_best_bet_ratio (condition_id, outcome, best_bet_ratio, updated_at)
+        SELECT ow.condition_id, ow.outcome, MAX(ow.usd / wb.usdc_balance), %s
+        FROM opportunity_wallets ow
+        JOIN wallet_balances wb ON wb.wallet = ow.wallet AND wb.usdc_balance >= 1
+        GROUP BY ow.condition_id, ow.outcome
+        ON CONFLICT (condition_id, outcome) DO UPDATE SET
+          best_bet_ratio = EXCLUDED.best_bet_ratio, updated_at = EXCLUDED.updated_at
+    ''', (now,))
+    print('  [aggregates] refreshed best_win_rate / best_bet_ratio')
+
+
 def sweep_resolved_positions(db):
     """Runs periodically (not per-trade — this is a network call per distinct open
     market, too slow to do inline). Finds every market with still-open positions,
@@ -1136,6 +1172,7 @@ def main():
     last_resolution_sweep = time.time()
     last_config_reload = time.time()
     last_balance_refresh = 0.0  # fire once on startup, not just after the first interval
+    last_aggregate_refresh = 0.0  # fire once on startup, not just after the first interval
 
     last_activity['ts'] = time.time()
     threading.Thread(target=watchdog, daemon=True).start()
@@ -1191,6 +1228,10 @@ def main():
                 if now - last_balance_refresh > BALANCE_REFRESH_SECONDS:  # roster wallets' USDC.e balances, for the win-rate/bet-ratio filters
                     executor.submit(refresh_wallet_balances, db, set(roster))
                     last_balance_refresh = now
+
+                if now - last_aggregate_refresh > AGGREGATE_REFRESH_SECONDS:  # opportunities_live's precomputed best_win_rate/best_bet_ratio join
+                    executor.submit(refresh_opportunity_aggregates, db)
+                    last_aggregate_refresh = now
 
                 if now - last_config_reload > 10:  # picks up Settings-page changes without a restart
                     apply_config(load_config(db), roster, all_users)
