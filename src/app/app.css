@@ -306,6 +306,13 @@
   background: var(--bg);
   color: var(--text);
   font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Without this, a page using .sig-page with sparse content (e.g.
+     SearchPage's pre-search state) only paints its background as tall as
+     its own content, exposing body's separate, darker background (#06070f
+     vs. --bg's #15181f) as a visibly mismatched band underneath. Every
+     other .sig-page usage already has enough content to exceed 100vh
+     naturally, so this is a no-op there. */
+  min-height: 100vh;
 }
 
 .sig-panel { max-width: 1040px; }
