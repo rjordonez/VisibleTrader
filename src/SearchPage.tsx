@@ -193,7 +193,15 @@ export default function SearchPage() {
   }, [])
 
   const runSearch = useCallback((wallet: string) => {
-    supabase.functions.invoke('wallet-search', { body: { wallet } })
+    // A direct/fresh page load (as opposed to searching from an
+    // already-open tab) can catch supabase-js mid-way through restoring a
+    // session from storage — if that internal init never settles,
+    // functions.invoke() can hang indefinitely with no error at all. This
+    // bounds it so a cold load degrades to the existing error state
+    // instead of "Searching…" forever.
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Request timed out — try again.')), 15000))
+    Promise.race([supabase.functions.invoke('wallet-search', { body: { wallet } }), timeout])
       .then(({ data, error: fnError }) => {
         if (fnError) throw fnError
         setResult(data as SearchResult)
