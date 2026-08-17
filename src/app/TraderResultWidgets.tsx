@@ -87,24 +87,31 @@ export function SimilarTradersTable({ similarTraders, linkFor, trackedWallets, b
   return (
     <div className="sig-table-wrap">
       <table className="sig-table">
-        <thead><tr><th>Trader</th><th className="num">Overlap</th><th className="num">Net P&L</th><th></th></tr></thead>
+        <thead><tr><th>Trader</th><th className="num">Overlap</th><th className="num">Net P&L</th></tr></thead>
         <tbody>
           {similarTraders.map(t => (
             <tr key={t.wallet}>
-              <td><a href={linkFor(t.wallet)}>{traderLabel(t.wallet, t.walletName)}</a></td>
-              <td className="num">{t.overlap}</td>
-              <td className="num" style={{ color: t.netProfit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtAbbrevSigned(t.netProfit)}</td>
               <td>
-                {!loggedIn ? (
-                  signupHref ? <a href={signupHref} style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>Log in to track</a> : null
-                ) : trackedWallets[t.wallet] ? (
-                  <span className="sig-watch-remove" onClick={() => onUntrack(t.wallet)}>Untrack</span>
-                ) : (
-                  <button className="sig-btn" style={{ padding: '4px 10px', fontSize: '0.75rem' }} disabled={busyWallet === t.wallet} onClick={() => onTrack(t.wallet)}>
-                    {busyWallet === t.wallet ? 'Adding…' : 'Track'}
-                  </button>
+                <a href={linkFor(t.wallet)}>{traderLabel(t.wallet, t.walletName)}</a>
+                {loggedIn && (
+                  trackedWallets[t.wallet] ? (
+                    <span
+                      className="sig-track-icon-btn active" title="Untrack"
+                      onClick={() => onUntrack(t.wallet)}
+                    >✓</span>
+                  ) : (
+                    <span
+                      className="sig-track-icon-btn" title="Track"
+                      onClick={() => busyWallet !== t.wallet && onTrack(t.wallet)}
+                    >{busyWallet === t.wallet ? '…' : '+'}</span>
+                  )
+                )}
+                {!loggedIn && signupHref && (
+                  <a href={signupHref} className="sig-track-icon-btn" title="Log in to track">+</a>
                 )}
               </td>
+              <td className="num">{t.overlap}</td>
+              <td className="num" style={{ color: t.netProfit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtAbbrevSigned(t.netProfit)}</td>
             </tr>
           ))}
         </tbody>

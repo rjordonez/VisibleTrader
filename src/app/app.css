@@ -1120,6 +1120,21 @@
    fit without needing horizontal scroll. */
 .search-dashboard-side .sig-table th,
 .search-dashboard-side .sig-table td { padding: 8px 10px; font-size: 12px; }
+
+/* Inline track/untrack toggle next to a trader's name — a full "Track"
+   button needed its own table column, which is exactly what pushed this
+   table past the 360px sidebar width and got the rightmost column
+   clipped. An icon glyph inline with the name avoids adding a column at
+   all instead of just shrinking one that doesn't fit. */
+.sig-track-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; margin-left: 6px; border-radius: 50%;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-dim); font-size: 11px; font-weight: 700; line-height: 1;
+  cursor: pointer; text-decoration: none; vertical-align: middle;
+}
+.sig-track-icon-btn:hover { border-color: var(--blue); color: var(--text); }
+.sig-track-icon-btn.active { background: var(--green); border-color: var(--green); color: #06170f; }
 @media (max-width: 900px) {
   .search-dashboard-grid { grid-template-columns: 1fr; }
 }
