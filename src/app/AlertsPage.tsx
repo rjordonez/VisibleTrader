@@ -59,7 +59,11 @@ function AlertsPage() {
         .catch(() => {})
     }
     load()
-    const interval = setInterval(load, 5000)
+    // No realtime channel backs this one — it's a plain poll, deduped
+    // client-side via seenTicker. 5s was needlessly aggressive for a
+    // desktop-notification feature; 15s (matching LeaderboardPage/
+    // ProfitsPage's existing cadence) still notifies promptly.
+    const interval = setInterval(load, 15000)
     const unsubVisible = onTabVisible(load)
     return () => { cancelled = true; clearInterval(interval); unsubVisible() }
   }, [watchedWallets, permission, fire])
@@ -83,7 +87,10 @@ function AlertsPage() {
         .catch(() => {})
     }
     load()
-    const interval = setInterval(load, 5000)
+    // Same reasoning as the ticker-alert effect above — no realtime
+    // backing this poll, so 5s was pure unnecessary egress; 15s is plenty
+    // for a notification feature.
+    const interval = setInterval(load, 15000)
     const unsubVisible = onTabVisible(load)
     return () => { cancelled = true; clearInterval(interval); unsubVisible() }
   }, [minTier, permission, fire])

@@ -203,7 +203,13 @@ function SignalsDemo({ category }: { category: string }) {
       .channel('ticker-changes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticker' }, load)
       .subscribe()
-    const interval = setInterval(load, 3000)
+    // Realtime is the primary delivery path here (same as the
+    // opportunities-live-changes effect above) — this interval is only a
+    // fallback in case a realtime event is ever missed, not the main way
+    // updates land, so it doesn't need to be aggressive. It used to be
+    // 3000ms, re-fetching all 200 rows every 3s regardless of whether
+    // anything changed, which was most of this page's Supabase egress.
+    const interval = setInterval(load, 60000)
     const unsubVisible = onTabVisible(load)
     return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel); unsubVisible() }
   }, [])
