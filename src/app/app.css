@@ -897,3 +897,286 @@
 .onboarding-skip:hover:not(:disabled) { color: var(--text-dim); }
 .onboarding-skip:disabled { opacity: 0.6; cursor: default; }
 
+/* ── Onboarding value-prop slides (after the 3 questions) ── */
+.onboarding-slide-title { margin-top: 20px; }
+
+.onboarding-slide-body {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  margin: 0 0 24px;
+}
+
+.onboarding-slide-cta {
+  text-align: center;
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.onboarding-slide-cta:hover:not(:disabled) { background: #2860d1; border-color: #2860d1; }
+
+.onboarding-mini-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.onboarding-mini-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.onboarding-mini-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: rgba(47,111,237,0.15);
+  font-size: 16px;
+}
+
+.onboarding-mini-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.onboarding-mini-sub {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+.onboarding-mini-badge {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--green);
+  background: rgba(0,209,122,0.15);
+  border-radius: 100px;
+  padding: 3px 9px;
+}
+
+.onboarding-mini-card-chart { padding: 16px 16px 12px; }
+
+.onboarding-mini-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.onboarding-mini-stat-value {
+  font-size: 1.125rem;
+  font-weight: 800;
+  color: var(--green);
+}
+
+.onboarding-mini-stat-label {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+}
+
+/* ── Public trader search page (SearchPage.tsx) ──
+   Deliberately its own visual language, not a copy of LookupPage's plain
+   search-table utility — this is a presentable, shareable page in its
+   own right. Reuses .sig-panel/.sig-stats-row/.sig-stat-cell/.sig-table
+   from elsewhere in this file for consistency with the real product. */
+.search-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-logo {
+  font-size: 1.125rem;
+  font-weight: 800;
+  color: var(--text);
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+.search-header-links {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.search-header-links a {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.search-header-links a:hover { color: var(--text); }
+
+.search-hero {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem 2rem;
+  text-align: center;
+}
+
+.search-hero h1 {
+  font-size: 1.875rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem;
+  color: var(--text);
+}
+
+.search-hero p {
+  color: var(--text-dim);
+  font-size: 0.9375rem;
+  margin: 0 0 1.75rem;
+}
+
+.search-form {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.search-input {
+  flex: 1;
+  padding: 0.8rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  outline: none;
+}
+.search-input:focus { border-color: var(--blue); }
+.search-input::placeholder { color: var(--text-faint); }
+
+.search-submit {
+  padding: 0.8rem 1.5rem;
+  border-radius: 10px;
+  border: none;
+  background: var(--blue);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.search-submit:hover:not(:disabled) { background: #2860d1; }
+.search-submit:disabled { opacity: 0.6; cursor: default; }
+
+.search-results {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
+}
+
+.search-trader-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.search-trader-name {
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.search-trader-name a {
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  margin-left: 10px;
+}
+.search-trader-name a:hover { color: var(--text); }
+
+.search-trader-rank {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--gold);
+  background: rgba(242,183,63,0.15);
+  border-radius: 100px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+/* Blur-gate — same real-blurred-content + frosted-overlay mechanism as
+   ProfitCard.tsx on the landing page, adapted to app.css's dark theme
+   variables. The content underneath is always fake/placeholder here
+   (never real withheld data): the wallet-search Edge Function never
+   sends real position-level data to a non-entitled caller in the first
+   place, so there's nothing real to leak through the blur. */
+.search-locked {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  min-height: 240px;
+  margin-bottom: 24px;
+}
+
+.search-locked-bg {
+  padding: 1.25rem;
+  filter: blur(5px);
+  user-select: none;
+  pointer-events: none;
+}
+
+.search-glass-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+  background: rgba(21,24,31,0.62);
+  -webkit-backdrop-filter: blur(10px);
+  gap: 0.75rem;
+}
+@supports (backdrop-filter: blur(1px)) {
+  .search-glass-overlay { backdrop-filter: blur(10px); }
+}
+
+.search-glass-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.4;
+  max-width: 320px;
+}
+
+.search-glass-btn {
+  background: var(--blue);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.875rem;
+  font-family: inherit;
+  padding: 0.65rem 1.4rem;
+  border-radius: 9px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  margin-top: 0.25rem;
+}
+.search-glass-btn:hover { background: #2860d1; }
+

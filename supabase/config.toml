@@ -3,6 +3,13 @@ project_id = "vohtqodprqpobvvcdypy"
 [functions.price-chart]
 verify_jwt = false
 
+[functions.wallet-search]
+# Must be reachable by anonymous visitors on the public /search page — the
+# function does its own entitlement check internally (see index.ts) using
+# whatever Authorization header happens to be forwarded, rather than the
+# platform rejecting unauthenticated requests outright.
+verify_jwt = false
+
 [functions.stripe-webhook]
 # Stripe can't send a Supabase auth header — this endpoint's own HMAC
 # signature check (see index.ts) is the real security boundary, replacing

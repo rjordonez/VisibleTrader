@@ -28,6 +28,14 @@ const bottomNavItems = [
 export default function DashboardPreviewMobile() {
   return (
     <div className="phone-container">
+      <div className="phone-hero-overlay">
+        <h2 className="phone-hero-headline">
+          Never miss a signal.<br />Never trade alone.
+        </h2>
+        <p className="phone-hero-sub">
+          Real-time alerts the moment top traders move — with a fully verified track record.
+        </p>
+      </div>
       <div className="phone-frame">
         <span className="phone-btn phone-btn-mute" />
         <span className="phone-btn phone-btn-vol-up" />

@@ -12,6 +12,7 @@ import ForgotPasswordPage from './landing/ForgotPasswordPage'
 import ResetPasswordPage from './landing/ResetPasswordPage'
 import AppShell from './app/index'
 import ProtectedRoute from './ProtectedRoute'
+import SearchPage from './SearchPage'
 
 // app.visibletrader.com serves auth + the dashboard; visibletrader.com
 // serves marketing only. In dev there's no real subdomain, so `/app/*` on
@@ -52,6 +53,7 @@ function MarketingRoutes() {
       <Route path="/signup" element={<CrossDomainRedirect />} />
       <Route path="/forgot-password" element={<CrossDomainRedirect />} />
       <Route path="/reset-password" element={<CrossDomainRedirect />} />
+      <Route path="/search" element={<CrossDomainRedirect />} />
     </Routes>
   )
 }
@@ -63,6 +65,9 @@ function AppRoutes() {
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      {/* Public — reachable while logged out, so it must sit outside
+          ProtectedRoute like the auth pages above, not inside AppShell. */}
+      <Route path="/search" element={<SearchPage />} />
       {/* Dev-only: mirrors the routes above under /app so the local
           `localhost:5173/app/...` testing convention keeps working —
           dead code in prod, stripped by Vite's import.meta.env.DEV check. */}
@@ -72,6 +77,7 @@ function AppRoutes() {
           <Route path="/app/signup" element={<SignupPage />} />
           <Route path="/app/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/app/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/app/search" element={<SearchPage />} />
         </>
       )}
       {/* AppShell renders its own nested <Routes> for /signals, /profits,

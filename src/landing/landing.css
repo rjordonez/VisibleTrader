@@ -1651,21 +1651,65 @@
    default; the mobile media query below switches it on and hides the
    desktop version, same toggle pattern already used for .nav-hamburger. */
 .phone-container {
+  position: relative;
   display: none;
   justify-content: center;
-  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  perspective: 1200px;
 }
 
 .phone-frame {
   position: relative;
-  width: 260px;
+  width: min(320px, 100%);
   aspect-ratio: 9 / 19.5;
   background: linear-gradient(155deg, #2a2f3d, #14161d 65%);
   border-radius: 2.75rem;
   padding: 5px;
   box-shadow:
-    0 24px 60px rgba(0,0,0,0.5),
+    0 30px 70px rgba(0,0,0,0.55),
     inset 0 0 0 1px rgba(255,255,255,0.06);
+  transform-origin: bottom center;
+  transform: rotateX(18deg);
+  /* Fades the phone into the headline overlaid on top of it instead of a
+     hard edge. Standard mask-image split into its own @supports rule —
+     same lightningcss quirk as backdrop-filter elsewhere in this file,
+     where writing both the standard and -webkit- form in one rule gets
+     one of them silently dropped by the build. */
+  -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 82%);
+}
+@supports (mask-image: linear-gradient(black, black)) {
+  .phone-frame { mask-image: linear-gradient(to bottom, black 40%, transparent 82%); }
+}
+
+.phone-hero-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12%;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 1.5rem;
+  pointer-events: none;
+}
+
+.phone-hero-headline {
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--text-1);
+  margin: 0 0 0.75rem;
+}
+
+.phone-hero-sub {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--text-2);
+  max-width: 300px;
+  margin: 0;
 }
 
 /* Physical side buttons — mute switch + volume rocker on the left, power
@@ -3070,12 +3114,9 @@
   .hero-sub { font-size: 0.9375rem; }
   .hero-form-inner { flex-direction: column; }
   .hero-form-inner .btn-primary { width: 100%; text-align: center; }
-  .hero-trust-bar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.75rem;
-    padding: 1.25rem 0 2rem;
-  }
+  /* Replaced on mobile by the headline overlaid on the phone mockup's
+     bottom fade (.phone-hero-overlay) instead of a checkmark list. */
+  .hero-trust-bar { display: none; }
 
   /* Dashboard: browser-chrome version hides (too dense at this width),
      phone-frame version takes its place. Hiding the whole container, not
@@ -3157,8 +3198,6 @@
 
   /* Footer single column */
   .footer-top { grid-template-columns: 1fr; }
-
-  .hero-trust-bar { gap: 0.6rem; }
 
   /* Pricing */
   .pricing-title { font-size: 1.5rem; }
