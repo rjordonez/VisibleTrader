@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Opportunity, TickerTrade } from './types'
-import { onTabVisible, PAGE_SIZE, traderLabel, fmtFull, timeAgo } from './helpers'
+import { onTabVisible, PAGE_SIZE, traderLabel, fmtFull, timeAgo, WATCHED_WALLETS_KEY } from './helpers'
 
 /* ── Alerts ── */
 interface WalletWatch { wallet: string }
 interface AlertEvent { id: string; text: string; ts: number }
 
-const WATCHED_WALLETS_KEY = 'visibletrader_watched_wallets'
 const WATCHED_TIER_KEY = 'visibletrader_watched_tier'
 
 function AlertsPage() {

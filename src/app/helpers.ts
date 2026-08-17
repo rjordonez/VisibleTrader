@@ -1,6 +1,31 @@
 import { supabase } from '../lib/supabase'
 import type { Opportunity, WalletContribution, ChartPoint } from './types'
 
+// AlertsPage.tsx's per-browser (not tracked_wallets — that's a shared,
+// app-wide roster, see its own table comment) personal watchlist. Exported
+// here rather than defined in AlertsPage.tsx so other pages (SearchPage's
+// Track button) can add to it directly without importing a whole page
+// component for one constant.
+export const WATCHED_WALLETS_KEY = 'visibletrader_watched_wallets'
+
+export function addToWatchedWallets(wallet: string) {
+  try {
+    const raw = localStorage.getItem(WATCHED_WALLETS_KEY)
+    const watched = raw ? (JSON.parse(raw) as { wallet: string }[]) : []
+    if (watched.some(w => w.wallet.toLowerCase() === wallet.toLowerCase())) return
+    localStorage.setItem(WATCHED_WALLETS_KEY, JSON.stringify([...watched, { wallet }]))
+  } catch { /* localStorage unavailable or corrupted — tracking itself still succeeded */ }
+}
+
+export function removeFromWatchedWallets(wallet: string) {
+  try {
+    const raw = localStorage.getItem(WATCHED_WALLETS_KEY)
+    if (!raw) return
+    const watched = (JSON.parse(raw) as { wallet: string }[]).filter(w => w.wallet.toLowerCase() !== wallet.toLowerCase())
+    localStorage.setItem(WATCHED_WALLETS_KEY, JSON.stringify(watched))
+  } catch { /* localStorage unavailable or corrupted — untracking itself still succeeded */ }
+}
+
 export function timeAgo(iso: string) {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
   if (seconds < 60) return `${seconds}s ago`

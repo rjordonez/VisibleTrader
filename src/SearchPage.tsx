@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from './lib/supabase'
-import { traderLabel, profileUrl, categoryLabel, fmtSigned, fmtFull, timeAgo } from './app/helpers'
+import { traderLabel, profileUrl, categoryLabel, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './app/helpers'
 import { appUrl, marketingUrl } from './lib/domains'
 import { CumulativeChart } from './app/PriceChart'
 
@@ -61,10 +61,15 @@ const fakeSimilar = [
 // Shared by both the tracked and untracked result branches below — same
 // entitled/locked-preview treatment regardless of which path the wallet
 // took, since the underlying data source doesn't change what's ours to gate.
-function SimilarTradersSection({ entitled, similarTraders, signupHref }: {
+function SimilarTradersSection({ entitled, similarTraders, signupHref, loggedIn, trackedWallets, busyWallet, onTrack, onUntrack }: {
   entitled: boolean
   similarTraders: SimilarTrader[] | null
   signupHref: string
+  loggedIn: boolean | null
+  trackedWallets: Record<string, boolean>
+  busyWallet: string | null
+  onTrack: (wallet: string) => void
+  onUntrack: (wallet: string) => void
 }) {
   return (
     <div>
@@ -73,13 +78,24 @@ function SimilarTradersSection({ entitled, similarTraders, signupHref }: {
         similarTraders.length > 0 ? (
           <div className="sig-table-wrap">
             <table className="sig-table">
-              <thead><tr><th>Trader</th><th className="num">Overlap</th><th className="num">Net P&L</th></tr></thead>
+              <thead><tr><th>Trader</th><th className="num">Overlap</th><th className="num">Net P&L</th><th></th></tr></thead>
               <tbody>
                 {similarTraders.map(t => (
                   <tr key={t.wallet}>
                     <td><a href={appUrl(`/search?wallet=${t.wallet}`)}>{traderLabel(t.wallet, t.walletName)}</a></td>
                     <td className="num">{t.overlap}</td>
                     <td className="num" style={{ color: t.netProfit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtAbbrevSigned(t.netProfit)}</td>
+                    <td>
+                      {!loggedIn ? (
+                        <a href={signupHref} style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>Log in to track</a>
+                      ) : trackedWallets[t.wallet] ? (
+                        <span className="sig-watch-remove" onClick={() => onUntrack(t.wallet)}>Untrack</span>
+                      ) : (
+                        <button className="sig-btn" style={{ padding: '4px 10px', fontSize: '0.75rem' }} disabled={busyWallet === t.wallet} onClick={() => onTrack(t.wallet)}>
+                          {busyWallet === t.wallet ? 'Adding…' : 'Track'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -180,17 +196,71 @@ export default function SearchPage() {
   const walletParam = searchParams.get('wallet') ?? ''
   const [input, setInput] = useState(walletParam)
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
   const [result, setResult] = useState<SearchResult | null>(null)
   const [loading, setLoading] = useState(!!walletParam)
   const [error, setError] = useState<string | null>(null)
   const [showAllTrades, setShowAllTrades] = useState(false)
   const [showAllLive, setShowAllLive] = useState(false)
+  const [trackedWallets, setTrackedWallets] = useState<Record<string, boolean>>({})
+  const [busyWallet, setBusyWallet] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setLoggedIn(!!data.session))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setLoggedIn(!!session))
+    supabase.auth.getSession().then(({ data }) => {
+      setLoggedIn(!!data.session)
+      setUserId(data.session?.user.id ?? null)
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setLoggedIn(!!session)
+      setUserId(session?.user.id ?? null)
+    })
     return () => sub.subscription.unsubscribe()
   }, [])
+
+  // Same tracked_wallets mechanism LookupPage.tsx already uses — checked
+  // for the searched wallet plus every similar-trader row once a search
+  // resolves, so Track/Untrack buttons reflect real state immediately.
+  const loadTrackedStatus = useCallback((wallets: string[]) => {
+    if (wallets.length === 0) return
+    Promise.resolve(supabase.from('tracked_wallets').select('wallet').in('wallet', wallets))
+      .then(({ data }) => {
+        const trackedSet = new Set(((data ?? []) as { wallet: string }[]).map(w => w.wallet))
+        setTrackedWallets(prev => {
+          const next = { ...prev }
+          for (const w of wallets) next[w] = trackedSet.has(w)
+          return next
+        })
+      })
+      .catch(() => {})
+  }, [])
+
+  const trackWallet = (wallet: string) => {
+    setBusyWallet(wallet)
+    Promise.resolve(supabase.from('tracked_wallets').upsert({ wallet, added_by: userId }, { onConflict: 'wallet', ignoreDuplicates: true }))
+      .then(({ error: err }) => {
+        if (err) throw err
+        setTrackedWallets(s => ({ ...s, [wallet]: true }))
+        // tracked_wallets is the shared, app-wide roster (feeds the live
+        // signal-detection pipeline) — also add to this browser's personal
+        // Alerts watchlist so tracking someone from here actually results
+        // in a notification when they trade, not just a roster addition.
+        addToWatchedWallets(wallet)
+      })
+      .catch(() => {})
+      .finally(() => setBusyWallet(null))
+  }
+
+  const untrackWallet = (wallet: string) => {
+    setBusyWallet(wallet)
+    Promise.resolve(supabase.from('tracked_wallets').delete().eq('wallet', wallet))
+      .then(({ error: err }) => {
+        if (err) throw err
+        setTrackedWallets(s => ({ ...s, [wallet]: false }))
+        removeFromWatchedWallets(wallet)
+      })
+      .catch(() => {})
+      .finally(() => setBusyWallet(null))
+  }
 
   const runSearch = useCallback((wallet: string) => {
     // A direct/fresh page load (as opposed to searching from an
@@ -204,12 +274,14 @@ export default function SearchPage() {
     Promise.race([supabase.functions.invoke('wallet-search', { body: { wallet } }), timeout])
       .then(({ data, error: fnError }) => {
         if (fnError) throw fnError
-        setResult(data as SearchResult)
+        const r = data as SearchResult
+        setResult(r)
         setError(null)
+        loadTrackedStatus([r.wallet, ...(r.similarTraders ?? []).map(t => t.wallet)])
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [loadTrackedStatus])
 
   useEffect(() => {
     if (walletParam) runSearch(walletParam)
@@ -302,6 +374,17 @@ export default function SearchPage() {
                 <a href={profileUrl(result.wallet)!} target="_blank" rel="noopener noreferrer" className="search-trader-link-btn">
                   View on Polymarket ↗
                 </a>
+                {loggedIn && (
+                  trackedWallets[result.wallet] ? (
+                    <span className="search-trader-link-btn" style={{ cursor: 'pointer' }} onClick={() => untrackWallet(result.wallet)}>
+                      {busyWallet === result.wallet ? 'Removing…' : 'Untrack'}
+                    </span>
+                  ) : (
+                    <span className="search-trader-link-btn" style={{ cursor: 'pointer' }} onClick={() => trackWallet(result.wallet)}>
+                      {busyWallet === result.wallet ? 'Adding…' : '+ Track this trader'}
+                    </span>
+                  )
+                )}
               </div>
             </div>
             {result.headline?.rank != null && (
@@ -390,7 +473,11 @@ export default function SearchPage() {
                 <div className="search-dashboard-side">
                   {result.entitled && result.positions && <HighlightsRow items={result.positions} />}
                   {result.categoryBreakdown && <CategoryBreakdownSection categoryBreakdown={result.categoryBreakdown} />}
-                  <SimilarTradersSection entitled={result.entitled} similarTraders={result.similarTraders} signupHref={signupHref} />
+                  <SimilarTradersSection
+                    entitled={result.entitled} similarTraders={result.similarTraders} signupHref={signupHref}
+                    loggedIn={loggedIn} trackedWallets={trackedWallets} busyWallet={busyWallet}
+                    onTrack={trackWallet} onUntrack={untrackWallet}
+                  />
                 </div>
               </div>
             </>
@@ -460,7 +547,11 @@ export default function SearchPage() {
                   {sortedLiveClosed.length > 0 && (
                     <HighlightsRow items={sortedLiveClosed.map(p => ({ title: p.title, outcome: p.outcome, profit: p.realizedPnl }))} />
                   )}
-                  <SimilarTradersSection entitled={result.entitled} similarTraders={result.similarTraders} signupHref={signupHref} />
+                  <SimilarTradersSection
+                    entitled={result.entitled} similarTraders={result.similarTraders} signupHref={signupHref}
+                    loggedIn={loggedIn} trackedWallets={trackedWallets} busyWallet={busyWallet}
+                    onTrack={trackWallet} onUntrack={untrackWallet}
+                  />
                 </div>
               </div>
             </>
