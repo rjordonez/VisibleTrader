@@ -146,6 +146,15 @@ export function fmtSigned(n: number) {
   return (n >= 0 ? '+$' : '-$') + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
+// Same as fmtSigned but abbreviated ("+$382k") — for narrow contexts (a
+// sidebar table column) where the full "+$381,743" would force horizontal
+// scroll.
+export function fmtAbbrevSigned(n: number) {
+  const sign = n >= 0 ? '+' : '-'
+  const abs = Math.abs(n)
+  return abs >= 1000 ? `${sign}$${(abs / 1000).toFixed(abs % 1000 === 0 ? 0 : 1)}k` : `${sign}$${Math.round(abs)}`
+}
+
 export function signalsTag(tier: number, cumulativeUsd: number) {
   return tier === 0
     ? { cls: 'solo', label: 'SOLO PICK' }
