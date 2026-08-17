@@ -1076,9 +1076,30 @@
 .search-submit:disabled { opacity: 0.6; cursor: default; }
 
 .search-results {
-  max-width: 860px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 0 1.5rem 4rem;
+}
+
+/* Trading-dashboard layout: a wide main column (chart, trade history) next
+   to a narrower sidebar (highlights, category breakdown, similar traders)
+   instead of one long stacked column — the stat row and trader header sit
+   full-width above this, same as a platform's ticker/summary bar. */
+.search-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: start;
+}
+.search-dashboard-side {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.search-dashboard-side .sig-stats-row { margin-bottom: 0 !important; }
+.search-dashboard-side .sig-table-wrap { margin-bottom: 0 !important; }
+@media (max-width: 900px) {
+  .search-dashboard-grid { grid-template-columns: 1fr; }
 }
 
 .search-trader-header {

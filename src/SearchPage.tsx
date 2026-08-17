@@ -58,13 +58,13 @@ function SimilarTradersSection({ entitled, similarTraders, signupHref }: {
   signupHref: string
 }) {
   return (
-    <>
-      <div className="sig-stat-cell-label" style={{ marginBottom: 8, marginTop: 24 }}>Similar top traders</div>
+    <div>
+      <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Similar top traders</div>
       {entitled && similarTraders ? (
         similarTraders.length > 0 ? (
           <div className="sig-table-wrap">
             <table className="sig-table">
-              <thead><tr><th>Trader</th><th className="num">Shared markets</th><th className="num">Their net P&L</th></tr></thead>
+              <thead><tr><th>Trader</th><th className="num">Overlap</th><th className="num">Net P&L</th></tr></thead>
               <tbody>
                 {similarTraders.map(t => (
                   <tr key={t.wallet}>
@@ -78,10 +78,10 @@ function SimilarTradersSection({ entitled, similarTraders, signupHref }: {
           </div>
         ) : <div className="sig-empty">No overlap with other tracked traders yet.</div>
       ) : (
-        <div className="search-locked">
+        <div className="search-locked" style={{ marginBottom: 0 }}>
           <div className="search-locked-bg">
             <table className="sig-table">
-              <thead><tr><th>Trader</th><th className="num">Shared markets</th></tr></thead>
+              <thead><tr><th>Trader</th><th className="num">Shared</th></tr></thead>
               <tbody>
                 {fakeSimilar.map((t, i) => (
                   <tr key={i}><td>{t.name}</td><td className="num">{t.overlap}</td></tr>
@@ -95,7 +95,7 @@ function SimilarTradersSection({ entitled, similarTraders, signupHref }: {
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -124,16 +124,15 @@ function HighlightsRow({ items }: { items: { title: string; outcome: string; pro
   const recent = items.slice(0, 10)
   const wins = recent.filter(p => p.profit >= 0).length
   return (
-    <div className="sig-stats-row" style={{ marginBottom: 24 }}>
-      <div className="sig-stat-cell">
-        <div className="sig-stat-cell-label">Biggest Win</div>
-        <div className="sig-stat-cell-val g" style={{ fontSize: '0.95rem' }}>{fmtSigned(biggest.profit)}</div>
-        <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginTop: 2 }}>{biggest.title} — {biggest.outcome}</div>
+    <div className="sig-card" style={{ cursor: 'default' }}>
+      <div className="sig-stat">
+        <span className="sig-stat-label">Biggest Win</span>
+        <span className="sig-stat-val g">{fmtSigned(biggest.profit)}</span>
       </div>
-      <div className="sig-stat-cell">
-        <div className="sig-stat-cell-label">Recent Form</div>
-        <div className="sig-stat-cell-val">{wins}–{recent.length - wins}</div>
-        <div style={{ color: 'var(--text-dim)', fontSize: '0.75rem', marginTop: 2 }}>last {recent.length} resolved</div>
+      <div style={{ color: 'var(--text-faint)', fontSize: '11.5px', marginTop: -4, marginBottom: 9 }}>{biggest.title} — {biggest.outcome}</div>
+      <div className="sig-stat">
+        <span className="sig-stat-label">Recent Form</span>
+        <span className="sig-stat-val">{wins}–{recent.length - wins} (last {recent.length})</span>
       </div>
     </div>
   )
@@ -146,9 +145,9 @@ function HighlightsRow({ items }: { items: { title: string; outcome: string; pro
 function CategoryBreakdownSection({ categoryBreakdown }: { categoryBreakdown: CategoryRow[] }) {
   if (categoryBreakdown.length === 0) return null
   return (
-    <>
+    <div>
       <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Where they win</div>
-      <div className="sig-table-wrap" style={{ marginBottom: 24 }}>
+      <div className="sig-table-wrap">
         <table className="sig-table">
           <thead><tr><th>Category</th><th className="num">Trades</th><th className="num">Win Rate</th><th className="num">Profit</th></tr></thead>
           <tbody>
@@ -163,7 +162,7 @@ function CategoryBreakdownSection({ categoryBreakdown }: { categoryBreakdown: Ca
           </tbody>
         </table>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -292,64 +291,68 @@ export default function SearchPage() {
                 </div>
               </div>
 
-              {result.entitled && result.positions && (
-                <>
-                  <CumulativeChartSection data={trackedCumulative} label="P&L over time" />
-                  <HighlightsRow items={result.positions} />
-                  {result.categoryBreakdown && <CategoryBreakdownSection categoryBreakdown={result.categoryBreakdown} />}
-                </>
-              )}
+              <div className="search-dashboard-grid">
+                <div className="search-dashboard-main">
+                  {result.entitled && result.positions && (
+                    <CumulativeChartSection data={trackedCumulative} label="P&L over time" />
+                  )}
 
-              <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Trade history</div>
-              {result.entitled && result.positions ? (
-                <div className="sig-table-wrap" style={{ marginBottom: 24 }}>
-                  <table className="sig-table">
-                    <thead>
-                      <tr><th>Market</th><th className="num">Stake</th><th className="num">Price</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
-                    </thead>
-                    <tbody>
-                      {(showAllTrades ? result.positions : result.positions.slice(0, 10)).map((p, i) => (
-                        <tr key={i}>
-                          <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                          <td className="num" data-label="Stake">{fmtFull(p.usd)}</td>
-                          <td className="num" data-label="Price">{Math.round(p.price * 100)}¢</td>
-                          <td data-label="Result" style={{ color: p.resolved_win ? 'var(--green)' : 'var(--red)' }}>{p.resolved_win ? 'Won' : 'Lost'}</td>
-                          <td className="num" data-label="Profit" style={{ color: p.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.profit)}</td>
-                          <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(p.resolved_ts)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {result.positions.length > 10 && (
-                    <button className="sig-load-more" onClick={() => setShowAllTrades(v => !v)}>
-                      {showAllTrades ? 'Show fewer' : `Show all ${result.positions.length} trades`}
-                    </button>
+                  <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Trade history</div>
+                  {result.entitled && result.positions ? (
+                    <div className="sig-table-wrap">
+                      <table className="sig-table">
+                        <thead>
+                          <tr><th>Market</th><th className="num">Stake</th><th className="num">Price</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
+                        </thead>
+                        <tbody>
+                          {(showAllTrades ? result.positions : result.positions.slice(0, 10)).map((p, i) => (
+                            <tr key={i}>
+                              <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
+                              <td className="num" data-label="Stake">{fmtFull(p.usd)}</td>
+                              <td className="num" data-label="Price">{Math.round(p.price * 100)}¢</td>
+                              <td data-label="Result" style={{ color: p.resolved_win ? 'var(--green)' : 'var(--red)' }}>{p.resolved_win ? 'Won' : 'Lost'}</td>
+                              <td className="num" data-label="Profit" style={{ color: p.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.profit)}</td>
+                              <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(p.resolved_ts)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {result.positions.length > 10 && (
+                        <button className="sig-load-more" onClick={() => setShowAllTrades(v => !v)}>
+                          {showAllTrades ? 'Show fewer' : `Show all ${result.positions.length} trades`}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="search-locked">
+                      <div className="search-locked-bg">
+                        <table className="sig-table">
+                          <thead><tr><th>Market</th><th>Result</th><th className="num">Profit</th></tr></thead>
+                          <tbody>
+                            {fakePositions.map((p, i) => (
+                              <tr key={i}>
+                                <td>{p.market} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
+                                <td style={{ color: 'var(--green)' }}>Won</td>
+                                <td className="num" style={{ color: p.profit.startsWith('-') ? 'var(--red)' : 'var(--green)' }}>{p.profit}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="search-glass-overlay">
+                        <p className="search-glass-title">Sign up to see {traderLabel(result.wallet, result.walletName)}'s full trade history</p>
+                        <a href={signupHref} className="search-glass-btn">Start 7-day free trial</a>
+                      </div>
+                    </div>
                   )}
                 </div>
-              ) : (
-                <div className="search-locked">
-                  <div className="search-locked-bg">
-                    <table className="sig-table">
-                      <thead><tr><th>Market</th><th>Result</th><th className="num">Profit</th></tr></thead>
-                      <tbody>
-                        {fakePositions.map((p, i) => (
-                          <tr key={i}>
-                            <td>{p.market} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                            <td style={{ color: 'var(--green)' }}>Won</td>
-                            <td className="num" style={{ color: p.profit.startsWith('-') ? 'var(--red)' : 'var(--green)' }}>{p.profit}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="search-glass-overlay">
-                    <p className="search-glass-title">Sign up to see {traderLabel(result.wallet, result.walletName)}'s full trade history</p>
-                    <a href={signupHref} className="search-glass-btn">Start 7-day free trial</a>
-                  </div>
-                </div>
-              )}
 
-              <SimilarTradersSection entitled={result.entitled} similarTraders={result.similarTraders} signupHref={signupHref} />
+                <div className="search-dashboard-side">
+                  {result.entitled && result.positions && <HighlightsRow items={result.positions} />}
+                  {result.categoryBreakdown && <CategoryBreakdownSection categoryBreakdown={result.categoryBreakdown} />}
+                  <SimilarTradersSection entitled={result.entitled} similarTraders={result.similarTraders} signupHref={signupHref} />
+                </div>
+              </div>
             </>
           )}
 
@@ -364,54 +367,64 @@ export default function SearchPage() {
               )}
 
               {sortedLiveClosed.length > 0 && (
-                <>
-                  <div className="sig-stats-row" style={{ marginBottom: 24 }}>
-                    <div className="sig-stat-cell">
-                      <div className="sig-stat-cell-label">Realized P&L</div>
-                      <div className={`sig-stat-cell-val ${liveRealizedPnl >= 0 ? 'g' : 'r'}`}>{fmtSigned(liveRealizedPnl)}</div>
-                    </div>
-                    <div className="sig-stat-cell">
-                      <div className="sig-stat-cell-label">Win Rate</div>
-                      <div className="sig-stat-cell-val">{liveWinRate.toFixed(1)}%</div>
-                    </div>
-                    <div className="sig-stat-cell">
-                      <div className="sig-stat-cell-label">Current Positions</div>
-                      <div className="sig-stat-cell-val">{result.livePositions?.length ?? 0}</div>
-                    </div>
-                    <div className="sig-stat-cell">
-                      <div className="sig-stat-cell-label">Total Positions</div>
-                      <div className="sig-stat-cell-val">{sortedLiveClosed.length}</div>
-                    </div>
+                <div className="sig-stats-row" style={{ marginBottom: 24 }}>
+                  <div className="sig-stat-cell">
+                    <div className="sig-stat-cell-label">Realized P&L</div>
+                    <div className={`sig-stat-cell-val ${liveRealizedPnl >= 0 ? 'g' : 'r'}`}>{fmtSigned(liveRealizedPnl)}</div>
                   </div>
-
-                  <CumulativeChartSection data={liveCumulative} label="Realized P&L over time (live from Polymarket)" />
-                  <HighlightsRow items={sortedLiveClosed.map(p => ({ title: p.title, outcome: p.outcome, profit: p.realizedPnl }))} />
-
-                  <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Trade history</div>
-                  <div className="sig-table-wrap">
-                    <table className="sig-table">
-                      <thead><tr><th>Market</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr></thead>
-                      <tbody>
-                        {(showAllLive ? sortedLiveClosed : sortedLiveClosed.slice(0, 10)).map((p, i) => (
-                          <tr key={i}>
-                            <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                            <td style={{ color: p.curPrice >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{p.curPrice >= 0.5 ? 'Won' : 'Lost'}</td>
-                            <td className="num" style={{ color: p.realizedPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.realizedPnl)}</td>
-                            <td className="num" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(p.timestamp * 1000).toISOString())}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {sortedLiveClosed.length > 10 && (
-                      <button className="sig-load-more" onClick={() => setShowAllLive(v => !v)}>
-                        {showAllLive ? 'Show fewer' : `Show all ${sortedLiveClosed.length} trades`}
-                      </button>
-                    )}
+                  <div className="sig-stat-cell">
+                    <div className="sig-stat-cell-label">Win Rate</div>
+                    <div className="sig-stat-cell-val">{liveWinRate.toFixed(1)}%</div>
                   </div>
-                </>
+                  <div className="sig-stat-cell">
+                    <div className="sig-stat-cell-label">Current Positions</div>
+                    <div className="sig-stat-cell-val">{result.livePositions?.length ?? 0}</div>
+                  </div>
+                  <div className="sig-stat-cell">
+                    <div className="sig-stat-cell-label">Total Positions</div>
+                    <div className="sig-stat-cell-val">{sortedLiveClosed.length}</div>
+                  </div>
+                </div>
               )}
 
-              <SimilarTradersSection entitled={result.entitled} similarTraders={result.similarTraders} signupHref={signupHref} />
+              <div className="search-dashboard-grid">
+                <div className="search-dashboard-main">
+                  {sortedLiveClosed.length > 0 && (
+                    <>
+                      <CumulativeChartSection data={liveCumulative} label="Realized P&L over time (live from Polymarket)" />
+
+                      <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Trade history</div>
+                      <div className="sig-table-wrap">
+                        <table className="sig-table">
+                          <thead><tr><th>Market</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr></thead>
+                          <tbody>
+                            {(showAllLive ? sortedLiveClosed : sortedLiveClosed.slice(0, 10)).map((p, i) => (
+                              <tr key={i}>
+                                <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
+                                <td style={{ color: p.curPrice >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{p.curPrice >= 0.5 ? 'Won' : 'Lost'}</td>
+                                <td className="num" style={{ color: p.realizedPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.realizedPnl)}</td>
+                                <td className="num" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(p.timestamp * 1000).toISOString())}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {sortedLiveClosed.length > 10 && (
+                          <button className="sig-load-more" onClick={() => setShowAllLive(v => !v)}>
+                            {showAllLive ? 'Show fewer' : `Show all ${sortedLiveClosed.length} trades`}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="search-dashboard-side">
+                  {sortedLiveClosed.length > 0 && (
+                    <HighlightsRow items={sortedLiveClosed.map(p => ({ title: p.title, outcome: p.outcome, profit: p.realizedPnl }))} />
+                  )}
+                  <SimilarTradersSection entitled={result.entitled} similarTraders={result.similarTraders} signupHref={signupHref} />
+                </div>
+              </div>
             </>
           )}
         </div>
