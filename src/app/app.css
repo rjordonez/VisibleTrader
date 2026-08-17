@@ -992,9 +992,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1.5rem;
   padding: 1.25rem 2rem;
-  border-bottom: 1px solid var(--border);
 }
+
+.search-header-form {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+  max-width: 420px;
+}
+.search-header-form .search-input { padding: 0.55rem 0.85rem; font-size: 0.875rem; }
+.search-header-form .search-submit { padding: 0.55rem 1.1rem; font-size: 0.875rem; }
 
 .search-logo {
   font-size: 1.125rem;

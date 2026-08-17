@@ -250,25 +250,41 @@ export default function SearchPage() {
     <div className="sig-page" style={{ padding: 0 }}>
       <div className="search-header">
         <a href={marketingUrl('/')} className="search-logo">VisibleTrader</a>
+        {/* Once a search has been made, the big hero form collapses and
+            moves in here instead — keeps the search bar reachable without
+            permanently reserving a huge, mostly-empty hero above results. */}
+        {walletParam && (
+          <form className="search-header-form" onSubmit={submit}>
+            <input
+              className="search-input" type="text" placeholder="0x… wallet address"
+              value={input} onChange={e => setInput(e.target.value)}
+            />
+            <button type="submit" className="search-submit" disabled={loading}>
+              {loading ? 'Searching…' : 'Search'}
+            </button>
+          </form>
+        )}
         <div className="search-header-links">
           {loggedIn === false && <a href={appUrl('/login')}>Log in</a>}
           {loggedIn ? <a href={appUrl('/')}>Go to dashboard →</a> : <a href={appUrl('/signup')} className="search-glass-btn" style={{ padding: '0.5rem 1.1rem', fontSize: '0.8125rem' }}>Start free trial</a>}
         </div>
       </div>
 
-      <div className="search-hero">
-        <h1>Look up any Polymarket trader</h1>
-        <p>See a wallet's real resolved track record and which other top traders are moving with it.</p>
-        <form className="search-form" onSubmit={submit}>
-          <input
-            className="search-input" type="text" placeholder="0x… wallet address"
-            value={input} onChange={e => setInput(e.target.value)}
-          />
-          <button type="submit" className="search-submit" disabled={loading}>
-            {loading ? 'Searching…' : 'Search'}
-          </button>
-        </form>
-      </div>
+      {!walletParam && (
+        <div className="search-hero">
+          <h1>Look up any Polymarket trader</h1>
+          <p>See a wallet's real resolved track record and which other top traders are moving with it.</p>
+          <form className="search-form" onSubmit={submit}>
+            <input
+              className="search-input" type="text" placeholder="0x… wallet address"
+              value={input} onChange={e => setInput(e.target.value)}
+            />
+            <button type="submit" className="search-submit" disabled={loading}>
+              {loading ? 'Searching…' : 'Search'}
+            </button>
+          </form>
+        </div>
+      )}
 
       {error && (
         <div className="search-results"><div className="sig-empty">Could not reach the signals backend — try again in a moment.</div></div>
