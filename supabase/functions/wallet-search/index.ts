@@ -52,6 +52,22 @@ interface CategoryRow {
 
 interface SimilarTrader { wallet: string; walletName: string | null; overlap: number; netProfit: number }
 
+// Independent of the leaderboard lookup below (which is fired in parallel
+// with this, not after it) — was previously awaited sequentially before
+// the leaderboard query even started, adding its full round-trip time
+// (auth.getUser + a subscriptions query) to every request for nothing.
+async function checkEntitled(
+  supabase: ReturnType<typeof createClient>, authHeader: string | null,
+): Promise<boolean> {
+  if (!authHeader) return false
+  const token = authHeader.replace(/^Bearer\s+/i, '')
+  const { data: userData } = await supabase.auth.getUser(token)
+  if (!userData.user) return false
+  const { data: sub } = await supabase
+    .from('subscriptions').select('status').eq('user_id', userData.user.id).maybeSingle()
+  return !!sub && ACTIVE_SUB_STATUSES.has(sub.status)
+}
+
 // Other tracked wallets with positions in the same (condition_id, outcome)
 // pairs this wallet has touched — the "signal" concept applied to a single
 // trader instead of a live feed. Shared by both the tracked path (pairs
@@ -123,21 +139,12 @@ Deno.serve(async (req) => {
     // position-level detail and similar-traders on both branches below —
     // the raw Polymarket live-data fallback itself is public regardless of
     // who's asking, but which of *our* tracked wallets overlap with it is
-    // still our own signal either way.
-    let entitled = false
-    const authHeader = req.headers.get('Authorization')
-    if (authHeader) {
-      const token = authHeader.replace(/^Bearer\s+/i, '')
-      const { data: userData } = await supabase.auth.getUser(token)
-      if (userData.user) {
-        const { data: sub } = await supabase
-          .from('subscriptions').select('status').eq('user_id', userData.user.id).maybeSingle()
-        entitled = !!sub && ACTIVE_SUB_STATUSES.has(sub.status)
-      }
-    }
-
-    const { data: summary } = await supabase
-      .from('leaderboard').select('*').ilike('wallet', wallet).maybeSingle()
+    // still our own signal either way. Run alongside the leaderboard
+    // lookup (independent of each other) rather than before it.
+    const [entitled, { data: summary }] = await Promise.all([
+      checkEntitled(supabase, req.headers.get('Authorization')),
+      supabase.from('leaderboard').select('*').ilike('wallet', wallet).maybeSingle(),
+    ])
 
     if (!summary) {
       // Untracked wallet — same public, CORS-open Polymarket endpoints

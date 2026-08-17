@@ -33,6 +33,7 @@ USDC_CONTRACT = '0x2791bca1f2de4661ed88a30c99a7a9449aa84174'
 BALANCE_OF_SELECTOR = '0x70a08231'  # balanceOf(address)
 BALANCE_REFRESH_SECONDS = 15 * 60
 AGGREGATE_REFRESH_SECONDS = 90  # opportunities_live's best_win_rate/best_bet_ratio join — see refresh_opportunity_aggregates()
+WARM_SEARCH_SECONDS = 4 * 60  # keeps the wallet-search Edge Function's isolate warm — see ping_wallet_search()
 ROSTER_SIZE = 500
 TIERS = [1000, 5000, 20000, 50000, 100000]
 SOLO_TIER = 0  # sentinel: first tracked-trader entry into a market, fires immediately (keeps the feed active between rarer multi-wallet tier crossings)
@@ -771,6 +772,34 @@ def refresh_wallet_balances(db, wallets):
     print(f'  [balances] refreshed {len(results)}/{len(wallets)} wallet balances')
 
 
+# The publishable/anon key — same one already shipped to every browser in
+# the frontend bundle (src/lib/domains.ts's VITE_PROD_SUPABASE_ANON_KEY),
+# not a secret. Hardcoded rather than read from the environment since the
+# VM's .env only carries DATABASE_URL — this ping doesn't warrant adding a
+# second, never-otherwise-needed var there just to duplicate a public value.
+PROD_SUPABASE_URL = 'https://vohtqodprqpobvvcdypy.supabase.co'
+PROD_SUPABASE_ANON_KEY = 'sb_publishable_40wj27zEnBRLxHnEZbn9Eg_QSzDTwsH'
+
+
+def ping_wallet_search():
+    """Runs periodically (WARM_SEARCH_SECONDS, see main()) — the /search
+    page's wallet-search Edge Function only gets invoked by actual visitor
+    traffic, sporadic enough that it regularly goes cold between requests.
+    A cold isolate added 4-5s on top of the ~1s the function's own logic
+    actually takes, measured directly against prod. A cheap OPTIONS ping
+    (handled before any real work in wallet-search/index.ts) exercises the
+    same isolate-spin-up path without doing a real Polymarket/DB lookup, so
+    real visitor requests land on an already-warm isolate instead."""
+    try:
+        req = urllib.request.Request(
+            f'{PROD_SUPABASE_URL}/functions/v1/wallet-search', method='OPTIONS',
+            headers={'apikey': PROD_SUPABASE_ANON_KEY, **UA},
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception:
+        pass
+
+
 def refresh_opportunity_aggregates(db):
     """Runs periodically (AGGREGATE_REFRESH_SECONDS, see main()) — recomputes
     the two per-(condition_id, outcome) aggregates opportunities_live joins
@@ -1173,6 +1202,7 @@ def main():
     last_config_reload = time.time()
     last_balance_refresh = 0.0  # fire once on startup, not just after the first interval
     last_aggregate_refresh = 0.0  # fire once on startup, not just after the first interval
+    last_warm_search = 0.0  # fire once on startup, not just after the first interval
 
     last_activity['ts'] = time.time()
     threading.Thread(target=watchdog, daemon=True).start()
@@ -1232,6 +1262,10 @@ def main():
                 if now - last_aggregate_refresh > AGGREGATE_REFRESH_SECONDS:  # opportunities_live's precomputed best_win_rate/best_bet_ratio join
                     executor.submit(refresh_opportunity_aggregates, db)
                     last_aggregate_refresh = now
+
+                if now - last_warm_search > WARM_SEARCH_SECONDS:  # keeps wallet-search's Edge Function isolate warm
+                    executor.submit(ping_wallet_search)
+                    last_warm_search = now
 
                 if now - last_config_reload > 10:  # picks up Settings-page changes without a restart
                     apply_config(load_config(db), roster, all_users)
