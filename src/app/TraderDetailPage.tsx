@@ -1,10 +1,24 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { traderLabel, profileUrl, categoryLabel, fmtSigned, fmtFull, timeAgo } from './helpers'
-import { CumulativeChart } from './PriceChart'
+import { dashboardPath } from '../lib/domains'
+import { traderLabel, profileUrl, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './helpers'
 import { SkelStatsRow, SkelTableRows } from './Skeleton'
+import {
+  CumulativeChartSection, HighlightsRow, CategoryBreakdownSection, SimilarTradersTable,
+  type CategoryRow, type SimilarTrader,
+} from './TraderResultWidgets'
 
-/* ── Trader detail ── */
+/* ── Trader detail ──
+   The authenticated in-app equivalent of the public SearchPage.tsx — same
+   widgets (see TraderResultWidgets.tsx), but reached via Lookup/Leaderboard
+   instead of a cold search, and always fully entitled (ProtectedRoute
+   already requires an active subscription to get here at all), so there's
+   no locked/blurred branch to build — every section either has data or
+   doesn't render, same as SearchPage's own entitled-only sections. Data
+   comes from direct RLS-scoped queries rather than the wallet-search Edge
+   Function, since an authenticated caller already has real table access
+   and going through the function would just add a redundant network hop. */
 interface TraderSummary {
   wallet: string
   wallet_name: string | null
@@ -20,6 +34,7 @@ interface TraderPosition {
   title: string
   outcome: string
   category: string | null
+  condition_id: string
   usd: number
   price: number
   resolved_win: boolean
@@ -27,17 +42,10 @@ interface TraderPosition {
   profit: number
 }
 
-interface TraderCategoryStat {
-  category: string
-  n: number
-  won: number
-  lost: number
-  profit: number
-}
-
 interface LivePosition {
   title: string
   outcome: string
+  conditionId: string
   curPrice: number
   avgPrice: number
   cashPnl: number
@@ -48,6 +56,7 @@ interface LivePosition {
 interface LiveClosedPosition {
   title: string
   outcome: string
+  conditionId: string
   avgPrice: number
   curPrice: number
   realizedPnl: number
@@ -63,16 +72,114 @@ interface LiveTrade {
   price: number
 }
 
+// Mirrors the wallet-search Edge Function's findSimilarTraders — same
+// overlap logic, just as a direct client-side query instead of Deno
+// server-side code, since those are two different runtimes that can't
+// share a function body. Other tracked wallets with positions in the same
+// (condition_id, outcome) pairs this wallet has touched.
+async function findSimilarTraders(
+  pairs: { condition_id: string; outcome: string }[], excludeWallet: string,
+): Promise<SimilarTrader[]> {
+  const ownPairs = new Set(pairs.map(p => `${p.condition_id}|${p.outcome}`))
+  const conditionIds = [...new Set(pairs.map(p => p.condition_id))].slice(0, 50)
+  if (conditionIds.length === 0) return []
+
+  const { data: overlapRows } = await supabase
+    .from('opportunity_wallets')
+    .select('wallet, condition_id, outcome')
+    .in('condition_id', conditionIds)
+    .neq('wallet', excludeWallet)
+
+  const overlapCounts = new Map<string, number>()
+  for (const row of (overlapRows ?? []) as { wallet: string; condition_id: string; outcome: string }[]) {
+    if (!ownPairs.has(`${row.condition_id}|${row.outcome}`)) continue
+    overlapCounts.set(row.wallet, (overlapCounts.get(row.wallet) ?? 0) + 1)
+  }
+
+  const candidateWallets = [...overlapCounts.keys()]
+  if (candidateWallets.length === 0) return []
+
+  const { data: candidateLeaderboard } = await supabase
+    .from('leaderboard').select('wallet, wallet_name, net_profit').in('wallet', candidateWallets)
+
+  return (candidateLeaderboard ?? [])
+    .map(l => ({
+      wallet: l.wallet as string,
+      walletName: l.wallet_name as string | null,
+      overlap: overlapCounts.get(l.wallet as string) ?? 0,
+      netProfit: l.net_profit as number,
+    }))
+    .sort((a, b) => b.overlap - a.overlap || b.netProfit - a.netProfit)
+    .slice(0, 5)
+}
+
 function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => void }) {
+  const navigate = useNavigate()
+  const [jumpInput, setJumpInput] = useState('')
   const [summary, setSummary] = useState<TraderSummary | null>(null)
   const [positions, setPositions] = useState<TraderPosition[]>([])
-  const [byCategory, setByCategory] = useState<TraderCategoryStat[]>([])
+  const [byCategory, setByCategory] = useState<CategoryRow[]>([])
+  const [similarTraders, setSimilarTraders] = useState<SimilarTrader[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [livePositions, setLivePositions] = useState<LivePosition[]>([])
   const [liveClosed, setLiveClosed] = useState<LiveClosedPosition[]>([])
   const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([])
   const [liveLoading, setLiveLoading] = useState(false)
+  const [showAllTrades, setShowAllTrades] = useState(false)
+  const [showAllLive, setShowAllLive] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [trackedWallets, setTrackedWallets] = useState<Record<string, boolean>>({})
+  const [busyWallet, setBusyWallet] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null))
+  }, [])
+
+  const loadTrackedStatus = useCallback((wallets: string[]) => {
+    if (wallets.length === 0) return
+    Promise.resolve(supabase.from('tracked_wallets').select('wallet').in('wallet', wallets))
+      .then(({ data }) => {
+        const trackedSet = new Set(((data ?? []) as { wallet: string }[]).map(w => w.wallet))
+        setTrackedWallets(prev => {
+          const next = { ...prev }
+          for (const w of wallets) next[w] = trackedSet.has(w)
+          return next
+        })
+      })
+      .catch(() => {})
+  }, [])
+
+  const trackWallet = (w: string) => {
+    setBusyWallet(w)
+    Promise.resolve(supabase.from('tracked_wallets').upsert({ wallet: w, added_by: userId }, { onConflict: 'wallet', ignoreDuplicates: true }))
+      .then(({ error: err }) => {
+        if (err) throw err
+        setTrackedWallets(s => ({ ...s, [w]: true }))
+        addToWatchedWallets(w)
+      })
+      .catch(() => {})
+      .finally(() => setBusyWallet(null))
+  }
+
+  const untrackWallet = (w: string) => {
+    setBusyWallet(w)
+    Promise.resolve(supabase.from('tracked_wallets').delete().eq('wallet', w))
+      .then(({ error: err }) => {
+        if (err) throw err
+        setTrackedWallets(s => ({ ...s, [w]: false }))
+        removeFromWatchedWallets(w)
+      })
+      .catch(() => {})
+      .finally(() => setBusyWallet(null))
+  }
+
+  const jumpToWallet = (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmed = jumpInput.trim()
+    if (!trimmed) return
+    navigate(dashboardPath(`/trader/${trimmed}`))
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -87,17 +194,25 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
         if (positionsRes.error) throw positionsRes.error
         if (categoryRes.error) throw categoryRes.error
         const summaryData = (summaryRes.data ?? null) as TraderSummary | null
+        const positionsData = (positionsRes.data ?? []) as TraderPosition[]
         setSummary(summaryData)
-        setPositions((positionsRes.data ?? []) as TraderPosition[])
-        setByCategory((categoryRes.data ?? []) as TraderCategoryStat[])
+        setPositions(positionsData)
+        setByCategory((categoryRes.data ?? []) as CategoryRow[])
         setLoading(false)
         setError(null)
+        loadTrackedStatus([wallet])
 
-        // We only have history for wallets we've tracked ourselves — for
-        // everyone else, fall back to Polymarket's own public (CORS-open,
-        // no auth needed) data API so "no tracked history" doesn't mean
-        // "we can't show you anything real about this wallet."
-        if (!summaryData) {
+        if (summaryData) {
+          findSimilarTraders(positionsData, wallet).then(st => {
+            if (cancelled) return
+            setSimilarTraders(st)
+            loadTrackedStatus(st.map(t => t.wallet))
+          }).catch(() => {})
+        } else {
+          // We only have history for wallets we've tracked ourselves — for
+          // everyone else, fall back to Polymarket's own public (CORS-open,
+          // no auth needed) data API so "no tracked history" doesn't mean
+          // "we can't show you anything real about this wallet."
           setLiveLoading(true)
           Promise.all([
             fetch(`https://data-api.polymarket.com/positions?user=${wallet}&limit=50`).then(r => r.ok ? r.json() : []),
@@ -106,9 +221,19 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
           ])
             .then(([pos, closed, trades]) => {
               if (cancelled) return
-              setLivePositions((pos ?? []) as LivePosition[])
-              setLiveClosed((closed ?? []) as LiveClosedPosition[])
+              const livePos = (pos ?? []) as LivePosition[]
+              const liveClosedPos = (closed ?? []) as LiveClosedPosition[]
+              setLivePositions(livePos)
+              setLiveClosed(liveClosedPos)
               setLiveTrades((trades ?? []) as LiveTrade[])
+              const pairs = [...livePos, ...liveClosedPos]
+                .filter(p => p.conditionId && p.outcome)
+                .map(p => ({ condition_id: p.conditionId, outcome: p.outcome }))
+              findSimilarTraders(pairs, wallet).then(st => {
+                if (cancelled) return
+                setSimilarTraders(st)
+                loadTrackedStatus(st.map(t => t.wallet))
+              }).catch(() => {})
             })
             .catch(() => {})
             .finally(() => { if (!cancelled) setLiveLoading(false) })
@@ -120,23 +245,31 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
         setLoading(false)
       })
     return () => { cancelled = true }
-  }, [wallet])
+  }, [wallet, loadTrackedStatus])
 
   const winRate = summary && summary.won + summary.lost > 0 ? (summary.won / (summary.won + summary.lost)) * 100 : 0
   const usdWinRate = summary && summary.deployed > 0 ? (summary.won_usd / summary.deployed) * 100 : 0
   const roi = summary && summary.deployed > 0 ? (summary.net_profit / summary.deployed) * 100 : 0
 
+  const trackedCumulative = [...positions]
+    .sort((a, b) => new Date(a.resolved_ts).getTime() - new Date(b.resolved_ts).getTime())
+    .reduce<{ d: string; cum: number }[]>((acc, p) => {
+      const prevCum = acc.length > 0 ? acc[acc.length - 1].cum : 0
+      acc.push({ d: p.resolved_ts, cum: prevCum + p.profit })
+      return acc
+    }, [])
+
   // Live-fallback stats, computed the same way check_market_closed already
   // does server-side: a resolved outcome settles at 0 or 1, so curPrice >= 0.5
   // means that side won.
-  const liveWon = liveClosed.filter(p => p.curPrice >= 0.5).length
-  const liveWinRate = liveClosed.length > 0 ? (liveWon / liveClosed.length) * 100 : 0
-  const liveRealizedPnl = liveClosed.reduce((sum, p) => sum + p.realizedPnl, 0)
-  const liveCumulative = [...liveClosed]
-    .sort((a, b) => a.timestamp - b.timestamp)
+  const sortedLiveClosed = [...liveClosed].sort((a, b) => b.timestamp - a.timestamp)
+  const liveWon = sortedLiveClosed.filter(p => p.curPrice >= 0.5).length
+  const liveWinRate = sortedLiveClosed.length > 0 ? (liveWon / sortedLiveClosed.length) * 100 : 0
+  const liveRealizedPnl = sortedLiveClosed.reduce((sum, p) => sum + p.realizedPnl, 0)
+  const liveCumulative = [...sortedLiveClosed].reverse()
     .reduce<{ d: string; cum: number }[]>((acc, p) => {
       const prevCum = acc.length > 0 ? acc[acc.length - 1].cum : 0
-      acc.push({ d: String(p.timestamp), cum: prevCum + p.realizedPnl })
+      acc.push({ d: new Date(p.timestamp * 1000).toISOString(), cum: prevCum + p.realizedPnl })
       return acc
     }, [])
 
@@ -148,10 +281,29 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
           <h1 className="app-section-title">{traderLabel(wallet, summary?.wallet_name ?? null)}</h1>
           <p className="app-section-sub">
             {loading ? 'Loading…' : error ? 'Could not reach the signals backend' : (
-              <a href={profileUrl(wallet)!} target="_blank" rel="noopener noreferrer">View on Polymarket ↗</a>
+              <>
+                <a href={profileUrl(wallet)!} target="_blank" rel="noopener noreferrer">View on Polymarket ↗</a>
+                {' · '}
+                {trackedWallets[wallet] ? (
+                  <span className="sig-watch-remove" style={{ display: 'inline' }} onClick={() => untrackWallet(wallet)}>
+                    {busyWallet === wallet ? 'Removing…' : 'Untrack'}
+                  </span>
+                ) : (
+                  <span style={{ cursor: 'pointer', color: 'var(--blue)' }} onClick={() => trackWallet(wallet)}>
+                    {busyWallet === wallet ? 'Adding…' : '+ Track this trader'}
+                  </span>
+                )}
+              </>
             )}
           </p>
         </div>
+        <form className="search-header-form" onSubmit={jumpToWallet} style={{ maxWidth: 320 }}>
+          <input
+            className="search-input" type="text" placeholder="Look up another wallet…"
+            value={jumpInput} onChange={e => setJumpInput(e.target.value)}
+          />
+          <button type="submit" className="search-submit">Go</button>
+        </form>
       </div>
 
       <div className="sig-panel">
@@ -178,7 +330,7 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
 
         {!loading && !error && summary && (
           <>
-            <div className="sig-stats-row">
+            <div className="sig-stats-row" style={{ marginBottom: 24 }}>
               <div className="sig-stat-cell">
                 <div className="sig-stat-cell-label">Net P&L</div>
                 <div className={`sig-stat-cell-val ${summary.net_profit >= 0 ? 'g' : 'r'}`}>{fmtSigned(summary.net_profit)}</div>
@@ -201,51 +353,49 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
               </div>
             </div>
 
-            {byCategory.length > 0 && (
-              <>
-                <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>By category</div>
-                <div className="sig-table-wrap" style={{ marginBottom: 24 }}>
+            <div className="search-dashboard-grid">
+              <div className="search-dashboard-main">
+                <CumulativeChartSection data={trackedCumulative} label="P&L over time" />
+
+                <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>All resolved positions</div>
+                <div className="sig-table-wrap">
                   <table className="sig-table">
                     <thead>
-                      <tr><th>Category</th><th className="num">Trades</th><th className="num">Win Rate</th><th className="num">Profit</th></tr>
+                      <tr><th>Market</th><th className="num">Stake</th><th className="num">Price</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
                     </thead>
                     <tbody>
-                      {byCategory.map(c => {
-                        const cwr = c.won + c.lost > 0 ? (c.won / (c.won + c.lost)) * 100 : 0
-                        return (
-                          <tr key={c.category}>
-                            <td>{categoryLabel(c.category)}</td>
-                            <td className="num" data-label="Trades">{c.n}</td>
-                            <td className="num" data-label="Win Rate">{cwr.toFixed(0)}%</td>
-                            <td className="num" data-label="Profit" style={{ color: c.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(c.profit)}</td>
-                          </tr>
-                        )
-                      })}
+                      {(showAllTrades ? positions : positions.slice(0, 10)).map((p, i) => (
+                        <tr key={i}>
+                          <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
+                          <td className="num" data-label="Stake">{fmtFull(p.usd)}</td>
+                          <td className="num" data-label="Price">{Math.round(p.price * 100)}¢</td>
+                          <td data-label="Result" style={{ color: p.resolved_win ? 'var(--green)' : 'var(--red)' }}>{p.resolved_win ? 'Won' : 'Lost'}</td>
+                          <td className="num" data-label="Profit" style={{ color: p.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.profit)}</td>
+                          <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(p.resolved_ts)}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
+                  {positions.length > 10 && (
+                    <button className="sig-load-more" onClick={() => setShowAllTrades(v => !v)}>
+                      {showAllTrades ? 'Show fewer' : `Show all ${positions.length} trades`}
+                    </button>
+                  )}
                 </div>
-              </>
-            )}
+              </div>
 
-            <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>All resolved positions</div>
-            <div className="sig-table-wrap">
-              <table className="sig-table">
-                <thead>
-                  <tr><th>Market</th><th className="num">Stake</th><th className="num">Price</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
-                </thead>
-                <tbody>
-                  {positions.map((p, i) => (
-                    <tr key={i}>
-                      <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                      <td className="num" data-label="Stake">{fmtFull(p.usd)}</td>
-                      <td className="num" data-label="Price">{Math.round(p.price * 100)}¢</td>
-                      <td data-label="Result" style={{ color: p.resolved_win ? 'var(--green)' : 'var(--red)' }}>{p.resolved_win ? 'Won' : 'Lost'}</td>
-                      <td className="num" data-label="Profit" style={{ color: p.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.profit)}</td>
-                      <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(p.resolved_ts)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="search-dashboard-side">
+                <HighlightsRow items={positions} />
+                <CategoryBreakdownSection categoryBreakdown={byCategory} />
+                <div>
+                  <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Similar top traders</div>
+                  <SimilarTradersTable
+                    similarTraders={similarTraders} linkFor={w => dashboardPath(`/trader/${w}`)}
+                    trackedWallets={trackedWallets} busyWallet={busyWallet} onTrack={trackWallet} onUntrack={untrackWallet}
+                    loggedIn={true}
+                  />
+                </div>
+              </div>
             </div>
           </>
         )}
@@ -274,7 +424,7 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
 
             {!liveLoading && (livePositions.length > 0 || liveClosed.length > 0) && (
               <>
-                <div className="sig-stats-row">
+                <div className="sig-stats-row" style={{ marginBottom: 24 }}>
                   <div className="sig-stat-cell">
                     <div className="sig-stat-cell-label">Realized P&L</div>
                     <div className={`sig-stat-cell-val ${liveRealizedPnl >= 0 ? 'g' : 'r'}`}>{fmtSigned(liveRealizedPnl)}</div>
@@ -293,81 +443,97 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
                   </div>
                 </div>
 
-                {liveCumulative.length > 1 && (
-                  <>
-                    <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Realized P&L over time (live from Polymarket)</div>
-                    <CumulativeChart data={liveCumulative} />
-                  </>
-                )}
-              </>
-            )}
+                <div className="search-dashboard-grid">
+                  <div className="search-dashboard-main">
+                    <CumulativeChartSection data={liveCumulative} label="Realized P&L over time (live from Polymarket)" />
 
-            {!liveLoading && livePositions.length > 0 && (
-              <>
-                <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Current positions (live from Polymarket)</div>
-                <div className="sig-table-wrap" style={{ marginBottom: 24 }}>
-                  <table className="sig-table">
-                    <thead>
-                      <tr><th>Market</th><th className="num">Avg Price</th><th className="num">Current Price</th><th className="num">Unrealized P&L</th></tr>
-                    </thead>
-                    <tbody>
-                      {livePositions.map((p, i) => (
-                        <tr key={i}>
-                          <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                          <td className="num" data-label="Avg Price">{Math.round(p.avgPrice * 100)}¢</td>
-                          <td className="num" data-label="Current Price">{Math.round(p.curPrice * 100)}¢</td>
-                          <td className="num" data-label="Unrealized P&L" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.cashPnl)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
+                    {livePositions.length > 0 && (
+                      <>
+                        <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Current positions (live from Polymarket)</div>
+                        <div className="sig-table-wrap" style={{ marginBottom: 24 }}>
+                          <table className="sig-table">
+                            <thead>
+                              <tr><th>Market</th><th className="num">Avg Price</th><th className="num">Current Price</th><th className="num">Unrealized P&L</th></tr>
+                            </thead>
+                            <tbody>
+                              {livePositions.map((p, i) => (
+                                <tr key={i}>
+                                  <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
+                                  <td className="num" data-label="Avg Price">{Math.round(p.avgPrice * 100)}¢</td>
+                                  <td className="num" data-label="Current Price">{Math.round(p.curPrice * 100)}¢</td>
+                                  <td className="num" data-label="Unrealized P&L" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.cashPnl)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
 
-            {!liveLoading && liveClosed.length > 0 && (
-              <>
-                <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Closed positions (live from Polymarket)</div>
-                <div className="sig-table-wrap" style={{ marginBottom: 24 }}>
-                  <table className="sig-table">
-                    <thead>
-                      <tr><th>Market</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
-                    </thead>
-                    <tbody>
-                      {[...liveClosed].sort((a, b) => b.timestamp - a.timestamp).map((p, i) => (
-                        <tr key={i}>
-                          <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                          <td data-label="Result" style={{ color: p.curPrice >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{p.curPrice >= 0.5 ? 'Won' : 'Lost'}</td>
-                          <td className="num" data-label="Profit" style={{ color: p.realizedPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.realizedPnl)}</td>
-                          <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(p.timestamp * 1000).toISOString())}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
+                    {sortedLiveClosed.length > 0 && (
+                      <>
+                        <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Closed positions (live from Polymarket)</div>
+                        <div className="sig-table-wrap" style={{ marginBottom: 24 }}>
+                          <table className="sig-table">
+                            <thead>
+                              <tr><th>Market</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
+                            </thead>
+                            <tbody>
+                              {(showAllLive ? sortedLiveClosed : sortedLiveClosed.slice(0, 10)).map((p, i) => (
+                                <tr key={i}>
+                                  <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
+                                  <td data-label="Result" style={{ color: p.curPrice >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{p.curPrice >= 0.5 ? 'Won' : 'Lost'}</td>
+                                  <td className="num" data-label="Profit" style={{ color: p.realizedPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.realizedPnl)}</td>
+                                  <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(p.timestamp * 1000).toISOString())}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {sortedLiveClosed.length > 10 && (
+                            <button className="sig-load-more" onClick={() => setShowAllLive(v => !v)}>
+                              {showAllLive ? 'Show fewer' : `Show all ${sortedLiveClosed.length} trades`}
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
 
-            {!liveLoading && liveTrades.length > 0 && (
-              <>
-                <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Recent trades (live from Polymarket)</div>
-                <div className="sig-table-wrap">
-                  <table className="sig-table">
-                    <thead>
-                      <tr><th>Market</th><th>Side</th><th className="num">Size</th><th className="num">Price</th><th className="num">When</th></tr>
-                    </thead>
-                    <tbody>
-                      {liveTrades.map((t, i) => (
-                        <tr key={i}>
-                          <td>{t.title} <span style={{ color: 'var(--text-dim)' }}>— {t.outcome}</span></td>
-                          <td data-label="Side" style={{ color: t.side === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.side}</td>
-                          <td className="num" data-label="Size">{t.size.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                          <td className="num" data-label="Price">{Math.round(t.price * 100)}¢</td>
-                          <td className="num" data-label="When" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(t.timestamp * 1000).toISOString())}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                    {liveTrades.length > 0 && (
+                      <>
+                        <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Recent trades (live from Polymarket)</div>
+                        <div className="sig-table-wrap">
+                          <table className="sig-table">
+                            <thead>
+                              <tr><th>Market</th><th>Side</th><th className="num">Size</th><th className="num">Price</th><th className="num">When</th></tr>
+                            </thead>
+                            <tbody>
+                              {liveTrades.map((t, i) => (
+                                <tr key={i}>
+                                  <td>{t.title} <span style={{ color: 'var(--text-dim)' }}>— {t.outcome}</span></td>
+                                  <td data-label="Side" style={{ color: t.side === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.side}</td>
+                                  <td className="num" data-label="Size">{t.size.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                                  <td className="num" data-label="Price">{Math.round(t.price * 100)}¢</td>
+                                  <td className="num" data-label="When" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(t.timestamp * 1000).toISOString())}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="search-dashboard-side">
+                    <HighlightsRow items={sortedLiveClosed.map(p => ({ title: p.title, outcome: p.outcome, profit: p.realizedPnl }))} />
+                    <div>
+                      <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Similar top traders</div>
+                      <SimilarTradersTable
+                        similarTraders={similarTraders} linkFor={w => dashboardPath(`/trader/${w}`)}
+                        trackedWallets={trackedWallets} busyWallet={busyWallet} onTrack={trackWallet} onUntrack={untrackWallet}
+                        loggedIn={true}
+                      />
+                    </div>
+                  </div>
                 </div>
               </>
             )}
