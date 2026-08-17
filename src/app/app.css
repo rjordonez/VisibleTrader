@@ -1087,7 +1087,7 @@
    full-width above this, same as a platform's ticker/summary bar. */
 .search-dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 24px;
   align-items: start;
 }
@@ -1095,9 +1095,15 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-width: 0;
 }
 .search-dashboard-side .sig-stats-row { margin-bottom: 0 !important; }
 .search-dashboard-side .sig-table-wrap { margin-bottom: 0 !important; }
+/* The sidebar is too narrow for the full-size table paddings/columns used
+   in the wide main column — tighten both so numeric columns (net P&L etc.)
+   fit without needing horizontal scroll. */
+.search-dashboard-side .sig-table th,
+.search-dashboard-side .sig-table td { padding: 8px 10px; font-size: 12px; }
 @media (max-width: 900px) {
   .search-dashboard-grid { grid-template-columns: 1fr; }
 }

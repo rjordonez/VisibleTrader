@@ -5,6 +5,15 @@ import { traderLabel, profileUrl, categoryLabel, fmtSigned, fmtFull, timeAgo } f
 import { appUrl, marketingUrl } from './lib/domains'
 import { CumulativeChart } from './app/PriceChart'
 
+// The sidebar columns (see .search-dashboard-side) are too narrow for
+// fmtSigned's full "+$381,743" — this keeps dollar columns readable
+// without horizontal scroll in a 360px column.
+function fmtAbbrevSigned(n: number) {
+  const sign = n >= 0 ? '+' : '-'
+  const abs = Math.abs(n)
+  return abs >= 1000 ? `${sign}$${(abs / 1000).toFixed(abs % 1000 === 0 ? 0 : 1)}k` : `${sign}$${Math.round(abs)}`
+}
+
 // Public page (rendered outside ProtectedRoute — see App.tsx) at
 // app.visibletrader.com/search, reachable while logged out. Deliberately
 // its own visual design, not a copy of the authenticated LookupPage.tsx
@@ -70,7 +79,7 @@ function SimilarTradersSection({ entitled, similarTraders, signupHref }: {
                   <tr key={t.wallet}>
                     <td><a href={appUrl(`/search?wallet=${t.wallet}`)}>{traderLabel(t.wallet, t.walletName)}</a></td>
                     <td className="num">{t.overlap}</td>
-                    <td className="num" style={{ color: t.netProfit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(t.netProfit)}</td>
+                    <td className="num" style={{ color: t.netProfit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtAbbrevSigned(t.netProfit)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -156,7 +165,7 @@ function CategoryBreakdownSection({ categoryBreakdown }: { categoryBreakdown: Ca
                 <td>{categoryLabel(c.category)}</td>
                 <td className="num">{c.n}</td>
                 <td className="num">{(c.won + c.lost > 0 ? (c.won / (c.won + c.lost)) * 100 : 0).toFixed(1)}%</td>
-                <td className="num" style={{ color: c.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(c.profit)}</td>
+                <td className="num" style={{ color: c.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtAbbrevSigned(c.profit)}</td>
               </tr>
             ))}
           </tbody>
