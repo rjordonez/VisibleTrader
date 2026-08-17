@@ -260,9 +260,16 @@ export default function SearchPage() {
       {!error && walletParam && !loading && result && (
         <div className="search-results">
           <div className="search-trader-header">
-            <div className="search-trader-name">
-              {traderLabel(result.wallet, result.walletName)}
-              <a href={profileUrl(result.wallet)!} target="_blank" rel="noopener noreferrer">View on Polymarket ↗</a>
+            <div className="search-trader-identity">
+              <div className="search-trader-avatar">
+                {(result.walletName || result.wallet.slice(2)).slice(0, 2).toUpperCase()}
+              </div>
+              <div className="search-trader-name">
+                {traderLabel(result.wallet, result.walletName)}
+                <a href={profileUrl(result.wallet)!} target="_blank" rel="noopener noreferrer" className="search-trader-link-btn">
+                  View on Polymarket ↗
+                </a>
+              </div>
             </div>
             {result.headline?.rank != null && (
               <span className="search-trader-rank">Top-{result.headline.rank.toLocaleString()} by realized P&L</span>
@@ -359,9 +366,7 @@ export default function SearchPage() {
           {/* ── Untracked wallet: live public Polymarket data, never gated ── */}
           {!result.tracked && (
             <>
-              <div className="sig-empty" style={{ marginBottom: 20 }}>
-                Not in our tracked history yet — showing live data straight from Polymarket instead.
-              </div>
+              <div className="search-source-badge">Not in our tracked history — showing live data from Polymarket</div>
               {(result.livePositions?.length ?? 0) === 0 && (result.liveClosed?.length ?? 0) === 0 && (
                 <div className="sig-empty">Nothing found for this wallet on Polymarket either.</div>
               )}

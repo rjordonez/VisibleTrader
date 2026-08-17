@@ -1118,15 +1118,6 @@
   letter-spacing: -0.01em;
 }
 
-.search-trader-name a {
-  color: var(--text-dim);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  text-decoration: none;
-  margin-left: 10px;
-}
-.search-trader-name a:hover { color: var(--text); }
-
 .search-trader-rank {
   font-size: 0.75rem;
   font-weight: 700;
@@ -1136,6 +1127,30 @@
   padding: 4px 10px;
   white-space: nowrap;
 }
+
+.search-trader-identity { display: flex; align-items: center; gap: 12px; }
+.search-trader-avatar {
+  width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; color: #fff; letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--blue), #7c3aed);
+}
+.search-trader-link-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.75rem; font-weight: 600; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 100px;
+  padding: 5px 12px; text-decoration: none; margin-left: 10px;
+  transition: border-color 0.12s, color 0.12s;
+}
+.search-trader-link-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.24); }
+
+.search-source-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 0.75rem; font-weight: 600; color: var(--text-dim);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 100px; padding: 6px 14px; margin-bottom: 20px;
+}
+.search-source-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
 
 /* Blur-gate — same real-blurred-content + frosted-overlay mechanism as
    ProfitCard.tsx on the landing page, adapted to app.css's dark theme
