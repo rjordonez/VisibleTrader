@@ -13,6 +13,18 @@ const reviews = [
 const row1 = [...reviews, ...reviews]
 const row2 = [...reviews.slice(4), ...reviews.slice(0, 4), ...reviews.slice(4), ...reviews.slice(0, 4)]
 
+// Real payout screenshots from VisibleTrader users — not all on Polymarket
+// (some run the same signals on other markets/sportsbooks too). Cycled
+// across cards by index rather than tied to any specific one — there's no
+// real connection between a given screenshot and a given signal example,
+// they're just proof, laid over the corner of each card.
+const proofShots = [
+  '/proof-win-1.jpeg',
+  '/proof-win-2.jpeg',
+  '/proof-win-3.jpeg',
+  '/proof-win-4.jpeg',
+]
+
 export default function Testimonials() {
   return (
     <section className="section testimonials">
@@ -28,6 +40,7 @@ export default function Testimonials() {
         <div className="marquee-track">
           {row1.map((r, i) => (
             <div key={i} className="testimonial-card">
+              <img src={proofShots[i % proofShots.length]} alt="" className="testimonial-proof-corner" aria-hidden="true" />
               <p className="testimonial-text">"{r.text}"</p>
               <div className="testimonial-author">
                 <div className="testimonial-avatar">{r.init}</div>
@@ -44,6 +57,7 @@ export default function Testimonials() {
         <div className="marquee-track reverse">
           {row2.map((r, i) => (
             <div key={i} className="testimonial-card">
+              <img src={proofShots[i % proofShots.length]} alt="" className="testimonial-proof-corner" aria-hidden="true" />
               <p className="testimonial-text">"{r.text}"</p>
               <div className="testimonial-author">
                 <div className="testimonial-avatar">{r.init}</div>
