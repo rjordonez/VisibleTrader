@@ -2333,30 +2333,12 @@
 }
 
 .testimonial-card {
-  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.25rem 1.5rem;
   width: 300px;
   flex-shrink: 0;
-}
-
-/* Real payout screenshot, tucked into the card's top-right corner as
-   proof — small enough to stay out of the way of the actual signal-example
-   copy, slightly rotated so it reads as a photo pinned to the card rather
-   than another rigid UI element. */
-.testimonial-proof-corner {
-  position: absolute;
-  top: -10px;
-  right: -10px;
-  width: 56px;
-  height: 56px;
-  object-fit: cover;
-  border-radius: 8px;
-  border: 2px solid var(--bg);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
-  transform: rotate(6deg);
 }
 
 .testimonial-text {
