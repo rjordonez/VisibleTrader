@@ -121,8 +121,6 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
     setTimeout(() => void finish(answers), 450)
   }
 
-  const skip = () => void finish(answers)
-
   const current = questions[step]
   const slide = !isQuestion ? slides[step - questions.length] : null
 
@@ -164,10 +162,6 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
             </button>
           </>
         )}
-
-        <button className="onboarding-skip" disabled={saving} onClick={skip}>
-          Skip for now
-        </button>
       </div>
     </div>
   )

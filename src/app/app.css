@@ -890,20 +890,6 @@
 .onboarding-option:hover:not(:disabled) { background: var(--surface-2); border-color: rgba(255,255,255,0.16); }
 .onboarding-option:disabled { opacity: 0.6; cursor: default; }
 
-.onboarding-skip {
-  display: block;
-  margin: 20px auto 0;
-  background: none;
-  border: none;
-  color: var(--text-faint);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.onboarding-skip:hover:not(:disabled) { color: var(--text-dim); }
-.onboarding-skip:disabled { opacity: 0.6; cursor: default; }
-
 /* ── Onboarding value-prop slides (after the 3 questions) ── */
 .onboarding-slide-title { margin-top: 20px; }
 

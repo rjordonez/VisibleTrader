@@ -32,6 +32,14 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
 
   useEffect(() => {
     if (status !== 'authed') return
+    // Fire-and-forget — capture-country is idempotent (no-ops once a user
+    // already has a country recorded), so this can run on every authed
+    // page load without its own "have I already done this" tracking.
+    void supabase.functions.invoke('capture-country')
+  }, [status])
+
+  useEffect(() => {
+    if (status !== 'authed') return
     let cancelled = false
     // Landing here straight off a successful Stripe checkout, the webhook
     // that actually writes the subscriptions row can still be a few
