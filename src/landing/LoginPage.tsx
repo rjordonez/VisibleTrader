@@ -2,6 +2,7 @@ import './landing.css'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import posthog from '../lib/posthog'
 import OAuthButtons from './components/OAuthButtons'
 
 export default function LoginPage() {
@@ -21,6 +22,7 @@ export default function LoginPage() {
       setError(signInError.message)
       return
     }
+    posthog.capture('login_completed', { method: 'password' })
     navigate('/')
   }
 

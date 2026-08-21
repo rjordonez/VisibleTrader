@@ -2,6 +2,7 @@ import './landing.css'
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import posthog from '../lib/posthog'
 import OAuthButtons from './components/OAuthButtons'
 
 export default function SignupPage() {
@@ -40,9 +41,11 @@ export default function SignupPage() {
     // If email confirmation is on (Supabase default), there's no session yet,
     // so tell the user to check their inbox instead of silently doing nothing.
     if (!data.session) {
+      posthog.capture('signup_completed', { method: 'password', email_confirmation_required: true })
       setConfirmSent(true)
       return
     }
+    posthog.capture('signup_completed', { method: 'password', email_confirmation_required: false })
     if (next.startsWith('http')) setRedirectUrl(next)
     else navigate(next)
   }

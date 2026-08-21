@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
+import posthog from './lib/posthog'
 
 // Shown by ProtectedRoute for a signed-in user who hasn't been through
 // this yet (user_metadata.onboarding_completed unset) — before the
@@ -93,9 +94,25 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
   const totalSteps = questions.length + slides.length
   const isQuestion = step < questions.length
 
+  useEffect(() => {
+    // Only on mount — the per-step view is tracked by the effect below,
+    // this just marks that the flow was entered at all (funnel top).
+    posthog.capture('onboarding_started')
+  }, [])
+
+  useEffect(() => {
+    posthog.capture('onboarding_step_viewed', {
+      step: step + 1,
+      total_steps: questions.length + slides.length,
+      step_type: step < questions.length ? 'question' : 'slide',
+      step_key: step < questions.length ? questions[step].key : slides[step - questions.length].title,
+    })
+  }, [step])
+
   const finish = async (finalAnswers: Record<string, string>) => {
     setSaving(true)
     await supabase.auth.updateUser({ data: { ...finalAnswers, onboarding_completed: true } })
+    posthog.capture('onboarding_completed', finalAnswers)
     setSaving(false)
     onComplete()
   }
@@ -103,6 +120,7 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
   const choose = (option: string) => {
     const next = { ...answers, [questions[step].key]: option }
     setAnswers(next)
+    posthog.capture('onboarding_question_answered', { key: questions[step].key, answer: option, step: step + 1 })
     setCompletedSteps(step + 1)
     setStep(step + 1)
   }

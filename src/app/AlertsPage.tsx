@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import posthog from '../lib/posthog'
 import type { Opportunity, TickerTrade } from './types'
 import { onTabVisible, PAGE_SIZE, traderLabel, fmtFull, timeAgo, WATCHED_WALLETS_KEY } from './helpers'
 
@@ -96,17 +97,24 @@ function AlertsPage() {
 
   const requestPermission = () => {
     if (!('Notification' in window)) return
-    Notification.requestPermission().then(p => setPermission(p))
+    Notification.requestPermission().then(p => {
+      setPermission(p)
+      posthog.capture('notification_permission_updated', { permission: p })
+    })
   }
 
   const addWallet = () => {
     const addr = walletInput.trim()
     if (!addr) return
     setWatchedWallets(w => (w.some(x => x.wallet.toLowerCase() === addr.toLowerCase()) ? w : [...w, { wallet: addr }]))
+    posthog.capture('alert_watchlist_wallet_added')
     setWalletInput('')
   }
 
-  const removeWallet = (wallet: string) => setWatchedWallets(w => w.filter(x => x.wallet !== wallet))
+  const removeWallet = (wallet: string) => {
+    setWatchedWallets(w => w.filter(x => x.wallet !== wallet))
+    posthog.capture('alert_watchlist_wallet_removed')
+  }
 
   return (
     <div className="sig-page">

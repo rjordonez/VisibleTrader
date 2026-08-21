@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
+import posthog from './lib/posthog'
 import PricingPage from './landing/PricingPage'
 
 // Shown by ProtectedRoute for a signed-in user with no active subscription
@@ -15,6 +16,7 @@ export default function PaywallPage() {
   const navigate = useNavigate()
 
   const signOut = async () => {
+    posthog.capture('signed_out', { location: 'paywall' })
     await supabase.auth.signOut()
     navigate('/login')
   }

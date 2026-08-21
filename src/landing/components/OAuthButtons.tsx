@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import posthog from '../../lib/posthog'
 import { oauthRedirectUrl } from '../../lib/domains'
 
 // Shared by LoginPage and SignupPage — same providers, same full-page
@@ -16,6 +17,7 @@ export default function OAuthButtons({ onError }: { onError: (message: string) =
     const { error } = await supabase.auth.signInWithOAuth({
       provider: p, options: { redirectTo: oauthRedirectUrl() },
     })
+    if (!error) posthog.capture('oauth_signin_started', { provider: p })
     if (error) {
       onError(error.message)
       setProvider(null)

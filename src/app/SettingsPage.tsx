@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import posthog from '../lib/posthog'
 import { SkelBlock } from './Skeleton'
 
 /* ── Settings ── */
@@ -73,6 +74,7 @@ function SettingsPage() {
           setPortalError('Could not open the billing portal — please try again in a moment.')
           return
         }
+        posthog.capture('subscription_portal_requested')
         setPortalUrl(data.url)
       })
   }
@@ -91,6 +93,7 @@ function SettingsPage() {
         // change and caches it for the whole mounted app tree, so it won't
         // notice this cancellation on its own — force a fresh mount so it
         // re-runs that check and shows the in-app paywall.
+        posthog.capture('trial_canceled')
         setLeaveUrl('/')
       })
   }
@@ -133,6 +136,12 @@ function SettingsPage() {
         if (error) throw error
         setSettings(data as AppSettings)
         setSaveState('saved')
+        posthog.capture('settings_saved', {
+          roster_size: data.roster_size,
+          tier_count: data.tiers.length,
+          ticker_min_usd: data.ticker_min_usd,
+          scalp_window_minutes: data.scalp_window_minutes,
+        })
         setTimeout(() => setSaveState('idle'), 2500)
       })
       .catch(() => setSaveState('idle'))

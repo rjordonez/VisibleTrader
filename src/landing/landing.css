@@ -2333,12 +2333,33 @@
 }
 
 .testimonial-card {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.25rem 1.5rem;
   width: 300px;
   flex-shrink: 0;
+}
+
+/* NOT YET FINAL — still tweaking sizing/placement, do not ship as-is.
+   Real payout screenshot, tucked into the card's top-right corner as
+   proof, slightly rotated so it reads as a photo pinned to the card rather
+   than another rigid UI element. float (not position:absolute) so the
+   testimonial text wraps around it instead of running underneath it, and
+   stays fully inside the card's own box rather than poking past the edge
+   — the marquee's wrapping `overflow: hidden` (needed to hide the
+   infinite-scroll seam) clips anything that extends past a card's bounds. */
+.testimonial-proof-corner {
+  float: right;
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid var(--bg);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  transform: rotate(5deg);
+  margin: -4px -4px 8px 10px;
 }
 
 .testimonial-text {

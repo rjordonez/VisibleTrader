@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import posthog from '../lib/posthog'
 import { dashboardPath } from '../lib/domains'
 import { traderLabel, profileUrl, fmtFull } from './helpers'
 import { SkelTableRows } from './Skeleton'
@@ -66,6 +67,7 @@ function LookupPage() {
         const rows = (data ?? []) as DirectoryResult[]
         setResults(rows)
         setLoading(false)
+        posthog.capture('wallet_search_completed', { result_count: rows.length })
         if (rows.length > 0) loadStatus(rows.map(r => r.wallet))
       })
       .catch((e: Error) => {
@@ -85,6 +87,7 @@ function LookupPage() {
       .then(({ error: err }) => {
         if (err) throw err
         setStatus(s => ({ ...s, [wallet]: { ...s[wallet], manuallyTracked: true } }))
+        posthog.capture('wallet_tracking_added')
       })
       .catch(() => {})
       .finally(() => setBusyWallet(null))
@@ -96,6 +99,7 @@ function LookupPage() {
       .then(({ error: err }) => {
         if (err) throw err
         setStatus(s => ({ ...s, [wallet]: { ...s[wallet], manuallyTracked: false } }))
+        posthog.capture('wallet_tracking_removed')
       })
       .catch(() => {})
       .finally(() => setBusyWallet(null))

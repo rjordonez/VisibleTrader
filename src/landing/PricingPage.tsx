@@ -1,6 +1,7 @@
 import './landing.css'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import posthog from '../lib/posthog'
 import { appUrl, marketingUrl } from '../lib/domains'
 
 // const platformLogos = [
@@ -103,6 +104,7 @@ export default function PricingPage() {
       setCheckoutError('Could not start checkout — please try again in a moment.')
       return
     }
+    posthog.capture('checkout_started', { billing_interval: yearly ? 'yearly' : 'monthly' })
     setCheckoutUrl(data.url)
   }
 
