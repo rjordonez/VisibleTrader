@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { supabase, isProdDb } from '../lib/supabase'
-import { dashboardPath } from '../lib/domains'
+import { dashboardPath, marketingUrl } from '../lib/domains'
+import { useSubscriptionGate } from '../lib/subscriptionGate'
 import type { User } from '@supabase/supabase-js'
 import SignalsDemo from './SignalsDemo'
 import HomePage from './HomePage'
@@ -48,6 +49,7 @@ function TraderDetailRoute() {
 export default function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { locked } = useSubscriptionGate()
   const [user, setUser] = useState<User | null>(null)
   const [category, setCategory] = useState('all')
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -178,18 +180,26 @@ export default function AppShell() {
         )}
       </header>
 
-      <main className="app-main">
-        <Routes>
-          <Route index element={<HomePage onOpenSignals={() => navigate(dashboardPath('/signals'))} category={category} onCategoryChange={setCategory} />} />
-          <Route path="signals" element={<SignalsDemo category={category} />} />
-          <Route path="profits" element={<ProfitsPage />} />
-          <Route path="leaderboard" element={<LeaderboardPage />} />
-          <Route path="alerts" element={<AlertsPage />} />
-          <Route path="lookup" element={<LookupPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="trader/:wallet" element={<TraderDetailRoute />} />
-          <Route path="*" element={<Navigate to={dashboardPath('/')} replace />} />
-        </Routes>
+      <main className={`app-main ${locked ? 'app-main-locked' : ''}`}>
+        <div className={locked ? 'search-locked-bg' : undefined}>
+          <Routes>
+            <Route index element={<HomePage onOpenSignals={() => navigate(dashboardPath('/signals'))} category={category} onCategoryChange={setCategory} />} />
+            <Route path="signals" element={<SignalsDemo category={category} />} />
+            <Route path="profits" element={<ProfitsPage />} />
+            <Route path="leaderboard" element={<LeaderboardPage />} />
+            <Route path="alerts" element={<AlertsPage />} />
+            <Route path="lookup" element={<LookupPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="trader/:wallet" element={<TraderDetailRoute />} />
+            <Route path="*" element={<Navigate to={dashboardPath('/')} replace />} />
+          </Routes>
+        </div>
+        {locked && (
+          <div className="search-glass-overlay">
+            <p className="search-glass-title">Subscribe to unlock live signals, profits, and trader data</p>
+            <a href={marketingUrl('/pricing')} className="search-glass-btn">See plans</a>
+          </div>
+        )}
       </main>
     </div>
   )

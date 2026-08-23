@@ -4,10 +4,10 @@ import posthog from './lib/posthog'
 
 // Shown by ProtectedRoute for a signed-in user who hasn't been through
 // this yet (user_metadata.onboarding_completed unset) — before the
-// paywall check, so it applies regardless of subscription status. Lives
-// next to ProtectedRoute/PaywallPage, same reasoning as those: a gate
-// page ProtectedRoute renders in place of the real app, not a page of
-// the app itself (which lives under src/app instead).
+// subscription check, so it applies regardless of subscription status.
+// Lives next to ProtectedRoute, same reasoning: a gate page ProtectedRoute
+// renders in place of the real app, not a page of the app itself (which
+// lives under src/app instead).
 //
 // Same 3 questions as the marketing site's /estimate quiz (EstimatePage.tsx)
 // — duplicated rather than imported since that page's quiz-progression

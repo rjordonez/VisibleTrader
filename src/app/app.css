@@ -262,6 +262,21 @@
   padding: clamp(1.25rem, 4vw, 2rem) clamp(1rem, 4vw, 2.5rem);
 }
 
+/* Full-page variant of the .search-locked blur-gate (see the .search-locked
+   rules below) — used to give a signed-in-but-unsubscribed visitor a
+   blurred, real look at whatever tab they're on instead of a separate
+   blocking paywall page. .search-locked-bg/.search-glass-overlay are reused
+   unmodified; this just gives .app-main a positioned, clipped container to
+   anchor the overlay against, since .search-locked itself is sized for a
+   single card, not a full page. */
+.app-main-locked {
+  position: relative;
+  overflow: hidden;
+}
+.app-main-locked .search-locked-bg {
+  padding: 0;
+}
+
 /* ── Section Header ── */
 .app-section-header {
   display: flex;

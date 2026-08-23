@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
-import PaywallPage from './PaywallPage'
+import { SubscriptionGateContext } from './lib/subscriptionGate'
 import OnboardingPage from './OnboardingPage'
 
 // Any status Stripe reports that should still count as "let them in" —
@@ -92,11 +92,13 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     )
   }
 
-  if (!subActive) {
-    // Stay on the app domain rather than bouncing out to marketing — show
-    // the plans (and a way to sign out) right here instead.
-    return <PaywallPage />
-  }
-
-  return <>{children}</>
+  // Renders the real app either way — an inactive subscription no longer
+  // bounces to a separate paywall page, it flows through SubscriptionGateContext
+  // so AppShell can blur its content and show a buy-to-see overlay instead,
+  // giving a locked-out visitor a taste of the real thing rather than nothing.
+  return (
+    <SubscriptionGateContext.Provider value={{ locked: !subActive }}>
+      {children}
+    </SubscriptionGateContext.Provider>
+  )
 }

@@ -11,9 +11,9 @@ import { appUrl, marketingUrl } from '../lib/domains'
 const plans = [
   {
     name: 'Pro',
-    dayMonthly: '1.63',
-    dayYearly: '1.30',
-    fullMonthly: '1.63',
+    dayMonthly: '1.00',
+    dayYearly: '0.80',
+    fullMonthly: '1.00',
     desc: 'Everything you need to follow real trading activity, live.',
     features: [
       'Unlimited Live Ticker',
@@ -52,7 +52,7 @@ const plans = [
 ]
 
 export default function PricingPage() {
-  const [yearly, setYearly] = useState(true)
+  const [yearly, setYearly] = useState(false)
   const [checkingOut, setCheckingOut] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
