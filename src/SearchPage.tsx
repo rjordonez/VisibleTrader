@@ -224,7 +224,7 @@ export default function SearchPage() {
   return (
     <div className="sig-page" style={{ padding: 0 }}>
       <div className="search-header">
-        <a href={marketingUrl('/')} className="search-logo">VisibleTrader</a>
+        <a href={marketingUrl('/')} className="search-logo">VisibleTrader.com</a>
         {/* Once a search has been made, the big hero form collapses and
             moves in here instead — keeps the search bar reachable without
             permanently reserving a huge, mostly-empty hero above results. */}

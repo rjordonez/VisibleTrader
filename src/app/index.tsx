@@ -94,7 +94,7 @@ export default function AppShell() {
     <div className="app-shell">
       <header className="app-header">
         <div className="app-header-inner">
-          <div className="app-header-logo">VisibleTrader</div>
+          <div className="app-header-logo">VisibleTrader.com</div>
           <nav className="app-header-nav">
             {navItems.map(({ id, label, path }) => {
               const target = dashboardPath(path)

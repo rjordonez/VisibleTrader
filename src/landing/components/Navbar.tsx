@@ -108,7 +108,7 @@ export default function Navbar() {
     <>
       <nav className="nav">
         <div className="nav-left">
-          <Link to="/" className="nav-logo">VisibleTrader</Link>
+          <Link to="/" className="nav-logo">VisibleTrader.com</Link>
 
           <ul className="nav-links">
             <li className="nav-dropdown-wrap">
@@ -147,7 +147,7 @@ export default function Navbar() {
         {menu === 'main' && (
           <>
             <div className="nav-drawer-header">
-              <Link to="/" className="nav-logo" onClick={close}>VisibleTrader</Link>
+              <Link to="/" className="nav-logo" onClick={close}>VisibleTrader.com</Link>
               <button className="nav-drawer-close" onClick={close}>✕</button>
             </div>
             <div className="nav-drawer-body">
