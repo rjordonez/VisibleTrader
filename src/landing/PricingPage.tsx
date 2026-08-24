@@ -11,8 +11,9 @@ import { appUrl, marketingUrl } from '../lib/domains'
 const plans = [
   {
     name: 'Pro',
-    dayMonthly: '1.00',
-    dayWeekly: '5.71',
+    introPrice: '1' as string | undefined,
+    recurringPrice: '40' as string | undefined,
+    dayPrice: undefined as string | undefined,
     desc: 'Everything you need to follow real trading activity, live.',
     features: [
       'Unlimited Live Ticker',
@@ -23,16 +24,16 @@ const plans = [
       'Configurable roster size & conviction tiers',
       '24/7 live chat support',
     ],
-    cta: 'Start 7-day free trial',
+    cta: 'Start for $1',
     href: appUrl('/signup'),
-    priceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY as string | undefined,
-    priceIdWeekly: import.meta.env.VITE_STRIPE_PRICE_PRO_WEEKLY as string | undefined,
+    priceId: import.meta.env.VITE_STRIPE_PRICE_PRO_WEEKLY as string | undefined,
     highlighted: true,
   },
   {
     name: 'Elite',
-    dayMonthly: '4.97',
-    dayWeekly: '3.97',
+    introPrice: undefined as string | undefined,
+    recurringPrice: undefined as string | undefined,
+    dayPrice: '4.97' as string | undefined,
     desc: 'For serious traders who want the fastest, most granular access.',
     features: [
       'Everything in Pro',
@@ -43,14 +44,12 @@ const plans = [
     ],
     cta: 'Contact us',
     href: 'mailto:hello@visibletrader.io',
-    priceIdMonthly: undefined as string | undefined,
-    priceIdWeekly: undefined as string | undefined,
+    priceId: undefined as string | undefined,
     highlighted: false,
   },
 ]
 
 export default function PricingPage() {
-  const [weekly, setWeekly] = useState(false)
   const [checkingOut, setCheckingOut] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
@@ -102,7 +101,7 @@ export default function PricingPage() {
       setCheckoutError('Could not start checkout — please try again in a moment.')
       return
     }
-    posthog.capture('checkout_started', { billing_interval: weekly ? 'weekly' : 'monthly' })
+    posthog.capture('checkout_started', { billing_interval: 'weekly' })
     setCheckoutUrl(data.url)
   }
 
@@ -111,17 +110,6 @@ export default function PricingPage() {
       <div className="pricing-header">
         <h1 className="pricing-title">Simple, transparent pricing</h1>
         <p className="pricing-sub">Pick the plan that fits how deep you want to go.</p>
-
-        <div className="pricing-toggle">
-          <button
-            className={`pricing-toggle-btn ${!weekly ? 'active' : ''}`}
-            onClick={() => setWeekly(false)}
-          >Monthly</button>
-          <button
-            className={`pricing-toggle-btn ${weekly ? 'active' : ''}`}
-            onClick={() => setWeekly(true)}
-          >Weekly</button>
-        </div>
       </div>
 
       <div className="pricing-grid">
@@ -130,31 +118,31 @@ export default function PricingPage() {
             {plan.highlighted && <div className="pricing-popular">Most popular</div>}
             <div className="pricing-plan-name">{plan.name}</div>
 
-            {plan.dayMonthly ? (
+            {plan.introPrice ? (
               <div className="pricing-price-block">
                 <div className="pricing-price-row">
-                  <span className="pricing-day-price">
-                    ${weekly ? plan.dayWeekly : plan.dayMonthly}
-                  </span>
+                  <span className="pricing-day-price">${plan.introPrice}</span>
                 </div>
                 <div className="pricing-day-label">
-                  per day, billed {weekly ? 'weekly' : 'monthly'}
+                  first week, then ${plan.recurringPrice}/week
                 </div>
               </div>
             ) : (
               <div className="pricing-price-block">
-                <div className="pricing-day-price">$0</div>
-                <div className="pricing-day-label">free forever</div>
+                <div className="pricing-price-row">
+                  <span className="pricing-day-price">${plan.dayPrice}</span>
+                </div>
+                <div className="pricing-day-label">per day, billed monthly</div>
               </div>
             )}
 
             <p className="pricing-desc">{plan.desc}</p>
 
-            {plan.priceIdMonthly && plan.priceIdWeekly ? (
+            {plan.priceId ? (
               <button
                 type="button"
                 className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}
-                onClick={() => startCheckout(weekly ? plan.priceIdWeekly! : plan.priceIdMonthly!)}
+                onClick={() => startCheckout(plan.priceId!)}
                 disabled={checkingOut}
               >
                 {checkingOut ? 'Starting checkout…' : plan.cta}
@@ -186,7 +174,7 @@ export default function PricingPage() {
         ))}
       </div>
 
-      <p className="pricing-fine">No contracts. Cancel anytime. 7-day free trial on Pro.</p>
+      <p className="pricing-fine">No contracts. Cancel anytime.</p>
     </div>
   )
 }

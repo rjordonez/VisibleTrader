@@ -14,7 +14,6 @@ const corsHeaders = {
 // amount, and this also blocks someone passing an arbitrary Stripe price ID
 // (e.g. someone else's product) through this endpoint.
 const ALLOWED_PRICE_IDS = new Set([
-  Deno.env.get('STRIPE_PRICE_PRO_MONTHLY'),
   Deno.env.get('STRIPE_PRICE_PRO_WEEKLY'),
   Deno.env.get('STRIPE_PRICE_ELITE_MONTHLY'),
   Deno.env.get('STRIPE_PRICE_ELITE_YEARLY'),
@@ -86,7 +85,6 @@ Deno.serve(async (req) => {
       mode: 'subscription',
       'line_items[0][price]': price_id,
       'line_items[0][quantity]': '1',
-      'subscription_data[trial_period_days]': '7',
       // client_reference_id + metadata both carry the Supabase user id through
       // to the webhook — metadata survives onto the subscription object too,
       // client_reference_id only lives on the checkout session itself.
@@ -97,6 +95,17 @@ Deno.serve(async (req) => {
       success_url: `${appOrigin}/?checkout=success`,
       cancel_url: `${origin}/pricing?checkout=cancelled`,
     })
+    // Pro's only price is billed weekly at $40, with a one-time $39 coupon
+    // (duration: 'once' in Stripe, so it only ever discounts the very first
+    // invoice) bringing that first charge down to $1 — replaces the old
+    // free-trial model with "$1 for week one, $40/week after." Any other
+    // price (e.g. Elite, if it ever gets real self-serve checkout) keeps
+    // the standard 7-day free trial instead.
+    if (price_id === Deno.env.get('STRIPE_PRICE_PRO_WEEKLY')) {
+      params.set('discounts[0][coupon]', Deno.env.get('STRIPE_COUPON_FIRST_WEEK')!)
+    } else {
+      params.set('subscription_data[trial_period_days]', '7')
+    }
 
     const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',

@@ -695,36 +695,6 @@
   margin: 0 0 1.5rem;
 }
 
-.pricing-toggle {
-  display: inline-flex;
-  align-items: center;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 100px;
-  padding: 4px;
-  gap: 2px;
-}
-
-.pricing-toggle-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 1.1rem;
-  border-radius: 100px;
-  border: none;
-  background: transparent;
-  color: var(--text-2);
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s;
-}
-
-.pricing-toggle-btn.active {
-  background: var(--accent);
-  color: #fff;
-}
-
 .pricing-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
