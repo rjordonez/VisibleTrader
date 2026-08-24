@@ -46,13 +46,27 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Supabase's edge runtime sits behind Cloudflare, which always sets
-    // this on the request reaching origin — no third-party geolocation
-    // lookup needed. "XX" is Cloudflare's own "couldn't determine" sentinel
-    // (e.g. some VPNs/proxies); treated the same as missing.
-    const country = req.headers.get('cf-ipcountry')
-    if (!country || country === 'XX') {
-      return new Response(JSON.stringify({ skipped: true, reason: 'no country header' }), {
+    // Supabase's shared function gateway sits behind Cloudflare (cf-ray,
+    // cf-connecting-ip are present) but never sets cf-ipcountry on this
+    // path — that's a per-zone Cloudflare feature Supabase hasn't enabled
+    // here, confirmed by dumping the actual incoming headers. So this
+    // does its own IP lookup instead, using the real client IP Cloudflare
+    // does forward. ip-api.com's free tier needs no key and isn't
+    // Cloudflare-fronted itself (unlike ipapi.co, which JS-challenges
+    // server-to-server requests) — plenty for this volume (idempotent,
+    // so realistically once per new signup, not once per page load).
+    const clientIp = req.headers.get('cf-connecting-ip')
+      || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    if (!clientIp) {
+      return new Response(JSON.stringify({ skipped: true, reason: 'no client ip' }), {
+        headers: { ...corsHeaders, 'content-type': 'application/json' },
+      })
+    }
+    const geoRes = await fetch(`http://ip-api.com/json/${clientIp}?fields=status,countryCode`)
+    const geo = geoRes.ok ? await geoRes.json() : null
+    const country = geo?.status === 'success' ? geo.countryCode : null
+    if (!country) {
+      return new Response(JSON.stringify({ skipped: true, reason: 'geolocation lookup failed' }), {
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
     }
