@@ -98,6 +98,23 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
     // Only on mount — the per-step view is tracked by the effect below,
     // this just marks that the flow was entered at all (funnel top).
     posthog.capture('onboarding_started')
+
+    // signup_completed only ever fires from SignupPage's password path —
+    // an OAuth sign-in/sign-up is the same Supabase call either way, and
+    // it's a full-page redirect out to Google/Apple and back, so no code
+    // of ours runs on the far side of that round trip to fire an
+    // equivalent event there. This page is reached (ProtectedRoute) only
+    // by a user who has never completed onboarding, which for a real
+    // account only happens once — the same "first time we see them"
+    // moment SignupPage's password path already reports — so firing the
+    // OAuth-flavored signup_completed here, gated on provider !== email
+    // to avoid double-counting the password path, closes that gap.
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      const provider = user?.app_metadata?.provider
+      if (provider && provider !== 'email') {
+        posthog.capture('signup_completed', { method: 'oauth', provider })
+      }
+    })
   }, [])
 
   useEffect(() => {
