@@ -31,7 +31,7 @@ async function verifyStripeSignature(payload: string, sigHeader: string | null, 
 
 function planFromPriceId(priceId: string | undefined): string | null {
   if (!priceId) return null
-  if (priceId === Deno.env.get('STRIPE_PRICE_PRO_MONTHLY') || priceId === Deno.env.get('STRIPE_PRICE_PRO_YEARLY')) return 'pro'
+  if (priceId === Deno.env.get('STRIPE_PRICE_PRO_MONTHLY') || priceId === Deno.env.get('STRIPE_PRICE_PRO_WEEKLY')) return 'pro'
   if (priceId === Deno.env.get('STRIPE_PRICE_ELITE_MONTHLY') || priceId === Deno.env.get('STRIPE_PRICE_ELITE_YEARLY')) return 'elite'
   return null
 }

@@ -725,14 +725,6 @@
   color: #fff;
 }
 
-.pricing-toggle-badge {
-  font-size: 0.65rem;
-  font-weight: 700;
-  background: rgba(255,255,255,0.2);
-  padding: 1px 6px;
-  border-radius: 100px;
-}
-
 .pricing-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -804,13 +796,6 @@
   letter-spacing: -0.04em;
   color: var(--text-1);
   line-height: 1;
-}
-
-.pricing-day-original {
-  font-size: 1.1rem;
-  font-weight: 500;
-  color: var(--text-3);
-  text-decoration: line-through;
 }
 
 .pricing-day-label {

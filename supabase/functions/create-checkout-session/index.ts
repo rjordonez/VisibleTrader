@@ -15,7 +15,7 @@ const corsHeaders = {
 // (e.g. someone else's product) through this endpoint.
 const ALLOWED_PRICE_IDS = new Set([
   Deno.env.get('STRIPE_PRICE_PRO_MONTHLY'),
-  Deno.env.get('STRIPE_PRICE_PRO_YEARLY'),
+  Deno.env.get('STRIPE_PRICE_PRO_WEEKLY'),
   Deno.env.get('STRIPE_PRICE_ELITE_MONTHLY'),
   Deno.env.get('STRIPE_PRICE_ELITE_YEARLY'),
 ].filter(Boolean))

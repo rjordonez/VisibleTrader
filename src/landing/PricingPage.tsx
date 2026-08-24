@@ -12,8 +12,7 @@ const plans = [
   {
     name: 'Pro',
     dayMonthly: '1.00',
-    dayYearly: '0.80',
-    fullMonthly: '1.00',
+    dayWeekly: '5.71',
     desc: 'Everything you need to follow real trading activity, live.',
     features: [
       'Unlimited Live Ticker',
@@ -27,14 +26,13 @@ const plans = [
     cta: 'Start 7-day free trial',
     href: appUrl('/signup'),
     priceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY as string | undefined,
-    priceIdYearly: import.meta.env.VITE_STRIPE_PRICE_PRO_YEARLY as string | undefined,
+    priceIdWeekly: import.meta.env.VITE_STRIPE_PRICE_PRO_WEEKLY as string | undefined,
     highlighted: true,
   },
   {
     name: 'Elite',
     dayMonthly: '4.97',
-    dayYearly: '3.97',
-    fullMonthly: '4.97',
+    dayWeekly: '3.97',
     desc: 'For serious traders who want the fastest, most granular access.',
     features: [
       'Everything in Pro',
@@ -46,13 +44,13 @@ const plans = [
     cta: 'Contact us',
     href: 'mailto:hello@visibletrader.io',
     priceIdMonthly: undefined as string | undefined,
-    priceIdYearly: undefined as string | undefined,
+    priceIdWeekly: undefined as string | undefined,
     highlighted: false,
   },
 ]
 
 export default function PricingPage() {
-  const [yearly, setYearly] = useState(false)
+  const [weekly, setWeekly] = useState(false)
   const [checkingOut, setCheckingOut] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
@@ -104,7 +102,7 @@ export default function PricingPage() {
       setCheckoutError('Could not start checkout — please try again in a moment.')
       return
     }
-    posthog.capture('checkout_started', { billing_interval: yearly ? 'yearly' : 'monthly' })
+    posthog.capture('checkout_started', { billing_interval: weekly ? 'weekly' : 'monthly' })
     setCheckoutUrl(data.url)
   }
 
@@ -116,16 +114,13 @@ export default function PricingPage() {
 
         <div className="pricing-toggle">
           <button
-            className={`pricing-toggle-btn ${!yearly ? 'active' : ''}`}
-            onClick={() => setYearly(false)}
+            className={`pricing-toggle-btn ${!weekly ? 'active' : ''}`}
+            onClick={() => setWeekly(false)}
           >Monthly</button>
           <button
-            className={`pricing-toggle-btn ${yearly ? 'active' : ''}`}
-            onClick={() => setYearly(true)}
-          >
-            Yearly
-            <span className="pricing-toggle-badge">Save 20%</span>
-          </button>
+            className={`pricing-toggle-btn ${weekly ? 'active' : ''}`}
+            onClick={() => setWeekly(true)}
+          >Weekly</button>
         </div>
       </div>
 
@@ -139,14 +134,11 @@ export default function PricingPage() {
               <div className="pricing-price-block">
                 <div className="pricing-price-row">
                   <span className="pricing-day-price">
-                    ${yearly ? plan.dayYearly : plan.dayMonthly}
+                    ${weekly ? plan.dayWeekly : plan.dayMonthly}
                   </span>
-                  {yearly && (
-                    <span className="pricing-day-original">${plan.fullMonthly}</span>
-                  )}
                 </div>
                 <div className="pricing-day-label">
-                  per day, billed {yearly ? 'yearly' : 'monthly'}
+                  per day, billed {weekly ? 'weekly' : 'monthly'}
                 </div>
               </div>
             ) : (
@@ -158,11 +150,11 @@ export default function PricingPage() {
 
             <p className="pricing-desc">{plan.desc}</p>
 
-            {plan.priceIdMonthly && plan.priceIdYearly ? (
+            {plan.priceIdMonthly && plan.priceIdWeekly ? (
               <button
                 type="button"
                 className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}
-                onClick={() => startCheckout(yearly ? plan.priceIdYearly! : plan.priceIdMonthly!)}
+                onClick={() => startCheckout(weekly ? plan.priceIdWeekly! : plan.priceIdMonthly!)}
                 disabled={checkingOut}
               >
                 {checkingOut ? 'Starting checkout…' : plan.cta}
