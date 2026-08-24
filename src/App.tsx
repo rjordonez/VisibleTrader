@@ -68,6 +68,13 @@ function AppRoutes() {
       {/* Public — reachable while logged out, so it must sit outside
           ProtectedRoute like the auth pages above, not inside AppShell. */}
       <Route path="/search" element={<SearchPage />} />
+      {/* Same-origin pricing page for signed-in-but-unsubscribed users (the
+          AppShell lock overlay links here) — must stay on the app domain,
+          not the marketing one, so the session Supabase already has in this
+          origin's localStorage is visible to startCheckout's auth check.
+          Sitting outside ProtectedRoute like /search above so it's reachable
+          without a subscription. */}
+      <Route path="/pricing" element={<PricingPage />} />
       {/* Dev-only: mirrors the routes above under /app so the local
           `localhost:5173/app/...` testing convention keeps working —
           dead code in prod, stripped by Vite's import.meta.env.DEV check. */}
@@ -78,6 +85,7 @@ function AppRoutes() {
           <Route path="/app/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/app/reset-password" element={<ResetPasswordPage />} />
           <Route path="/app/search" element={<SearchPage />} />
+          <Route path="/app/pricing" element={<PricingPage />} />
         </>
       )}
       {/* AppShell renders its own nested <Routes> for /signals, /profits,

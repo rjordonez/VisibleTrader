@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { supabase, isProdDb } from '../lib/supabase'
-import { dashboardPath, marketingUrl } from '../lib/domains'
+import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
 import type { User } from '@supabase/supabase-js'
 import SignalsDemo from './SignalsDemo'
@@ -197,7 +197,7 @@ export default function AppShell() {
         {locked && (
           <div className="search-glass-overlay">
             <p className="search-glass-title">Subscribe to unlock live signals, profits, and trader data</p>
-            <a href={marketingUrl('/pricing')} className="search-glass-btn">See plans</a>
+            <Link to={dashboardPath('/pricing')} className="search-glass-btn">See plans</Link>
           </div>
         )}
       </main>
