@@ -51,6 +51,30 @@ export function profileUrl(wallet: string | null) {
   return wallet ? `https://polymarket.com/profile/${wallet}` : null
 }
 
+// Deterministic per-wallet color so the same trader always gets the same
+// avatar instead of a random one flickering between refreshes/re-renders.
+const AVATAR_GRADIENTS = [
+  ['#1e8f0d', '#56ab4a'],
+  ['#2563eb', '#60a5fa'],
+  ['#9333ea', '#c084fc'],
+  ['#ea580c', '#fb923c'],
+  ['#0891b2', '#22d3ee'],
+  ['#dc2626', '#f87171'],
+  ['#ca8a04', '#facc15'],
+  ['#db2777', '#f472b6'],
+]
+export function avatarGradient(wallet: string | null) {
+  if (!wallet) return 'linear-gradient(135deg, #4a5158, #6b7280)'
+  let hash = 0
+  for (let i = 0; i < wallet.length; i++) hash = (hash * 31 + wallet.charCodeAt(i)) | 0
+  const [a, b] = AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length]
+  return `linear-gradient(135deg, ${a}, ${b})`
+}
+
+export function avatarInitial(wallet: string | null, walletName: string | null) {
+  return traderLabel(wallet, walletName)[0]?.toUpperCase() ?? '?'
+}
+
 export function marketUrl(slug: string | null) {
   return slug ? `https://polymarket.com/event/${slug}` : null
 }

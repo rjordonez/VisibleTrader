@@ -4,11 +4,11 @@ import { supabase } from '../lib/supabase'
 import type { Opportunity, TickerTrade, WalletPosition } from './types'
 import {
   onTabVisible, byCategory, opportunityCursor, PAGE_SIZE,
-  categoryIcon, gaugePct, gaugeColor, signalsTag, fmtFull, fmtSigned, isToday,
-  profileUrl, traderLabel, timeAgo, marketUrl,
+  categoryIcon, categoryLabel, gaugePct, gaugeColor, signalsTag, fmtFull, fmtSigned, isToday,
+  profileUrl, traderLabel, timeAgo, marketUrl, avatarGradient, avatarInitial,
 } from './helpers'
 import { SignalModal } from './SignalModal'
-import { SkelCard, SkelListRow } from './Skeleton'
+import { SkelCard, SkelLbRow } from './Skeleton'
 
 function SignalsDemo({ category }: { category: string }) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
@@ -533,163 +533,178 @@ function SignalsDemo({ category }: { category: string }) {
             </div>
           </div>
 
-          <div className="sig-chips">
-            <div
-              className={todayOnly ? 'sig-chip active' : 'sig-chip'}
-              onClick={() => setTodayOnly(t => !t)}
-            >
-              Today only
+          <div className="sig-filters">
+            <div className="sig-filter-group">
+              <div
+                className={todayOnly ? 'sig-chip active' : 'sig-chip'}
+                style={{ alignSelf: 'flex-start' }}
+                onClick={() => setTodayOnly(t => !t)}
+              >
+                Today only
+              </div>
             </div>
-          </div>
 
-          <div style={{ marginTop: 10 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Win rate</span>
-            <div className="sig-chips">
-              {[0, 50, 65, 80].map(v => (
-                <div key={v} className={minWinRate === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinWinRate(v)}>
-                  {v === 0 ? 'Any' : `${v}%+`}
-                </div>
-              ))}
+            <div className="sig-filter-group">
+              <span className="sig-filter-label">Win rate</span>
+              <div className="sig-chips">
+                {[0, 50, 65, 80].map(v => (
+                  <div key={v} className={minWinRate === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinWinRate(v)}>
+                    {v === 0 ? 'Any' : `${v}%+`}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div style={{ marginTop: 6 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Bet vs wallet balance</span>
-            <div className="sig-chips">
-              {[0, 5, 15, 30].map(v => (
-                <div key={v} className={minBetRatio === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinBetRatio(v)}>
-                  {v === 0 ? 'Any' : `${v}%+`}
-                </div>
-              ))}
+            <div className="sig-filter-group">
+              <span className="sig-filter-label">Bet vs wallet balance</span>
+              <div className="sig-chips">
+                {[0, 5, 15, 30].map(v => (
+                  <div key={v} className={minBetRatio === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinBetRatio(v)}>
+                    {v === 0 ? 'Any' : `${v}%+`}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="sig-price-range" style={{ marginTop: 10 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-              Price range: {minPrice}¢ – {maxPrice}¢
-            </span>
-            <div className="sig-range-track-wrap">
-              <div className="sig-range-track" />
-              <div className="sig-range-fill" style={{ left: `${minPrice}%`, right: `${100 - maxPrice}%` }} />
-              <input
-                type="range" min={0} max={100} value={minPrice}
-                onChange={e => setMinPrice(Math.min(Number(e.target.value), maxPrice - 1))}
-                className="sig-range-input"
-              />
-              <input
-                type="range" min={0} max={100} value={maxPrice}
-                onChange={e => setMaxPrice(Math.max(Number(e.target.value), minPrice + 1))}
-                className="sig-range-input"
-              />
-            </div>
-          </div>
-
-          <div className="sig-price-range" style={{ marginTop: 10 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-              Total: {minTotal === 0 ? '$0' : fmtFull(minTotal)} – {maxTotal >= TOTAL_CAP ? 'no limit' : fmtFull(maxTotal)}
-            </span>
-            <div className="sig-range-track-wrap">
-              <div className="sig-range-track" />
-              <div className="sig-range-fill" style={{ left: `${totalPos(minTotal)}%`, right: `${100 - totalPos(maxTotal)}%` }} />
-              <input
-                type="range" min={0} max={100} step={0.5} value={totalPos(minTotal)}
-                onChange={e => setMinTotal(Math.min(totalVal(Number(e.target.value)), maxTotal - 100))}
-                className="sig-range-input"
-              />
-              <input
-                type="range" min={0} max={100} step={0.5} value={totalPos(maxTotal)}
-                onChange={e => setMaxTotal(Math.max(totalVal(Number(e.target.value)), minTotal + 100))}
-                className="sig-range-input"
-              />
-            </div>
-          </div>
-
-          {tab === 'vetted' && (
-            <div className="sig-price-range" style={{ marginTop: 10 }}>
-              <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-                Amount won: {minWon <= WON_FLOOR ? 'no limit' : fmtSigned(minWon)} – {maxWon >= WON_CAP ? 'no limit' : fmtSigned(maxWon)}
-              </span>
+            <div className="sig-filter-group sig-price-range">
+              <span className="sig-filter-label">Price range: {minPrice}¢ – {maxPrice}¢</span>
               <div className="sig-range-track-wrap">
                 <div className="sig-range-track" />
-                <div className="sig-range-fill" style={{
-                  left: `${((minWon - WON_FLOOR) / (WON_CAP - WON_FLOOR)) * 100}%`,
-                  right: `${100 - ((maxWon - WON_FLOOR) / (WON_CAP - WON_FLOOR)) * 100}%`,
-                }} />
+                <div className="sig-range-fill" style={{ left: `${minPrice}%`, right: `${100 - maxPrice}%` }} />
                 <input
-                  type="range" min={WON_FLOOR} max={WON_CAP} step={250} value={minWon}
-                  onChange={e => setMinWon(Math.min(Number(e.target.value), maxWon - 250))}
+                  type="range" min={0} max={100} value={minPrice}
+                  onChange={e => setMinPrice(Math.min(Number(e.target.value), maxPrice - 1))}
                   className="sig-range-input"
                 />
                 <input
-                  type="range" min={WON_FLOOR} max={WON_CAP} step={250} value={maxWon}
-                  onChange={e => setMaxWon(Math.max(Number(e.target.value), minWon + 250))}
+                  type="range" min={0} max={100} value={maxPrice}
+                  onChange={e => setMaxPrice(Math.max(Number(e.target.value), minPrice + 1))}
                   className="sig-range-input"
                 />
               </div>
             </div>
-          )}
 
-          {tab === 'vetted' && (
-            <div className="sig-price-range" style={{ marginTop: 10 }}>
-              <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-                Trader size: {minTraders} – {maxTraders >= TRADERS_CAP ? `${TRADERS_CAP}+` : maxTraders}
+            <div className="sig-filter-group sig-price-range">
+              <span className="sig-filter-label">
+                Total: {minTotal === 0 ? '$0' : fmtFull(minTotal)} – {maxTotal >= TOTAL_CAP ? 'no limit' : fmtFull(maxTotal)}
               </span>
               <div className="sig-range-track-wrap">
                 <div className="sig-range-track" />
-                <div className="sig-range-fill" style={{
-                  left: `${((minTraders - 1) / (TRADERS_CAP - 1)) * 100}%`,
-                  right: `${100 - ((maxTraders - 1) / (TRADERS_CAP - 1)) * 100}%`,
-                }} />
+                <div className="sig-range-fill" style={{ left: `${totalPos(minTotal)}%`, right: `${100 - totalPos(maxTotal)}%` }} />
                 <input
-                  type="range" min={1} max={TRADERS_CAP} step={1} value={minTraders}
-                  onChange={e => setMinTraders(Math.min(Number(e.target.value), maxTraders - 1))}
+                  type="range" min={0} max={100} step={0.5} value={totalPos(minTotal)}
+                  onChange={e => setMinTotal(Math.min(totalVal(Number(e.target.value)), maxTotal - 100))}
                   className="sig-range-input"
                 />
                 <input
-                  type="range" min={1} max={TRADERS_CAP} step={1} value={maxTraders}
-                  onChange={e => setMaxTraders(Math.max(Number(e.target.value), minTraders + 1))}
+                  type="range" min={0} max={100} step={0.5} value={totalPos(maxTotal)}
+                  onChange={e => setMaxTotal(Math.max(totalVal(Number(e.target.value)), minTotal + 100))}
                   className="sig-range-input"
                 />
               </div>
             </div>
-          )}
+
+            {tab === 'vetted' && (
+              <div className="sig-filter-group sig-price-range">
+                <span className="sig-filter-label">
+                  Amount won: {minWon <= WON_FLOOR ? 'no limit' : fmtSigned(minWon)} – {maxWon >= WON_CAP ? 'no limit' : fmtSigned(maxWon)}
+                </span>
+                <div className="sig-range-track-wrap">
+                  <div className="sig-range-track" />
+                  <div className="sig-range-fill" style={{
+                    left: `${((minWon - WON_FLOOR) / (WON_CAP - WON_FLOOR)) * 100}%`,
+                    right: `${100 - ((maxWon - WON_FLOOR) / (WON_CAP - WON_FLOOR)) * 100}%`,
+                  }} />
+                  <input
+                    type="range" min={WON_FLOOR} max={WON_CAP} step={250} value={minWon}
+                    onChange={e => setMinWon(Math.min(Number(e.target.value), maxWon - 250))}
+                    className="sig-range-input"
+                  />
+                  <input
+                    type="range" min={WON_FLOOR} max={WON_CAP} step={250} value={maxWon}
+                    onChange={e => setMaxWon(Math.max(Number(e.target.value), minWon + 250))}
+                    className="sig-range-input"
+                  />
+                </div>
+              </div>
+            )}
+
+            {tab === 'vetted' && (
+              <div className="sig-filter-group sig-price-range">
+                <span className="sig-filter-label">
+                  Trader size: {minTraders} – {maxTraders >= TRADERS_CAP ? `${TRADERS_CAP}+` : maxTraders}
+                </span>
+                <div className="sig-range-track-wrap">
+                  <div className="sig-range-track" />
+                  <div className="sig-range-fill" style={{
+                    left: `${((minTraders - 1) / (TRADERS_CAP - 1)) * 100}%`,
+                    right: `${100 - ((maxTraders - 1) / (TRADERS_CAP - 1)) * 100}%`,
+                  }} />
+                  <input
+                    type="range" min={1} max={TRADERS_CAP} step={1} value={minTraders}
+                    onChange={e => setMinTraders(Math.min(Number(e.target.value), maxTraders - 1))}
+                    className="sig-range-input"
+                  />
+                  <input
+                    type="range" min={1} max={TRADERS_CAP} step={1} value={maxTraders}
+                    onChange={e => setMaxTraders(Math.max(Number(e.target.value), minTraders + 1))}
+                    className="sig-range-input"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {tab === 'ticker' && (
-          <div className="sig-list">
-            {tickerLoading && Array.from({ length: 8 }).map((_, i) => <SkelListRow key={i} />)}
+          <div className="lb-table">
+            <div className="lb-head lb-4col">
+              <div>Trader</div>
+              <div>Market</div>
+              <div className="lb-col">Price</div>
+              <div className="lb-col">Size</div>
+            </div>
+            {tickerLoading && Array.from({ length: 8 }).map((_, i) => <SkelLbRow key={i} />)}
             {!tickerLoading && filteredTicker.length === 0 && (
               <div className="sig-empty">Waiting for a big trade…</div>
             )}
             {!tickerLoading && filteredTicker.map(t => {
               const ic = categoryIcon(t.category)
               return (
-                <div key={t.id} className="sig-row">
-                  <div className="sig-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
-                  <div className="sig-mid">
-                    <div className="sig-q">{t.title} <span className="sig-out">— {t.outcome}</span></div>
-                    <div className="sig-meta">
+                <div key={t.id} className="lb-row lb-4col">
+                  <div className="lb-trader">
+                    <div className="lb-avatar" style={{ background: avatarGradient(t.wallet) }}>{avatarInitial(t.wallet, t.wallet_name)}</div>
+                    <div style={{ minWidth: 0 }}>
                       {t.wallet ? (
-                        <a href={profileUrl(t.wallet)!} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>
+                        <a href={profileUrl(t.wallet)!} target="_blank" rel="noopener noreferrer" className="lb-name">
                           {traderLabel(t.wallet, t.wallet_name)}
                         </a>
                       ) : (
-                        <span>someone</span>
+                        <span className="lb-name">someone</span>
                       )}
-                      {t.roster_tagged ? <span className="sig-trk">Tracked</span> : null}
-                      {t.wallet && winRateMap.has(t.wallet) && (
-                        <span>· {Math.round((winRateMap.get(t.wallet) ?? 0) * 100)}% win rate</span>
-                      )}
-                      {t.wallet && balanceMap.has(t.wallet) && (
-                        <span>· {Math.round((t.usd / (balanceMap.get(t.wallet) ?? 1)) * 100)}% of wallet</span>
-                      )}
-                      <span>· {timeAgo(t.ts)}</span>
+                      <div className="lb-sub">
+                        {t.roster_tagged ? <span className="sig-trk" style={{ marginRight: 5 }}>Tracked</span> : null}
+                        {timeAgo(t.ts)}
+                      </div>
                     </div>
                   </div>
-                  <div className="sig-right">
-                    <span className={`sig-pill ${t.side === 'BUY' ? 'buy' : 'sell'}`}>{t.side}</span>
-                    <div className="sig-rowprice">{Math.round(t.price * 100)}¢</div>
-                    <div className="sig-rowsize">{fmtFull(t.usd)}</div>
+
+                  <div className="lb-market">
+                    <div className="sig-q">{t.title} <span className="sig-out">— {t.outcome}</span></div>
+                  </div>
+
+                  <div className="lb-col" data-label="Price">
+                    <div className="lb-col-stack">
+                      <div className="lb-val">{Math.round(t.price * 100)}¢</div>
+                      <div className="lb-val-sub" style={{ color: t.side === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.side}</div>
+                    </div>
+                  </div>
+
+                  <div className="lb-col" data-label="Size">
+                    <div className="lb-col-stack">
+                      <div className="lb-val">{fmtFull(t.usd)}</div>
+                      <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{ic.emoji} {categoryLabel(t.category ?? 'other')}</div>
+                    </div>
                   </div>
                 </div>
               )
@@ -698,30 +713,50 @@ function SignalsDemo({ category }: { category: string }) {
         )}
 
         {tab === 'wins' && (
-          <div className="sig-list">
-            {winsLoading && Array.from({ length: 8 }).map((_, i) => <SkelListRow key={i} />)}
+          <div className="lb-table">
+            <div className="lb-head lb-4col">
+              <div>Trader</div>
+              <div>Market</div>
+              <div className="lb-col">PnL</div>
+              <div className="lb-col">Staked</div>
+            </div>
+            {winsLoading && Array.from({ length: 8 }).map((_, i) => <SkelLbRow key={i} />)}
             {!winsLoading && mergedWins.length === 0 && (
               <div className="sig-empty">Waiting for the next win…</div>
             )}
             {!winsLoading && mergedWins.map(w => {
-              const ic = categoryIcon(w.category)
               const key = `${w.wallet}::${w.condition_id}::${w.outcome}::${w.closed_at}`
+              const roi = w.usd > 0 ? (w.profit / w.usd) * 100 : 0
               return (
-                <div key={key} className="sig-row">
-                  <div className="sig-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
-                  <div className="sig-mid">
-                    <div className="sig-q">{w.title} <span className="sig-out">— {w.outcome}</span></div>
-                    <div className="sig-meta">
-                      <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>
+                <div key={key} className="lb-row lb-4col">
+                  <div className="lb-trader">
+                    <div className="lb-avatar" style={{ background: avatarGradient(w.wallet) }}>{avatarInitial(w.wallet, w.wallet_name)}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="lb-name">
                         {traderLabel(w.wallet, w.wallet_name)}
                       </a>
-                      <span>· {w.is_scalp ? 'Scalped' : w.market_closed ? 'Won' : 'Exited'}</span>
-                      <span>· {timeAgo(w.closed_at)}</span>
+                      <div className="lb-sub">
+                        {w.is_scalp ? 'Scalped' : w.market_closed ? 'Won' : 'Exited'} · {timeAgo(w.closed_at)}
+                      </div>
                     </div>
                   </div>
-                  <div className="sig-right">
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#00d17a' }}>{fmtSigned(w.profit)}</div>
-                    <div className="sig-rowsize">{fmtFull(w.usd)} staked{w.legCount > 1 ? ` · ${w.legCount}x` : ''}</div>
+
+                  <div className="lb-market">
+                    <div className="sig-q">{w.title} <span className="sig-out">— {w.outcome}</span></div>
+                  </div>
+
+                  <div className="lb-col" data-label="PnL">
+                    <div className="lb-col-stack">
+                      <div className="lb-val g">{fmtSigned(w.profit)}</div>
+                      <div className="lb-val-sub" style={{ color: 'var(--green)' }}>▲ {roi.toFixed(1)}%</div>
+                    </div>
+                  </div>
+
+                  <div className="lb-col" data-label="Staked">
+                    <div className="lb-col-stack">
+                      <div className="lb-val">{fmtFull(w.usd)}</div>
+                      <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{w.legCount > 1 ? `${w.legCount} legs` : '1 leg'}</div>
+                    </div>
                   </div>
                 </div>
               )

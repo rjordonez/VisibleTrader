@@ -333,6 +333,21 @@
 .sig-panel { max-width: 1040px; }
 .sig-head { margin-top: 4px; }
 
+/* Filter panel — one consistent card with a fixed vertical rhythm between
+   groups (flex gap), instead of each group carrying its own ad-hoc inline
+   marginTop. Label style matches the uppercase/letter-spaced convention
+   already used elsewhere (.lb-head, .sig-drill-label) for consistency. */
+.sig-filters {
+  display: flex; flex-direction: column; gap: 20px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 20px; margin-bottom: 20px;
+}
+.sig-filter-group { display: flex; flex-direction: column; gap: 10px; }
+.sig-filter-label {
+  font-size: 11px; font-weight: 600; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+
 /* ── Featured hero + top movers sidebar ── */
 .sig-hero-row { display: grid; grid-template-columns: 1.8fr 1fr; gap: 16px; margin-bottom: 24px; }
 @media (max-width: 860px) { .sig-hero-row { grid-template-columns: 1fr; } }
@@ -418,34 +433,48 @@
    the same track, each thumb independently draggable. The inputs
    themselves are transparent/pointer-events:none except their thumbs,
    so a click anywhere on the track doesn't jump either handle — only
-   grabbing a thumb does. */
-.sig-price-range { display: flex; flex-direction: column; gap: 8px; max-width: 340px; }
-.sig-range-track-wrap { position: relative; height: 20px; }
+   grabbing a thumb does. Every native-rendering surface (track, runnable
+   track, thumb, focus ring) is reset explicitly rather than relying on
+   -webkit-appearance:none alone — Safari in particular will still paint
+   its own glossy default thumb/track through a partial reset. */
+.sig-price-range { display: flex; flex-direction: column; gap: 10px; max-width: 340px; }
+.sig-range-track-wrap { position: relative; height: 16px; }
 .sig-range-track {
-  position: absolute; top: 50%; left: 0; right: 0; height: 4px;
+  position: absolute; top: 50%; left: 0; right: 0; height: 3px;
   transform: translateY(-50%); background: var(--border); border-radius: 2px;
 }
 .sig-range-fill {
-  position: absolute; top: 50%; height: 4px;
+  position: absolute; top: 50%; height: 3px;
   transform: translateY(-50%); background: var(--blue); border-radius: 2px;
 }
 .sig-range-input {
-  position: absolute; top: 0; left: 0; width: 100%; height: 20px;
-  margin: 0; background: transparent; appearance: none; -webkit-appearance: none;
+  -webkit-appearance: none; -moz-appearance: none; appearance: none;
+  position: absolute; top: 0; left: 0; width: 100%; height: 16px;
+  margin: 0; padding: 0; background: transparent; border: none; outline: none;
   pointer-events: none;
 }
-.sig-range-input::-webkit-slider-runnable-track { background: transparent; height: 4px; }
-.sig-range-input::-moz-range-track { background: transparent; height: 4px; }
+.sig-range-input::-webkit-slider-runnable-track {
+  -webkit-appearance: none; background: transparent; height: 3px; border: none; box-shadow: none;
+}
+.sig-range-input::-moz-range-track {
+  -moz-appearance: none; background: transparent; height: 3px; border: none; box-shadow: none;
+}
+.sig-range-input::-moz-range-progress { background: transparent; }
 .sig-range-input::-webkit-slider-thumb {
-  appearance: none; -webkit-appearance: none; pointer-events: auto;
-  width: 14px; height: 14px; border-radius: 50%;
-  background: var(--blue); border: 2px solid var(--text); cursor: pointer;
-  margin-top: -5px; /* (track 4px - thumb 14px) / 2, centers the thumb on the track */
+  -webkit-appearance: none; appearance: none; pointer-events: auto;
+  box-sizing: border-box; width: 12px; height: 12px; border-radius: 50%;
+  background-color: var(--blue); border: 2px solid var(--bg); box-shadow: 0 0 0 1px var(--blue);
+  cursor: pointer; margin-top: -4.5px; /* (track 3px - thumb 12px) / 2, centers the thumb on the track */
+  transition: transform 0.1s;
 }
 .sig-range-input::-moz-range-thumb {
-  pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--blue); border: 2px solid var(--text); cursor: pointer;
+  -moz-appearance: none; appearance: none; pointer-events: auto;
+  box-sizing: border-box; width: 12px; height: 12px; border-radius: 50%;
+  background-color: var(--blue); border: 2px solid var(--bg); box-shadow: 0 0 0 1px var(--blue);
+  cursor: pointer; transition: transform 0.1s;
 }
+.sig-range-input:hover::-webkit-slider-thumb, .sig-range-input:focus-visible::-webkit-slider-thumb { transform: scale(1.2); }
+.sig-range-input:hover::-moz-range-thumb, .sig-range-input:focus-visible::-moz-range-thumb { transform: scale(1.2); }
 
 .sig-list { padding: 4px 0; }
 .sig-row {
@@ -679,6 +708,73 @@
     padding-top: 12px;
   }
   .sig-table td:first-child::before { content: none; }
+}
+
+/* Leaderboard — card-row layout (avatar + name + stat columns) instead of
+   a plain <table>, so PnL/win-rate can carry a colored secondary line the
+   way the ticker/wins rows already do. Also reused (with the .lb-4col
+   modifier) by the Live Ticker and Winners tabs, which need a 4th text
+   column for the market title instead of Leaderboard's 3 stat columns. */
+.lb-table { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.lb-head, .lb-row {
+  display: grid;
+  grid-template-columns: 2.2fr 1fr 1fr 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.lb-head.lb-4col, .lb-row.lb-4col { grid-template-columns: 1.5fr 1.9fr 1fr 1fr; }
+.lb-market { min-width: 0; text-align: left; }
+.lb-head {
+  padding: 12px 14px;
+  font-size: 11px; font-weight: 600; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+}
+.lb-row { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.lb-row:last-child { border-bottom: none; }
+.lb-row:hover { background: rgba(255,255,255,0.02); }
+.lb-trader { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.lb-rank { font-size: 12px; color: var(--text-faint); width: 16px; flex-shrink: 0; text-align: right; }
+.lb-avatar {
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: #fff;
+}
+.lb-name {
+  display: block; font-size: 14.5px; font-weight: 700; color: var(--text);
+  text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lb-name:hover { text-decoration: underline; }
+.lb-sub { font-size: 12px; color: var(--text-faint); margin-top: 3px; }
+.lb-head .lb-col, .lb-row .lb-col { text-align: right; }
+.lb-col-stack { display: inline-block; }
+.lb-val { font-size: 14.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.lb-val.g { color: var(--green); }
+.lb-val.r { color: var(--red); }
+.lb-val-suffix { font-size: 11px; font-weight: 500; color: var(--text-dim); }
+.lb-val-sub { font-size: 12px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 640px) {
+  .lb-head { display: none; }
+  .lb-row {
+    grid-template-columns: 1fr;
+    row-gap: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 8px;
+    padding: 12px 14px;
+  }
+  .lb-row:last-child { margin-bottom: 8px; }
+  .lb-row .lb-col {
+    display: flex; align-items: center; justify-content: space-between; text-align: left;
+  }
+  .lb-row .lb-col::before {
+    content: attr(data-label); font-size: 11px; font-weight: 600; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .lb-row .lb-col-stack { text-align: right; }
+  .lb-row .lb-market { order: -1; margin-bottom: 2px; }
 }
 
 .sig-chart { width: 100%; height: 160px; margin-bottom: 24px; }

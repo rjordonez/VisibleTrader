@@ -83,6 +83,30 @@ export function SkelList({ count = 6 }: { count?: number }) {
   )
 }
 
+// Matches .lb-row.lb-4col (Trader avatar+name+sub | Market title | 2 stat columns)
+export function SkelLbRow() {
+  return (
+    <div className="lb-row lb-4col">
+      <div className="lb-trader">
+        <div className="sig-skel" style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <SkelBlock height={14} width="65%" style={{ marginBottom: 6 }} />
+          <SkelBlock height={11} width="35%" />
+        </div>
+      </div>
+      <div className="lb-market"><SkelBlock height={14} width="80%" /></div>
+      {[0, 1].map(i => (
+        <div className="lb-col" key={i}>
+          <div className="lb-col-stack">
+            <SkelBlock height={14} width={60} style={{ marginLeft: 'auto', marginBottom: 6 }} />
+            <SkelBlock height={11} width={45} style={{ marginLeft: 'auto' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // Matches .sig-stats-row / .sig-stat-cell
 export function SkelStatsRow({ count = 4 }: { count?: number }) {
   return (
