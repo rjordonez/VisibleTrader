@@ -572,6 +572,12 @@ class Database:
             conn.execute(sql, params)
             conn.commit()
 
+    def executemany(self, sql, params_seq):
+        with self.pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.executemany(sql, params_seq)
+            conn.commit()
+
     def run_transaction(self, fn):
         """Runs fn(conn) — fn issues one or more related statements
         directly against the connection (free to read intermediate
@@ -1233,6 +1239,148 @@ def process_trade_timed(*args, **kwargs):
 
 
 ONCHAIN_FILLS_RETENTION_SECONDS = 3600  # processed rows are only ever a debugging aid — prune like ticker
+ONCHAIN_EXCHANGES = [
+    '0xe2222d279d744050d28e00520010520000310f59',  # Neg Risk CTF Exchange V2
+    '0xe111180000d2663c0091e4f400237545b87b996b',  # CTF Exchange V2 (regular)
+]
+ONCHAIN_RPC_POLL_SECONDS = 5  # Polygon's ~2s block time -> 2-3 blocks/poll, comfortably
+# inside every free RPC's eth_getLogs block-range limit even under provider lag.
+
+_last_onchain_block = {'n': None}       # module state — last block height already scanned
+_onchain_fetch_in_flight = {'v': False}  # guards against an overlapping fetch if RPC calls
+                                          # run long enough to still be in flight next tick
+
+
+def _rpc_call(method, params, retries=2):
+    """Same RPC_PROVIDERS fallback pattern as resolve_tx_sender/resolve_trade_wallet."""
+    body = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params}).encode()
+    for attempt in range(retries):
+        for rpc in RPC_PROVIDERS:
+            try:
+                req = urllib.request.Request(rpc, data=body, headers={'Content-Type': 'application/json', **UA})
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    res = json.load(r)
+                if 'result' in res:
+                    return res['result']
+            except Exception:
+                continue
+        if attempt < retries - 1:
+            time.sleep(0.5)
+    return None
+
+
+def _decode_order_filled_amounts(log):
+    """Same shape as _decode_order_filled above, extended with the two
+    amount fields (words[2]/words[3]) that resolve_trade_wallet never
+    needed — mirrors the now-retired supabase/functions/alchemy-webhook's
+    decodeOrderFilled. That webhook was matching/delivering every OrderFilled
+    on both exchanges platform-wide (not just roster trades), which measured
+    out to ~5B compute units/month on Alchemy's free-tier meter (confirmed
+    live 2026-08-26 by extrapolating onchain_fills' real insert rate) — this
+    gets identical data via eth_getLogs against free public RPCs for $0."""
+    maker = '0x' + log['topics'][2][-40:]
+    taker = '0x' + log['topics'][3][-40:]
+    data = log['data'][2:]
+    words = [data[i:i + 64] for i in range(0, len(data), 64)]
+    if len(words) < 4:
+        return None
+    return {
+        'maker': maker.lower(),
+        'taker': taker.lower(),
+        'side': int(words[0], 16),
+        'token_id': str(int(words[1], 16)),
+        'maker_amount_filled': str(int(words[2], 16)),
+        'taker_amount_filled': str(int(words[3], 16)),
+    }
+
+
+def fetch_onchain_fills_via_rpc(db):
+    """Polls eth_getLogs for new OrderFilled events on both exchange
+    contracts since the last scanned block and queues them into
+    onchain_fills — replaces the Alchemy webhook as this table's writer.
+    poll_onchain_fills() below is unchanged: it only drains whatever's in
+    the table, indifferent to how each row got there."""
+    with state_lock:
+        if _onchain_fetch_in_flight['v']:
+            return
+        _onchain_fetch_in_flight['v'] = True
+    try:
+        latest_hex = _rpc_call('eth_blockNumber', [])
+        if latest_hex is None:
+            with state_lock:
+                stats['rpc_failures'] += 1
+            return
+        latest = int(latest_hex, 16)
+
+        if _last_onchain_block['n'] is None:
+            # First tick this process — start a few blocks back rather than
+            # exactly "latest", so a fill landing between this blockNumber
+            # call and the first real scan below isn't silently skipped.
+            _last_onchain_block['n'] = latest - 5
+            return
+
+        from_block = _last_onchain_block['n'] + 1
+        if from_block > latest:
+            return  # no new blocks since last tick
+
+        # Clamp an unbounded gap (e.g. after a long RPC outage) instead of
+        # ever requesting a range a free provider would reject outright —
+        # a small silent gap in that pathological case beats getting stuck
+        # retrying the same oversized range forever.
+        if latest - from_block > 2000:
+            from_block = latest - 2000
+
+        logs = _rpc_call('eth_getLogs', [{
+            'fromBlock': hex(from_block),
+            'toBlock': hex(latest),
+            'address': ONCHAIN_EXCHANGES,
+            'topics': [ORDER_FILLED_TOPIC],
+        }])
+        if logs is None:
+            with state_lock:
+                stats['rpc_failures'] += 1
+            return  # leave _last_onchain_block where it was — retry this exact range next tick
+
+        _last_onchain_block['n'] = latest
+        if not logs:
+            return
+
+        # One eth_getBlockByNumber per unique block in this batch (header
+        # only, no tx list) for a real timestamp instead of guessing — poll
+        # cadence keeps this to at most a couple of extra calls per tick,
+        # free on every public RPC.
+        block_ts = {}
+        for bn in sorted({lg['blockNumber'] for lg in logs}):
+            blk = _rpc_call('eth_getBlockByNumber', [bn, False])
+            if blk and blk.get('timestamp'):
+                block_ts[bn] = datetime.fromtimestamp(int(blk['timestamp'], 16), tz=timezone.utc)
+
+        rows = []
+        for lg in logs:
+            topics = lg.get('topics') or []
+            if len(topics) != 4 or topics[0] != ORDER_FILLED_TOPIC:
+                continue
+            decoded = _decode_order_filled_amounts(lg)
+            if not decoded:
+                continue
+            ts = block_ts.get(lg['blockNumber'], datetime.now(timezone.utc))
+            rows.append((
+                lg['transactionHash'], int(lg['logIndex'], 16),
+                decoded['maker'], decoded['taker'], decoded['side'], decoded['token_id'],
+                decoded['maker_amount_filled'], decoded['taker_amount_filled'], ts,
+            ))
+        if not rows:
+            return
+
+        db.executemany('''
+            INSERT INTO onchain_fills
+                (tx_hash, log_index, maker, taker, side, token_id, maker_amount_filled, taker_amount_filled, block_timestamp)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (tx_hash, log_index) DO NOTHING
+        ''', rows)
+    finally:
+        with state_lock:
+            _onchain_fetch_in_flight['v'] = False
 
 
 def prune_onchain_fills(db):
@@ -1244,9 +1392,12 @@ def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor):
     """Replaces the old last_trade_price WebSocket branch as the source of
     trade discovery (see the 2026-08-26 investigation: that path measured a
     60% miss rate on rapid trade bursts even on actively-watched markets).
-    supabase/functions/alchemy-webhook decodes Polymarket's on-chain
-    OrderFilled logs and queues them here; this just turns each queued fill
-    into the same process_trade() calls the WS path used to make.
+    fetch_onchain_fills_via_rpc() above decodes Polymarket's on-chain
+    OrderFilled logs and queues them here (formerly the Alchemy webhook's
+    job — moved off Alchemy 2026-08-26 after its free-tier compute-unit
+    meter turned out to cost ~$2k/month at real platform-wide trade volume);
+    this just turns each queued fill into the same process_trade() calls
+    the WS path used to make.
 
     A single OrderFilled log settles a swap between exactly two parties —
     the raw log alone tells us BOTH of their actions unambiguously
@@ -1363,6 +1514,7 @@ def main():
     last_prune = time.time()
     last_onchain_prune = time.time()
     last_onchain_poll = 0.0  # fire once on startup, not just after the first interval
+    last_onchain_rpc_fetch = 0.0  # fire once on startup, not just after the first interval
     last_resolution_sweep = time.time()
     last_config_reload = time.time()
     last_balance_refresh = 0.0  # fire once on startup, not just after the first interval
@@ -1430,6 +1582,10 @@ def main():
                 if now - last_onchain_prune > 600:  # every 10 min, keep onchain_fills bounded — see prune_ticker
                     prune_onchain_fills(db)
                     last_onchain_prune = now
+
+                if now - last_onchain_rpc_fetch > ONCHAIN_RPC_POLL_SECONDS:  # populates onchain_fills — see fetch_onchain_fills_via_rpc's docstring
+                    executor.submit(fetch_onchain_fills_via_rpc, db)  # makes several blocking HTTP calls — off the main loop, like sweep_resolved_positions below
+                    last_onchain_rpc_fetch = now
 
                 if now - last_onchain_poll > 1:  # trade discovery — replaces the old last_trade_price WS branch
                     poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor)
