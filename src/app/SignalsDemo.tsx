@@ -40,13 +40,32 @@ function SignalsDemo({ category }: { category: string }) {
   const [minTotal, setMinTotal]           = useState(0)
   const [maxTotal, setMaxTotal]           = useState(TOTAL_CAP)
   // Total is heavily long-tailed (p95 ≈ $34k out of a $50k cap), so a linear
-  // slider wastes almost all its draggable width on values nobody has —
-  // most real stakes sit in the low hundreds/thousands. Map the 0-100 handle
-  // position through a square-root curve so the low end (where the data
-  // actually lives) gets most of the resolution, while the handle can still
-  // reach the full $50k at its far end.
-  const totalPos = (v: number) => Math.sqrt(Math.min(v, TOTAL_CAP) / TOTAL_CAP) * 100
-  const totalVal = (p: number) => Math.round(((p / 100) ** 2 * TOTAL_CAP) / 100) * 100
+  // slider wastes almost all its draggable width on values nobody has — most
+  // real stakes/volumes sit in the low hundreds/thousands. A pure sqrt/power
+  // curve fixed the low end but made the top end nearly unusable (each pixel
+  // there jumped the value by thousands, so dragging near the max handle hit
+  // the min<max-$100 clamp almost instantly and then looked frozen). Anchor
+  // points + linear interpolation between them instead — same "most
+  // resolution where the data lives" goal, but sensitivity stays bounded in
+  // every segment instead of blowing up at one end.
+  const TOTAL_ANCHORS: [number, number][] = [[0, 0], [25, 500], [50, 3000], [75, 15000], [92, 34000], [100, TOTAL_CAP]]
+  const totalPos = (v: number) => {
+    const val = Math.min(v, TOTAL_CAP)
+    for (let i = 1; i < TOTAL_ANCHORS.length; i++) {
+      const [p0, v0] = TOTAL_ANCHORS[i - 1]
+      const [p1, v1] = TOTAL_ANCHORS[i]
+      if (val <= v1) return p0 + ((val - v0) / (v1 - v0)) * (p1 - p0)
+    }
+    return 100
+  }
+  const totalVal = (p: number) => {
+    for (let i = 1; i < TOTAL_ANCHORS.length; i++) {
+      const [p0, v0] = TOTAL_ANCHORS[i - 1]
+      const [p1, v1] = TOTAL_ANCHORS[i]
+      if (p <= p1) return Math.round((v0 + ((p - p0) / (p1 - p0)) * (v1 - v0)) / 100) * 100
+    }
+    return TOTAL_CAP
+  }
   const [minWon, setMinWon]               = useState(WON_FLOOR)
   const [maxWon, setMaxWon]               = useState(WON_CAP)
   // wallet_count checked live: 1-16 actual range, p95=7 — small and bounded
@@ -344,7 +363,10 @@ function SignalsDemo({ category }: { category: string }) {
     .filter(t => {
       if (minBetRatio === 0) return true
       const bal = t.wallet ? balanceMap.get(t.wallet) : undefined
-      return bal !== undefined && (t.usd / bal) * 100 >= minBetRatio
+      // bal === 0 must fail closed, not divide-by-zero into Infinity (which
+      // would pass every threshold) — a $0 recorded balance on a wallet
+      // that's actively staking money is stale/unsynced data, not a real 0.
+      return bal !== undefined && bal > 0 && (t.usd / bal) * 100 >= minBetRatio
     })
     .filter(t => {
       const cents = t.price * 100
@@ -361,7 +383,7 @@ function SignalsDemo({ category }: { category: string }) {
     .filter(w => {
       if (minBetRatio === 0) return true
       const bal = balanceMap.get(w.wallet)
-      return bal !== undefined && (w.usd / bal) * 100 >= minBetRatio
+      return bal !== undefined && bal > 0 && (w.usd / bal) * 100 >= minBetRatio
     })
     .filter(w => {
       const cents = w.price * 100
@@ -369,22 +391,29 @@ function SignalsDemo({ category }: { category: string }) {
     })
     .filter(w => w.usd >= minTotal && (maxTotal >= TOTAL_CAP || w.usd <= maxTotal))
   // Multi-leg fills (a single logical position built/closed across several
-  // on-chain legs) show up as several back-to-back rows for the same
-  // wallet+market+outcome — fold those together into one row (summed stake
-  // + profit) rather than showing each leg separately. Only merges when
-  // adjacent in the already-sorted list, so unrelated closes hours apart
-  // never get combined.
-  const mergedWins: (WalletPosition & { legCount: number })[] = []
+  // on-chain legs) show up as several rows for the same wallet+market+
+  // outcome — fold those together into one row (summed stake + profit)
+  // rather than showing each leg separately. Grouped by key rather than
+  // "merge if adjacent": when a market resolves, every wallet holding it
+  // gets the identical resolved_ts, so a single wallet's own multiple
+  // entries can land non-adjacent within that tied cluster, interleaved
+  // with other wallets' rows — a consecutive-only merge missed those and
+  // also left duplicate React keys (same wallet+market+outcome+closed_at
+  // rendered twice). Map preserves first-seen order, which is the most
+  // recent occurrence since filteredWins is already sorted desc.
+  const mergedWinsMap = new Map<string, WalletPosition & { legCount: number }>()
   for (const w of filteredWins) {
-    const last = mergedWins[mergedWins.length - 1]
-    if (last && last.wallet === w.wallet && last.condition_id === w.condition_id && last.outcome === w.outcome) {
-      last.usd += w.usd
-      last.profit += w.profit
-      last.legCount += 1
+    const gkey = `${w.wallet}::${w.condition_id}::${w.outcome}`
+    const existing = mergedWinsMap.get(gkey)
+    if (existing) {
+      existing.usd += w.usd
+      existing.profit += w.profit
+      existing.legCount += 1
     } else {
-      mergedWins.push({ ...w, legCount: 1 })
+      mergedWinsMap.set(gkey, { ...w, legCount: 1 })
     }
   }
+  const mergedWins = Array.from(mergedWinsMap.values())
   // All discovery filtering + sorting now happens server-side in the query
   // itself (see buildQueryRef above) — the fetched page is already exactly
   // the filtered, sorted set, so nothing left to do here.
@@ -676,7 +705,7 @@ function SignalsDemo({ category }: { category: string }) {
             )}
             {!winsLoading && mergedWins.map(w => {
               const ic = categoryIcon(w.category)
-              const key = `${w.condition_id}::${w.outcome}::${w.closed_at}`
+              const key = `${w.wallet}::${w.condition_id}::${w.outcome}::${w.closed_at}`
               return (
                 <div key={key} className="sig-row">
                   <div className="sig-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
