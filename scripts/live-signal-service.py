@@ -1056,7 +1056,7 @@ def write_price_updates(db, updates):
                    (mid, condition_id, outcome))
 
 
-def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster, wallet_names, trade_ts):
+def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet, roster, wallet_names, trade_ts):
     """Single combined path — a same-day attempt to split this into a fast
     (ticker/mark-to-market) and slow (RPC-bound wallet resolution) pool on
     two separate executors made things measurably worse, not better, and
@@ -1071,7 +1071,17 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
     file's Database class) is a real connection pool, so concurrent DB
     writes execute concurrently at the Postgres level instead of being
     serialized through Python — the module-level `state_lock` below now
-    only protects in-memory state, never a DB call."""
+    only protects in-memory state, never a DB call.
+
+    `wallet` is now passed in directly (2026-08-26 — see onchain_fills /
+    poll_onchain_fills) rather than resolved here via resolve_trade_wallet.
+    A single on-chain OrderFilled log settles a swap between exactly two
+    parties, and the raw log alone tells us BOTH of their actions
+    unambiguously — whoever received tokenId just bought it, whoever gave
+    it up just sold it — so poll_onchain_fills calls this twice per fill,
+    once per party, each with that party's own correct wallet+side. No
+    trade-history lookup needed to tell buy from sell; it's just which end
+    of the same swap this wallet was on."""
     if side not in ('BUY', 'SELL') or not tx_hash:
         return
     info = keyed_token_info.get(tid)
@@ -1106,7 +1116,6 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
     if usd <= 0:
         return
 
-    wallet = resolve_trade_wallet(tx_hash, tid)
     wallet_name = wallet_names.get(wallet) if wallet else None
     if wallet and not wallet_name:
         wallet_name = fetch_live_profile_name(wallet)  # not in our local 261k dataset — try live, covers anyone with a profile
@@ -1172,6 +1181,65 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, roster,
               f'${total_usd:,.0f} from {len(distinct_wallets)} roster wallets (crossed ${t:,} tier)')
 
 
+ONCHAIN_FILLS_RETENTION_SECONDS = 3600  # processed rows are only ever a debugging aid — prune like ticker
+
+
+def prune_onchain_fills(db):
+    cutoff = datetime.now(timezone.utc).timestamp() - ONCHAIN_FILLS_RETENTION_SECONDS
+    db.execute('DELETE FROM onchain_fills WHERE processed = true AND EXTRACT(EPOCH FROM received_at) < %s', (cutoff,))
+
+
+def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor):
+    """Replaces the old last_trade_price WebSocket branch as the source of
+    trade discovery (see the 2026-08-26 investigation: that path measured a
+    60% miss rate on rapid trade bursts even on actively-watched markets).
+    supabase/functions/alchemy-webhook decodes Polymarket's on-chain
+    OrderFilled logs and queues them here; this just turns each queued fill
+    into the same process_trade() calls the WS path used to make.
+
+    A single OrderFilled log settles a swap between exactly two parties —
+    the raw log alone tells us BOTH of their actions unambiguously
+    (confirmed live against real trades on 2026-08-26): whoever received
+    tokenId just bought it, whoever gave it up just sold it. No lookup
+    against our own trade history needed to classify buy vs. sell, unlike
+    an earlier draft of this approach assumed — this fires process_trade
+    twice per fill, once per party, each with that party's own correct
+    wallet+side, rather than trying to infer direction from prior state.
+
+    Price/size math verified live against Polymarket's own reported values
+    for a real fill on 2026-08-26 (matched to the cent): USDC.e and
+    Polymarket's outcome tokens are both 6-decimal, and which raw amount is
+    USDC vs. outcome-token flips with `side` — maker_amount_filled is the
+    USDC leg when the maker's order was a BUY (side=0), and the
+    outcome-token leg when it was a SELL (side=1); taker_amount_filled is
+    always the other leg.
+    """
+    rows = db.fetchall('''SELECT id, tx_hash, maker, taker, side, token_id,
+            maker_amount_filled, taker_amount_filled, block_timestamp
+        FROM onchain_fills WHERE processed = false ORDER BY id LIMIT 200''')
+    if not rows:
+        return
+
+    ids = []
+    for row_id, tx_hash, maker, taker, side, token_id, maker_amt, taker_amt, block_ts in rows:
+        ids.append(row_id)
+        if side == 0:  # maker's order was BUY -> maker pays USDC, receives the outcome token
+            usdc_raw, token_raw = float(maker_amt), float(taker_amt)
+        else:  # maker's order was SELL -> maker gives up the outcome token, receives USDC
+            usdc_raw, token_raw = float(taker_amt), float(maker_amt)
+        if token_raw <= 0:
+            continue
+        price = usdc_raw / token_raw  # decimals cancel — both legs are 6-decimal
+        size = token_raw / 1_000_000
+
+        buyer, seller = (maker, taker) if side == 0 else (taker, maker)
+        for wallet, trade_side in ((buyer, 'BUY'), (seller, 'SELL')):
+            executor.submit(process_trade, db, keyed_token_info, token_id, price, size,
+                             trade_side, tx_hash, wallet, roster, wallet_names, block_ts)
+
+    db.execute('UPDATE onchain_fills SET processed = true WHERE id = ANY(%s)', (ids,))
+
+
 # ---------------- main loop ----------------
 
 def main():
@@ -1223,6 +1291,8 @@ def main():
     last_market_refresh = time.time()
     last_heartbeat = time.time()
     last_prune = time.time()
+    last_onchain_prune = time.time()
+    last_onchain_poll = 0.0  # fire once on startup, not just after the first interval
     last_resolution_sweep = time.time()
     last_config_reload = time.time()
     last_balance_refresh = 0.0  # fire once on startup, not just after the first interval
@@ -1280,6 +1350,14 @@ def main():
                     prune_ticker(db)
                     last_prune = now
 
+                if now - last_onchain_prune > 600:  # every 10 min, keep onchain_fills bounded — see prune_ticker
+                    prune_onchain_fills(db)
+                    last_onchain_prune = now
+
+                if now - last_onchain_poll > 1:  # trade discovery — replaces the old last_trade_price WS branch
+                    poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor)
+                    last_onchain_poll = now
+
                 if now - last_resolution_sweep > 300:  # every 5 min — catches positions closed out by market resolution, not a sale
                     executor.submit(sweep_resolved_positions, db)
                     last_resolution_sweep = now
@@ -1314,14 +1392,7 @@ def main():
                         items = msg if isinstance(msg, list) else [msg]
                         for item in items:
                             et = item.get('event_type')
-                            if et == 'last_trade_price':
-                                trade_ts = parse_trade_ts(item)
-                                executor.submit(
-                                    process_trade, db, keyed_token_info,
-                                    item.get('asset_id'), item.get('price'), item.get('size'),
-                                    item.get('side'), item.get('transaction_hash'), roster, wallet_names, trade_ts,
-                                )
-                            elif et == 'price_change':
+                            if et == 'price_change':
                                 with state_lock:
                                     stats['price_change_seen'] += 1
                                 # Filtered inline (cheap, no I/O) — only submits to the
