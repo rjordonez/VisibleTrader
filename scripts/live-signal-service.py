@@ -65,7 +65,13 @@ stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trade
          # but not last_trade_price looked identical to "no messages at
          # all" from the heartbeat alone. These make that distinction
          # visible without needing an external probe script.
-         'price_change_seen': 0, 'book_seen': 0, 'other_events_seen': 0}
+         'price_change_seen': 0, 'book_seen': 0, 'other_events_seen': 0,
+         # Timing diagnostics (2026-08-26) — added to find where a
+         # process_trade call actually spends its time under real on-chain
+         # volume, instead of guessing at pool/worker sizes again. All in
+         # milliseconds; heartbeat reports count + average.
+         'profile_fetch_count': 0, 'profile_fetch_ms': 0.0, 'profile_fetch_cache_hits': 0,
+         'process_trade_count': 0, 'process_trade_ms': 0.0, 'process_trade_submitted': 0}
 
 # Updated once per inner listen-loop tick (see main()) as proof the event loop is
 # still alive. watchdog() below is a last-resort safety net independent of any
@@ -90,6 +96,15 @@ resolved_markets = set()        # (conditionId, outcome) already resolved — ma
                                  # right before the market closed can silently overwrite the
                                  # snapped-to-final price with a stale mid-market quote.
 event_categories = {}           # eventId -> category slug, cached (an /events/{id} call per market is too expensive to do for the whole active-token universe up front)
+# wallet -> name-or-None, cached (2026-08-26) — fetch_live_profile_name had
+# no caching at all, unlike event_categories above. Under the on-chain
+# pipeline's real volume, the same hyperactive wallet (e.g. a scalper firing
+# 8+ trades in a few seconds) was triggering a fresh, uncached network call
+# on every single one — confirmed live as a major contributor to the
+# processing backlog. None is cached too (a wallet with no profile stays
+# "no profile" — Polymarket profiles don't appear mid-session), so a wallet
+# that's genuinely nameless only ever costs one real request, not one per trade.
+live_profile_cache = {}
 
 
 # ---------------- HTTP helpers ----------------
@@ -1130,7 +1145,17 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
 
     wallet_name = wallet_names.get(wallet) if wallet else None
     if wallet and not wallet_name:
-        wallet_name = fetch_live_profile_name(wallet)  # not in our local 261k dataset — try live, covers anyone with a profile
+        if wallet in live_profile_cache:
+            wallet_name = live_profile_cache[wallet]
+            with state_lock:
+                stats['profile_fetch_cache_hits'] += 1
+        else:
+            _t0 = time.time()
+            wallet_name = fetch_live_profile_name(wallet)  # not in our local 261k dataset — try live, covers anyone with a profile
+            live_profile_cache[wallet] = wallet_name
+            with state_lock:
+                stats['profile_fetch_count'] += 1
+                stats['profile_fetch_ms'] += (time.time() - _t0) * 1000
 
     # roster is mutated (clear+update) by apply_config on a config-poll
     # thread while trade-processing threads read it here — state_lock
@@ -1193,6 +1218,20 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
               f'${total_usd:,.0f} from {len(distinct_wallets)} roster wallets (crossed ${t:,} tier)')
 
 
+def process_trade_timed(*args, **kwargs):
+    """Thin timing wrapper (2026-08-26) around process_trade, submitted to
+    the executor instead of process_trade directly — lets us measure real
+    end-to-end per-call duration under load without threading a timer
+    through process_trade's several early-return points."""
+    _t0 = time.time()
+    try:
+        process_trade(*args, **kwargs)
+    finally:
+        with state_lock:
+            stats['process_trade_count'] += 1
+            stats['process_trade_ms'] += (time.time() - _t0) * 1000
+
+
 ONCHAIN_FILLS_RETENTION_SECONDS = 3600  # processed rows are only ever a debugging aid — prune like ticker
 
 
@@ -1249,7 +1288,9 @@ def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor):
         # docstring: a tx_hash gets exactly one ticker row, and having both
         # calls write it broke that, corrupting which wallet showed on it.
         for wallet, trade_side, record_ticker in ((buyer, 'BUY', True), (seller, 'SELL', False)):
-            executor.submit(process_trade, db, keyed_token_info, token_id, price, size,
+            with state_lock:
+                stats['process_trade_submitted'] += 1
+            executor.submit(process_trade_timed, db, keyed_token_info, token_id, price, size,
                              trade_side, tx_hash, wallet, roster, wallet_names, block_ts, record_ticker)
 
     db.execute('UPDATE onchain_fills SET processed = true WHERE id = ANY(%s)', (ids,))
@@ -1366,13 +1407,20 @@ def main():
                 if now - last_heartbeat > HEARTBEAT_SECONDS:
                     with state_lock:
                         n_opps = sum(len(v) for v in tiers_hit.values())
+                        avg_trade_ms = stats['process_trade_ms'] / stats['process_trade_count'] if stats['process_trade_count'] else 0
+                        avg_profile_ms = stats['profile_fetch_ms'] / stats['profile_fetch_count'] if stats['profile_fetch_count'] else 0
+                        in_flight = stats['process_trade_submitted'] - stats['process_trade_count']
                         print(f'[heartbeat] trades_seen={stats["trades_seen"]} '
                               f'roster_matches={stats["roster_matches"]} '
                               f'tier_crossings={n_opps} rpc_failures={stats["rpc_failures"]} '
                               f'ticker_trades={stats["ticker_trades"]} '
                               f'price_change_seen={stats["price_change_seen"]} '
                               f'book_seen={stats["book_seen"]} '
-                              f'other_events_seen={stats["other_events_seen"]}')
+                              f'other_events_seen={stats["other_events_seen"]} '
+                              f'avg_process_trade_ms={avg_trade_ms:.1f} (n={stats["process_trade_count"]}) '
+                              f'avg_profile_fetch_ms={avg_profile_ms:.1f} '
+                              f'(n={stats["profile_fetch_count"]}, cache_hits={stats["profile_fetch_cache_hits"]}) '
+                              f'executor_in_flight={in_flight}')
                     last_heartbeat = now
 
                 if now - last_prune > 600:  # every 10 min, keep the high-volume ticker table bounded
