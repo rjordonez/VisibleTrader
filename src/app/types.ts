@@ -37,6 +37,20 @@ export interface WalletContribution {
   resolved_ts: string | null
 }
 
+// Matches the wallet_positions view (opportunity_wallets joined with
+// opportunities for market metadata, plus a computed profit + closed_at) —
+// unlike WalletContribution above, this is used as a flat, cross-market
+// list (the wins feed), so it needs its own condition_id/outcome/title/
+// category rather than inheriting them from a parent Opportunity.
+export interface WalletPosition extends WalletContribution {
+  condition_id: string
+  outcome: string
+  title: string
+  category: string | null
+  profit: number
+  closed_at: string
+}
+
 export interface TickerTrade {
   id: number
   condition_id: string

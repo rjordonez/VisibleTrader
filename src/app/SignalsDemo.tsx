@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { ExternalLink, Star } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import type { Opportunity, TickerTrade } from './types'
+import type { Opportunity, TickerTrade, WalletPosition } from './types'
 import {
   onTabVisible, byCategory, opportunityCursor, PAGE_SIZE,
   categoryIcon, gaugePct, gaugeColor, signalsTag, fmtFull, fmtSigned, isToday,
@@ -17,7 +17,9 @@ function SignalsDemo({ category }: { category: string }) {
   const [modalOpp, setModalOpp]           = useState<Opportunity | null>(null)
   const [ticker, setTicker]               = useState<TickerTrade[]>([])
   const [tickerLoading, setTickerLoading] = useState(true)
-  const [tab, setTab]                     = useState<'ticker' | 'vetted' | 'tracked'>('ticker')
+  const [wins, setWins]                   = useState<WalletPosition[]>([])
+  const [winsLoading, setWinsLoading]     = useState(true)
+  const [tab, setTab]                     = useState<'ticker' | 'wins' | 'vetted' | 'tracked'>('ticker')
   const [userId, setUserId]               = useState<string | null>(null)
   const [trackedPicks, setTrackedPicks]   = useState<Set<string>>(new Set())
   const [trackBusy, setTrackBusy]         = useState<string | null>(null)
@@ -209,6 +211,42 @@ function SignalsDemo({ category }: { category: string }) {
     // updates land, so it doesn't need to be aggressive. It used to be
     // 3000ms, re-fetching all 200 rows every 3s regardless of whether
     // anything changed, which was most of this page's Supabase egress.
+    const interval = setInterval(load, 60000)
+    const unsubVisible = onTabVisible(load)
+    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel); unsubVisible() }
+  }, [])
+
+  // Wins feed — closed, profitable positions from tracked wallets only
+  // (opportunity_wallets already only ever contains roster-matched trades,
+  // gated upstream in live-signal-service.py's process_trade, so no extra
+  // "is this a tracked wallet" filtering is needed here). A close is an
+  // UPDATE on opportunity_wallets (exit_ts or market_closed/resolved_ts
+  // getting set on an existing row), not an INSERT, and Realtime can't
+  // subscribe to wallet_positions directly since it's a view — same
+  // "subscribe on the real table just to trigger a refetch" pattern as the
+  // ticker effect above, just watching UPDATE instead of INSERT.
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      Promise.resolve(
+        supabase.from('wallet_positions').select('*')
+          .not('closed_at', 'is', null)
+          .gt('profit', 0)
+          .order('closed_at', { ascending: false })
+          .limit(200)
+      )
+        .then(({ data }) => {
+          if (cancelled) return
+          setWins((data ?? []) as WalletPosition[])
+          setWinsLoading(false)
+        })
+        .catch(() => { if (!cancelled) setWinsLoading(false) })
+    }
+    load()
+    const channel = supabase
+      .channel('wins-changes')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'opportunity_wallets' }, load)
+      .subscribe()
     const interval = setInterval(load, 60000)
     const unsubVisible = onTabVisible(load)
     return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel); unsubVisible() }
@@ -416,6 +454,7 @@ function SignalsDemo({ category }: { category: string }) {
 
           <div className="sig-seg">
             <div className={tab === 'ticker' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('ticker')}>Live Ticker</div>
+            <div className={tab === 'wins' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('wins')}>Winners</div>
             <div className={tab === 'vetted' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('vetted')}>Vetted Picks</div>
             <div className={tab === 'tracked' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('tracked')}>
               Tracked{trackedPicks.size > 0 ? ` (${trackedPicks.size})` : ''}
@@ -586,6 +625,38 @@ function SignalsDemo({ category }: { category: string }) {
           </div>
         )}
 
+        {tab === 'wins' && (
+          <div className="sig-list">
+            {winsLoading && Array.from({ length: 8 }).map((_, i) => <SkelListRow key={i} />)}
+            {!winsLoading && wins.length === 0 && (
+              <div className="sig-empty">Waiting for the next win…</div>
+            )}
+            {!winsLoading && wins.map(w => {
+              const ic = categoryIcon(w.category)
+              const key = `${w.condition_id}::${w.outcome}::${w.closed_at}`
+              return (
+                <div key={key} className="sig-row">
+                  <div className="sig-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
+                  <div className="sig-mid">
+                    <div className="sig-q">{w.title} <span className="sig-out">— {w.outcome}</span></div>
+                    <div className="sig-meta">
+                      <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>
+                        {traderLabel(w.wallet, w.wallet_name)}
+                      </a>
+                      <span>· {w.is_scalp ? 'Scalped' : w.market_closed ? 'Won' : 'Exited'}</span>
+                      <span>· {timeAgo(w.closed_at)}</span>
+                    </div>
+                  </div>
+                  <div className="sig-right">
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#00d17a' }}>{fmtSigned(w.profit)}</div>
+                    <div className="sig-rowsize">{fmtFull(w.usd)} staked</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         {tab === 'vetted' && (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
@@ -620,7 +691,9 @@ function SignalsDemo({ category }: { category: string }) {
         )}
 
         <div className="sig-foot">
-          {tab === 'ticker' ? 'Raw trade activity, $100+ · not a recommendation' : 'Positions still open, weighted by trader conviction'}
+          {tab === 'ticker' ? 'Raw trade activity, $100+ · not a recommendation'
+            : tab === 'wins' ? 'Closed, profitable positions from tracked wallets · not a recommendation'
+            : 'Positions still open, weighted by trader conviction'}
         </div>
       </div>
 
