@@ -1056,7 +1056,7 @@ def write_price_updates(db, updates):
                    (mid, condition_id, outcome))
 
 
-def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet, roster, wallet_names, trade_ts):
+def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet, roster, wallet_names, trade_ts, record_ticker=True):
     """Single combined path — a same-day attempt to split this into a fast
     (ticker/mark-to-market) and slow (RPC-bound wallet resolution) pool on
     two separate executors made things measurably worse, not better, and
@@ -1081,7 +1081,19 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
     it up just sold it — so poll_onchain_fills calls this twice per fill,
     once per party, each with that party's own correct wallet+side. No
     trade-history lookup needed to tell buy from sell; it's just which end
-    of the same swap this wallet was on."""
+    of the same swap this wallet was on.
+
+    `record_ticker` gates the ticker/mark-to-market writes so they only
+    happen on ONE of the two per-fill calls, not both — confirmed live
+    (2026-08-26) that letting both calls write ticker broke
+    update_ticker_wallet's own documented assumption ("a tx_hash only ever
+    gets one ticker row"): with two rows sharing one tx_hash, whichever
+    call's `WHERE tx_hash=... AND wallet IS NULL` ran first matched BOTH
+    rows, silently overwriting the other party's row with its own wallet —
+    every ticker entry for a fill showed the same trader on both the BUY
+    and SELL line. Roster-matching (is this wallet one we track, did they
+    enter or exit) still runs independently for both parties either way —
+    only the ticker feed itself is per-fill, not per-party."""
     if side not in ('BUY', 'SELL') or not tx_hash:
         return
     info = keyed_token_info.get(tid)
@@ -1094,7 +1106,7 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
 
     # Ticker: fires on size alone, immediately, before any RPC wait — this is
     # what makes it sub-second instead of gated on wallet resolution.
-    if usd >= TICKER_MIN_USD:
+    if record_ticker and usd >= TICKER_MIN_USD:
         record_ticker_trade(db, info, usd, float(price) if price else 0, side, tx_hash, trade_ts)
         with state_lock:
             stats['ticker_trades'] += 1
@@ -1108,7 +1120,7 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
     # a market we already track is a free, sub-second price update — no
     # extra network call, since we already receive it over the WS.
     key_probe = (info['conditionId'], info['outcome'])
-    if price and float(price) > 0 and key_probe in tiers_hit and key_probe not in resolved_markets:
+    if record_ticker and price and float(price) > 0 and key_probe in tiers_hit and key_probe not in resolved_markets:
         last_mtm_update[key_probe] = time.time()  # a real fill is always fresher than a throttled quote update
         db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
                    (float(price), key_probe[0], key_probe[1]))
@@ -1128,7 +1140,7 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
     with state_lock:
         is_roster_wallet = bool(wallet and wallet in roster)
 
-    if usd >= TICKER_MIN_USD:
+    if record_ticker and usd >= TICKER_MIN_USD:
         category = fetch_event_category(info.get('eventId'))
         update_ticker_wallet(db, tx_hash, wallet, wallet_name, is_roster_wallet, category)
 
@@ -1233,9 +1245,12 @@ def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor):
         size = token_raw / 1_000_000
 
         buyer, seller = (maker, taker) if side == 0 else (taker, maker)
-        for wallet, trade_side in ((buyer, 'BUY'), (seller, 'SELL')):
+        # record_ticker=True only on the first (buyer) call — see process_trade's
+        # docstring: a tx_hash gets exactly one ticker row, and having both
+        # calls write it broke that, corrupting which wallet showed on it.
+        for wallet, trade_side, record_ticker in ((buyer, 'BUY', True), (seller, 'SELL', False)):
             executor.submit(process_trade, db, keyed_token_info, token_id, price, size,
-                             trade_side, tx_hash, wallet, roster, wallet_names, block_ts)
+                             trade_side, tx_hash, wallet, roster, wallet_names, block_ts, record_ticker)
 
     db.execute('UPDATE onchain_fills SET processed = true WHERE id = ANY(%s)', (ids,))
 
@@ -1246,14 +1261,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--roster-size', type=int, default=ROSTER_SIZE)
     ap.add_argument('--database-url', default=os.environ.get('DATABASE_URL'))
-    ap.add_argument('--workers', type=int, default=16)
+    ap.add_argument('--workers', type=int, default=32)  # was 16 — bumped 2026-08-26 for the
+    # extra volume from covering both exchange contracts (not just Neg Risk)
+    # plus every roster-matched fill now needing two process_trade calls
+    # (buyer + seller) instead of one
     args = ap.parse_args()
 
     if not args.database_url:
         raise SystemExit('DATABASE_URL not set — export it or pass --database-url '
                           '(Supabase Settings > Database > Connection string, session pooler, port 5432)')
 
-    db = Database(args.database_url)
+    db = Database(args.database_url, pool_size=16)  # was the class default (8) — bumped
+    # alongside --workers 2026-08-26, same reasoning: more concurrent DB-bound
+    # work now that every roster-matched fill needs two process_trade calls
 
     all_users = load_all_users(db)
     config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page
