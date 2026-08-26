@@ -59,7 +59,13 @@ if 'vohtqodprqpobvvcdypy' in os.environ.get('DATABASE_URL', ''):
 state_lock = threading.Lock()  # guards in-memory state only (stats/conviction/tiers_hit/
 # resolved_markets/roster_set) — DB writes go through Database's connection pool, which
 # lets Postgres's own MVCC handle write concurrency instead of serializing through Python.
-stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trades': 0}
+stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trades': 0,
+         # Diagnostic-only counters (2026-08-26) — trades_seen only counts
+         # last_trade_price, so a connection silently getting price_change
+         # but not last_trade_price looked identical to "no messages at
+         # all" from the heartbeat alone. These make that distinction
+         # visible without needing an external probe script.
+         'price_change_seen': 0, 'book_seen': 0, 'other_events_seen': 0}
 
 # Updated once per inner listen-loop tick (see main()) as proof the event loop is
 # still alive. watchdog() below is a last-resort safety net independent of any
@@ -392,6 +398,24 @@ def fetch_active_tokens():
         if offset % 1000 == 0:
             print(f'  ...fetched offset {offset}, {len(tokens)} tokens so far')
     return tokens, token_info
+
+
+WATCHED_MARKETS_DUMP_PATH = '/tmp/watched_markets.json'
+
+
+def dump_watched_markets(token_info):
+    """Diagnostic-only (2026-08-26) — writes the exact set of condition_ids
+    this process is currently subscribed to, so an external check can
+    compare against real Polymarket trade history without independently
+    re-deriving the "top by volume" list itself, which turned out to shift
+    meaningfully between successive calls and produced contradictory
+    overlap results when compared that way."""
+    try:
+        condition_ids = sorted({info['conditionId'] for info in token_info.values() if info.get('conditionId')})
+        with open(WATCHED_MARKETS_DUMP_PATH, 'w') as f:
+            json.dump({'dumped_at': time.time(), 'condition_ids': condition_ids}, f)
+    except Exception as e:
+        print(f'  (dump_watched_markets failed, non-fatal: {e})')
 
 
 # ---------------- raw-socket WebSocket client ----------------
@@ -1194,6 +1218,7 @@ def main():
     tokens, token_info = fetch_active_tokens()
     print(f'{len(tokens)} tokens across active markets.')
     keyed_token_info = {tid: info for tid, info in token_info.items()}
+    dump_watched_markets(token_info)
 
     last_market_refresh = time.time()
     last_heartbeat = time.time()
@@ -1235,6 +1260,7 @@ def main():
                         tokens[:] = new_tokens
                         keyed_token_info.clear()
                         keyed_token_info.update(new_info)
+                        dump_watched_markets(new_info)
                         print(f'{len(tokens)} tokens — reconnecting to apply.')
                         break  # break inner loop -> reconnect with fresh subscription
 
@@ -1244,7 +1270,10 @@ def main():
                         print(f'[heartbeat] trades_seen={stats["trades_seen"]} '
                               f'roster_matches={stats["roster_matches"]} '
                               f'tier_crossings={n_opps} rpc_failures={stats["rpc_failures"]} '
-                              f'ticker_trades={stats["ticker_trades"]}')
+                              f'ticker_trades={stats["ticker_trades"]} '
+                              f'price_change_seen={stats["price_change_seen"]} '
+                              f'book_seen={stats["book_seen"]} '
+                              f'other_events_seen={stats["other_events_seen"]}')
                     last_heartbeat = now
 
                 if now - last_prune > 600:  # every 10 min, keep the high-volume ticker table bounded
@@ -1284,14 +1313,17 @@ def main():
                             continue
                         items = msg if isinstance(msg, list) else [msg]
                         for item in items:
-                            if item.get('event_type') == 'last_trade_price':
+                            et = item.get('event_type')
+                            if et == 'last_trade_price':
                                 trade_ts = parse_trade_ts(item)
                                 executor.submit(
                                     process_trade, db, keyed_token_info,
                                     item.get('asset_id'), item.get('price'), item.get('size'),
                                     item.get('side'), item.get('transaction_hash'), roster, wallet_names, trade_ts,
                                 )
-                            elif item.get('event_type') == 'price_change':
+                            elif et == 'price_change':
+                                with state_lock:
+                                    stats['price_change_seen'] += 1
                                 # Filtered inline (cheap, no I/O) — only submits to the
                                 # executor when there's an actual write to do, see
                                 # filter_price_changes' docstring for why this matters
@@ -1299,6 +1331,12 @@ def main():
                                 updates = filter_price_changes(keyed_token_info, item)
                                 if updates:
                                     executor.submit(write_price_updates, db, updates)
+                            elif et == 'book':
+                                with state_lock:
+                                    stats['book_seen'] += 1
+                            else:
+                                with state_lock:
+                                    stats['other_events_seen'] += 1
                     elif opcode == 0x9:
                         send_frame(ssock, payload, opcode=0xA)
                     elif opcode == 0x8:
