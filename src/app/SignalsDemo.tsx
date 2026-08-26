@@ -39,6 +39,14 @@ function SignalsDemo({ category }: { category: string }) {
   const WON_CAP = 10000
   const [minTotal, setMinTotal]           = useState(0)
   const [maxTotal, setMaxTotal]           = useState(TOTAL_CAP)
+  // Total is heavily long-tailed (p95 ≈ $34k out of a $50k cap), so a linear
+  // slider wastes almost all its draggable width on values nobody has —
+  // most real stakes sit in the low hundreds/thousands. Map the 0-100 handle
+  // position through a square-root curve so the low end (where the data
+  // actually lives) gets most of the resolution, while the handle can still
+  // reach the full $50k at its far end.
+  const totalPos = (v: number) => Math.sqrt(Math.min(v, TOTAL_CAP) / TOTAL_CAP) * 100
+  const totalVal = (p: number) => Math.round(((p / 100) ** 2 * TOTAL_CAP) / 100) * 100
   const [minWon, setMinWon]               = useState(WON_FLOOR)
   const [maxWon, setMaxWon]               = useState(WON_CAP)
   // wallet_count checked live: 1-16 actual range, p95=7 — small and bounded
@@ -232,6 +240,7 @@ function SignalsDemo({ category }: { category: string }) {
         supabase.from('wallet_positions').select('*')
           .not('closed_at', 'is', null)
           .gt('profit', 0)
+          .gte('usd', 100) // matches TICKER_MIN_USD — filters dust-level legs (e.g. multi-leg conversion remainders) that round to "$0" and read as broken
           .order('closed_at', { ascending: false })
           .limit(200)
       )
@@ -342,6 +351,40 @@ function SignalsDemo({ category }: { category: string }) {
       return cents >= minPrice && cents <= maxPrice
     })
     .filter(t => t.usd >= minTotal && (maxTotal >= TOTAL_CAP || t.usd <= maxTotal))
+  const filteredWins = byCategory(wins, category)
+    .filter(w => !todayOnly || isToday(w.closed_at))
+    .filter(w => {
+      if (minWinRate === 0) return true
+      const wr = winRateMap.get(w.wallet)
+      return wr !== undefined && wr * 100 >= minWinRate
+    })
+    .filter(w => {
+      if (minBetRatio === 0) return true
+      const bal = balanceMap.get(w.wallet)
+      return bal !== undefined && (w.usd / bal) * 100 >= minBetRatio
+    })
+    .filter(w => {
+      const cents = w.price * 100
+      return cents >= minPrice && cents <= maxPrice
+    })
+    .filter(w => w.usd >= minTotal && (maxTotal >= TOTAL_CAP || w.usd <= maxTotal))
+  // Multi-leg fills (a single logical position built/closed across several
+  // on-chain legs) show up as several back-to-back rows for the same
+  // wallet+market+outcome — fold those together into one row (summed stake
+  // + profit) rather than showing each leg separately. Only merges when
+  // adjacent in the already-sorted list, so unrelated closes hours apart
+  // never get combined.
+  const mergedWins: (WalletPosition & { legCount: number })[] = []
+  for (const w of filteredWins) {
+    const last = mergedWins[mergedWins.length - 1]
+    if (last && last.wallet === w.wallet && last.condition_id === w.condition_id && last.outcome === w.outcome) {
+      last.usd += w.usd
+      last.profit += w.profit
+      last.legCount += 1
+    } else {
+      mergedWins.push({ ...w, legCount: 1 })
+    }
+  }
   // All discovery filtering + sorting now happens server-side in the query
   // itself (see buildQueryRef above) — the fetched page is already exactly
   // the filtered, sorted set, so nothing left to do here.
@@ -518,15 +561,15 @@ function SignalsDemo({ category }: { category: string }) {
             </span>
             <div className="sig-range-track-wrap">
               <div className="sig-range-track" />
-              <div className="sig-range-fill" style={{ left: `${(minTotal / TOTAL_CAP) * 100}%`, right: `${100 - (maxTotal / TOTAL_CAP) * 100}%` }} />
+              <div className="sig-range-fill" style={{ left: `${totalPos(minTotal)}%`, right: `${100 - totalPos(maxTotal)}%` }} />
               <input
-                type="range" min={0} max={TOTAL_CAP} step={500} value={minTotal}
-                onChange={e => setMinTotal(Math.min(Number(e.target.value), maxTotal - 500))}
+                type="range" min={0} max={100} step={0.5} value={totalPos(minTotal)}
+                onChange={e => setMinTotal(Math.min(totalVal(Number(e.target.value)), maxTotal - 100))}
                 className="sig-range-input"
               />
               <input
-                type="range" min={0} max={TOTAL_CAP} step={500} value={maxTotal}
-                onChange={e => setMaxTotal(Math.max(Number(e.target.value), minTotal + 500))}
+                type="range" min={0} max={100} step={0.5} value={totalPos(maxTotal)}
+                onChange={e => setMaxTotal(Math.max(totalVal(Number(e.target.value)), minTotal + 100))}
                 className="sig-range-input"
               />
             </div>
@@ -628,10 +671,10 @@ function SignalsDemo({ category }: { category: string }) {
         {tab === 'wins' && (
           <div className="sig-list">
             {winsLoading && Array.from({ length: 8 }).map((_, i) => <SkelListRow key={i} />)}
-            {!winsLoading && wins.length === 0 && (
+            {!winsLoading && mergedWins.length === 0 && (
               <div className="sig-empty">Waiting for the next win…</div>
             )}
-            {!winsLoading && wins.map(w => {
+            {!winsLoading && mergedWins.map(w => {
               const ic = categoryIcon(w.category)
               const key = `${w.condition_id}::${w.outcome}::${w.closed_at}`
               return (
@@ -649,7 +692,7 @@ function SignalsDemo({ category }: { category: string }) {
                   </div>
                   <div className="sig-right">
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#00d17a' }}>{fmtSigned(w.profit)}</div>
-                    <div className="sig-rowsize">{fmtFull(w.usd)} staked</div>
+                    <div className="sig-rowsize">{fmtFull(w.usd)} staked{w.legCount > 1 ? ` · ${w.legCount}x` : ''}</div>
                   </div>
                 </div>
               )
