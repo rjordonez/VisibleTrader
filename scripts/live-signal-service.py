@@ -1271,9 +1271,15 @@ def main():
         raise SystemExit('DATABASE_URL not set — export it or pass --database-url '
                           '(Supabase Settings > Database > Connection string, session pooler, port 5432)')
 
-    db = Database(args.database_url, pool_size=16)  # was the class default (8) — bumped
-    # alongside --workers 2026-08-26, same reasoning: more concurrent DB-bound
-    # work now that every roster-matched fill needs two process_trade calls
+    # NOT bumped alongside --workers, on purpose — confirmed live (2026-08-26)
+    # that pool_size=16 alone exceeds the Supabase session-mode pooler's hard
+    # ceiling (EMAXCONNSESSION, capped at 15 total clients for this pooler,
+    # shared with anything else connecting in session mode), which refused
+    # the connection outright rather than queuing — a real outage, not just
+    # slow. 32 workers safely share the class default (8) pool; a worker
+    # doing DB-bound work just waits for a free connection instead of
+    # failing, same as before this change.
+    db = Database(args.database_url)
 
     all_users = load_all_users(db)
     config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page
