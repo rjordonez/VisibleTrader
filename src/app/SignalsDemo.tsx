@@ -246,23 +246,53 @@ function SignalsDemo({ category }: { category: string }) {
   // Wins feed — closed, profitable positions from tracked wallets only
   // (opportunity_wallets already only ever contains roster-matched trades,
   // gated upstream in live-signal-service.py's process_trade, so no extra
-  // "is this a tracked wallet" filtering is needed here). A close is an
-  // UPDATE on opportunity_wallets (exit_ts or market_closed/resolved_ts
-  // getting set on an existing row), not an INSERT, and Realtime can't
-  // subscribe to wallet_positions directly since it's a view — same
-  // "subscribe on the real table just to trigger a refetch" pattern as the
-  // ticker effect above, just watching UPDATE instead of INSERT.
+  // "is this a tracked wallet" filtering is needed here). Category/Today/
+  // Price/Total are pushed into the query itself, not filtered client-side
+  // afterward — Winners contains rare, large-value events unlike Ticker's
+  // dense continuous stream, so filtering an already-fetched "200 most
+  // recent" window for e.g. a $9k+ minimum could leave almost nothing even
+  // though plenty of matching rows exist further back in history (confirmed
+  // live 2026-08-27: only 7 of the 200 most recent closes cleared $9k, out
+  // of 2,070 that actually exist). Win rate / Bet ratio still can't be
+  // pushed server-side — they need a join against leaderboard/
+  // wallet_balances that wallet_positions doesn't have — so those stay as
+  // client-side post-filters in filteredWins below, with the same residual
+  // starving risk this fix doesn't solve.
+  //
+  // A close is an UPDATE on opportunity_wallets (exit_ts or market_closed/
+  // resolved_ts getting set on an existing row), not an INSERT, and
+  // Realtime can't subscribe to wallet_positions directly since it's a
+  // view — same "subscribe on the real table just to trigger a refetch"
+  // pattern as opportunities_live above, just watching UPDATE not INSERT.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const buildWinsQueryRef = useRef<() => any>(() => supabase.from('wallet_positions').select('*'))
+  useEffect(() => {
+    buildWinsQueryRef.current = () => {
+      let q = supabase.from('wallet_positions').select('*')
+        .not('closed_at', 'is', null)
+        .gt('profit', 0)
+        // 100 = TICKER_MIN_USD's dust floor (filters sub-$100 multi-leg
+        // remainders) — Math.max so a lower minTotal never re-opens that gap.
+        .gte('usd', Math.max(100, minTotal))
+      if (maxTotal < TOTAL_CAP) q = q.lte('usd', maxTotal)
+      q = q.gte('price', minPrice / 100).lte('price', maxPrice / 100)
+      if (category !== 'all') {
+        q = category === 'other' ? q.or('category.eq.other,category.is.null') : q.eq('category', category)
+      }
+      if (todayOnly) {
+        const startOfToday = new Date()
+        startOfToday.setHours(0, 0, 0, 0)
+        q = q.gte('closed_at', startOfToday.toISOString())
+      }
+      return q.order('closed_at', { ascending: false }).limit(200)
+    }
+  }, [category, todayOnly, minPrice, maxPrice, minTotal, maxTotal, TOTAL_CAP])
+
+  const loadWinsRef = useRef<() => void>(() => {})
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      Promise.resolve(
-        supabase.from('wallet_positions').select('*')
-          .not('closed_at', 'is', null)
-          .gt('profit', 0)
-          .gte('usd', 100) // matches TICKER_MIN_USD — filters dust-level legs (e.g. multi-leg conversion remainders) that round to "$0" and read as broken
-          .order('closed_at', { ascending: false })
-          .limit(200)
-      )
+      Promise.resolve(buildWinsQueryRef.current!())
         .then(({ data }) => {
           if (cancelled) return
           setWins((data ?? []) as WalletPosition[])
@@ -270,6 +300,7 @@ function SignalsDemo({ category }: { category: string }) {
         })
         .catch(() => { if (!cancelled) setWinsLoading(false) })
     }
+    loadWinsRef.current = load
     load()
     const channel = supabase
       .channel('wins-changes')
@@ -279,6 +310,16 @@ function SignalsDemo({ category }: { category: string }) {
     const unsubVisible = onTabVisible(load)
     return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel); unsubVisible() }
   }, [])
+
+  // Refetches for the new filter set whenever a filter changes — debounced
+  // since range sliders fire on every drag tick. Skips the very first
+  // render since the mount effect above already loads once.
+  const winsFilterMounted = useRef(false)
+  useEffect(() => {
+    if (!winsFilterMounted.current) { winsFilterMounted.current = true; return }
+    const t = setTimeout(() => loadWinsRef.current(), 300)
+    return () => clearTimeout(t)
+  }, [category, todayOnly, minPrice, maxPrice, minTotal, maxTotal])
 
   // Win rate / wallet-balance data for the two threshold filters below —
   // both change slowly (win rate only moves on resolution, balance only on
@@ -373,8 +414,10 @@ function SignalsDemo({ category }: { category: string }) {
       return cents >= minPrice && cents <= maxPrice
     })
     .filter(t => t.usd >= minTotal && (maxTotal >= TOTAL_CAP || t.usd <= maxTotal))
-  const filteredWins = byCategory(wins, category)
-    .filter(w => !todayOnly || isToday(w.closed_at))
+  // category/todayOnly/price/total are already applied server-side in
+  // buildWinsQueryRef above — only Win rate/Bet ratio need to stay
+  // client-side (no join available for them against wallet_positions).
+  const filteredWins = wins
     .filter(w => {
       if (minWinRate === 0) return true
       const wr = winRateMap.get(w.wallet)
@@ -385,11 +428,6 @@ function SignalsDemo({ category }: { category: string }) {
       const bal = balanceMap.get(w.wallet)
       return bal !== undefined && bal > 0 && (w.usd / bal) * 100 >= minBetRatio
     })
-    .filter(w => {
-      const cents = w.price * 100
-      return cents >= minPrice && cents <= maxPrice
-    })
-    .filter(w => w.usd >= minTotal && (maxTotal >= TOTAL_CAP || w.usd <= maxTotal))
   // Multi-leg fills (a single logical position built/closed across several
   // on-chain legs) show up as several rows for the same wallet+market+
   // outcome — fold those together into one row (summed stake + profit)
@@ -509,7 +547,7 @@ function SignalsDemo({ category }: { category: string }) {
           <h1 className="app-section-title">Top Trader Signals</h1>
           <p className="app-section-sub">
             {loading ? 'Loading live signals…'
-              : error ? 'Could not reach the signals backend'
+              : error ? 'Connection trouble — retrying…'
               : <>{opportunities.length} live opportunities · capital-weighted conviction from top traders</>}
           </p>
         </div>
@@ -520,7 +558,7 @@ function SignalsDemo({ category }: { category: string }) {
         <div className="sig-head">
           {error && (
             <div style={{ color: '#ff3b5c', padding: '0 0 20px', fontSize: '0.875rem' }}>
-              {error} — check your Supabase connection and that `python3 scripts/live-signal-service.py` is running.
+              Having trouble reaching live data — this usually resolves on its own. Check your internet connection if it continues.
             </div>
           )}
 

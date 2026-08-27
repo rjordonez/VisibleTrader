@@ -280,7 +280,7 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
           <button className="sig-btn secondary" onClick={onBack} style={{ marginBottom: 12 }}>← Back to Leaderboard</button>
           <h1 className="app-section-title">{traderLabel(wallet, summary?.wallet_name ?? null)}</h1>
           <p className="app-section-sub">
-            {loading ? 'Loading…' : error ? 'Could not reach the signals backend' : (
+            {loading ? 'Loading…' : error ? 'Connection trouble — retrying…' : (
               <>
                 <a href={profileUrl(wallet)!} target="_blank" rel="noopener noreferrer">View on Polymarket ↗</a>
                 {' · '}

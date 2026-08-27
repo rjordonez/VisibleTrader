@@ -76,7 +76,7 @@ function LeaderboardPage() {
           <h1 className="app-section-title">Leaderboard</h1>
           <p className="app-section-sub">
             {loading ? 'Loading…'
-              : error ? 'Could not reach the signals backend'
+              : error ? 'Connection trouble — retrying…'
               : "Real observed performance per tracked wallet — not their claimed Polymarket PnL"}
           </p>
         </div>

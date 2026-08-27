@@ -153,7 +153,7 @@ function SettingsPage() {
         <div>
           <h1 className="app-section-title">Settings</h1>
           <p className="app-section-sub">
-            {loading ? 'Loading…' : error ? 'Could not reach the signals backend' : 'Live pipeline configuration — changes apply within ~10s, no restart needed'}
+            {loading ? 'Loading…' : error ? 'Connection trouble — retrying…' : 'Live pipeline configuration — changes apply within ~10s, no restart needed'}
           </p>
         </div>
       </div>
