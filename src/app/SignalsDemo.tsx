@@ -604,27 +604,29 @@ function SignalsDemo({ category }: { category: string }) {
               </div>
             </div>
 
-            <div className="sig-filter-group sig-price-range">
-              <span className="sig-filter-label">Price range: {minPrice}¢ – {maxPrice}¢</span>
-              <div className="sig-range-track-wrap">
-                <div className="sig-range-track" />
-                <div className="sig-range-fill" style={{ left: `${minPrice}%`, right: `${100 - maxPrice}%` }} />
-                <input
-                  type="range" min={0} max={100} value={minPrice}
-                  onChange={e => setMinPrice(Math.min(Number(e.target.value), maxPrice - 1))}
-                  className="sig-range-input"
-                />
-                <input
-                  type="range" min={0} max={100} value={maxPrice}
-                  onChange={e => setMaxPrice(Math.max(Number(e.target.value), minPrice + 1))}
-                  className="sig-range-input"
-                />
+            {tab !== 'wins' && (
+              <div className="sig-filter-group sig-price-range">
+                <span className="sig-filter-label">Price range: {minPrice}¢ – {maxPrice}¢</span>
+                <div className="sig-range-track-wrap">
+                  <div className="sig-range-track" />
+                  <div className="sig-range-fill" style={{ left: `${minPrice}%`, right: `${100 - maxPrice}%` }} />
+                  <input
+                    type="range" min={0} max={100} value={minPrice}
+                    onChange={e => setMinPrice(Math.min(Number(e.target.value), maxPrice - 1))}
+                    className="sig-range-input"
+                  />
+                  <input
+                    type="range" min={0} max={100} value={maxPrice}
+                    onChange={e => setMaxPrice(Math.max(Number(e.target.value), minPrice + 1))}
+                    className="sig-range-input"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="sig-filter-group sig-price-range">
               <span className="sig-filter-label">
-                Total: {minTotal === 0 ? '$0' : fmtFull(minTotal)} – {maxTotal >= TOTAL_CAP ? 'no limit' : fmtFull(maxTotal)}
+                {tab === 'wins' ? 'Staked' : 'Total'}: {minTotal === 0 ? '$0' : fmtFull(minTotal)} – {maxTotal >= TOTAL_CAP ? 'no limit' : fmtFull(maxTotal)}
               </span>
               <div className="sig-range-track-wrap">
                 <div className="sig-range-track" />
