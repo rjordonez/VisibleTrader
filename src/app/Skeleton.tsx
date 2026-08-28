@@ -95,14 +95,16 @@ export function SkelLbRow() {
         </div>
       </div>
       <div className="lb-market"><SkelBlock height={14} width="80%" /></div>
-      {[0, 1].map(i => (
-        <div className="lb-col" key={i}>
-          <div className="lb-col-stack">
-            <SkelBlock height={14} width={60} style={{ marginLeft: 'auto', marginBottom: 6 }} />
-            <SkelBlock height={11} width={45} style={{ marginLeft: 'auto' }} />
+      <div className="lb-stats">
+        {[0, 1].map(i => (
+          <div className="lb-col" key={i}>
+            <div className="lb-col-stack">
+              <SkelBlock height={14} width={60} style={{ marginLeft: 'auto', marginBottom: 6 }} />
+              <SkelBlock height={11} width={45} style={{ marginLeft: 'auto' }} />
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }

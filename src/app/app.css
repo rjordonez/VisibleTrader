@@ -753,28 +753,57 @@
 .lb-val.r { color: var(--red); }
 .lb-val-suffix { font-size: 11px; font-weight: 500; color: var(--text-dim); }
 .lb-val-sub { font-size: 12px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+/* Wrapper around the stat .lb-col cells only (not .lb-trader/.lb-market) —
+   display:contents on desktop makes it invisible to the grid (its children
+   stay direct grid items of .lb-row, unchanged layout); on mobile it
+   becomes its own small grid instead, decoupled from .lb-row entirely. */
+.lb-stats { display: contents; }
 
+/* Below 640px: a label-left/value-right row per stat (via a ::before
+   pseudo-label) got cramped and truncated with real data — wide dollar
+   values and long trader names left little room for either side. Instead:
+   .lb-trader and .lb-market (if present) each get their own full-width
+   line, and the stat cells become a small grid of labeled tiles (label
+   above value, not beside it) — standard mobile stat-card pattern, and
+   every cell gets its own box instead of fighting for one shared line. */
 @media (max-width: 640px) {
   .lb-head { display: none; }
   .lb-row {
-    grid-template-columns: 1fr;
-    row-gap: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: 8px;
     margin: 8px;
-    padding: 12px 14px;
+    padding: 14px;
   }
   .lb-row:last-child { margin-bottom: 8px; }
+  .lb-row .lb-market { order: -1; }
+  .lb-row .lb-market .sig-q {
+    white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35;
+  }
+  .lb-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .lb-row.lb-4col .lb-stats { grid-template-columns: repeat(2, 1fr); }
   .lb-row .lb-col {
-    display: flex; align-items: center; justify-content: space-between; text-align: left;
+    text-align: left;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    min-width: 0;
   }
   .lb-row .lb-col::before {
-    content: attr(data-label); font-size: 11px; font-weight: 600; color: var(--text-dim);
+    content: attr(data-label); display: block; margin-bottom: 4px;
+    font-size: 10px; font-weight: 600; color: var(--text-dim);
     text-transform: uppercase; letter-spacing: 0.04em;
   }
-  .lb-row .lb-col-stack { text-align: right; }
-  .lb-row .lb-market { order: -1; margin-bottom: 2px; }
+  .lb-row .lb-col-stack { text-align: left; }
+  .lb-row .lb-val, .lb-row .lb-val-sub { overflow-wrap: anywhere; }
 }
 
 .sig-chart { width: 100%; height: 160px; margin-bottom: 24px; }

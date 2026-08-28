@@ -731,17 +731,19 @@ function SignalsDemo({ category }: { category: string }) {
                     <div className="sig-q">{t.title} <span className="sig-out">— {t.outcome}</span></div>
                   </div>
 
-                  <div className="lb-col" data-label="Price">
-                    <div className="lb-col-stack">
-                      <div className="lb-val">{Math.round(t.price * 100)}¢</div>
-                      <div className="lb-val-sub" style={{ color: t.side === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.side}</div>
+                  <div className="lb-stats">
+                    <div className="lb-col" data-label="Price">
+                      <div className="lb-col-stack">
+                        <div className="lb-val">{Math.round(t.price * 100)}¢</div>
+                        <div className="lb-val-sub" style={{ color: t.side === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.side}</div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="lb-col" data-label="Size">
-                    <div className="lb-col-stack">
-                      <div className="lb-val">{fmtFull(t.usd)}</div>
-                      <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{ic.emoji} {categoryLabel(t.category ?? 'other')}</div>
+                    <div className="lb-col" data-label="Size">
+                      <div className="lb-col-stack">
+                        <div className="lb-val">{fmtFull(t.usd)}</div>
+                        <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{ic.emoji} {categoryLabel(t.category ?? 'other')}</div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -783,17 +785,19 @@ function SignalsDemo({ category }: { category: string }) {
                     <div className="sig-q">{w.title} <span className="sig-out">— {w.outcome}</span></div>
                   </div>
 
-                  <div className="lb-col" data-label="PnL">
-                    <div className="lb-col-stack">
-                      <div className="lb-val g">{fmtSigned(w.profit)}</div>
-                      <div className="lb-val-sub" style={{ color: 'var(--green)' }}>▲ {roi.toFixed(1)}%</div>
+                  <div className="lb-stats">
+                    <div className="lb-col" data-label="PnL">
+                      <div className="lb-col-stack">
+                        <div className="lb-val g">{fmtSigned(w.profit)}</div>
+                        <div className="lb-val-sub" style={{ color: 'var(--green)' }}>▲ {roi.toFixed(1)}%</div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="lb-col" data-label="Staked">
-                    <div className="lb-col-stack">
-                      <div className="lb-val">{fmtFull(w.usd)}</div>
-                      <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{w.legCount > 1 ? `${w.legCount} legs` : '1 leg'}</div>
+                    <div className="lb-col" data-label="Staked">
+                      <div className="lb-col-stack">
+                        <div className="lb-val">{fmtFull(w.usd)}</div>
+                        <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{w.legCount > 1 ? `${w.legCount} legs` : '1 leg'}</div>
+                      </div>
                     </div>
                   </div>
                 </div>

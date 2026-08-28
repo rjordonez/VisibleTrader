@@ -497,6 +497,36 @@
   color: var(--text-1);
 }
 
+/* Odometer-style rolling digits for the live trade counter — each digit is
+   its own 1em-tall window (overflow:hidden) onto a vertical strip of 0-9;
+   moving the strip with a CSS transition gives the classic "old digit
+   scrolls up and out, new digit scrolls in" ticker look instead of the
+   text just swapping. */
+.tick-num {
+  display: inline-flex;
+  font-variant-numeric: tabular-nums;
+}
+.tick-digit {
+  display: inline-block;
+  width: 1ch;
+  height: 1em;
+  overflow: hidden;
+  position: relative;
+}
+.tick-digit-strip {
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.tick-digit-strip span {
+  height: 1em;
+  line-height: 1em;
+  text-align: center;
+}
+.tick-comma {
+  display: inline-block;
+}
+
 /* Right card */
 .hero-card-wrap {
   position: relative;

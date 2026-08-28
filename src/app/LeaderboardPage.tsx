@@ -28,14 +28,16 @@ function SkelLeaderboardRow() {
           <SkelBlock height={11} width="35%" />
         </div>
       </div>
-      {[0, 1, 2].map(i => (
-        <div className="lb-col" key={i}>
-          <div className="lb-col-stack">
-            <SkelBlock height={14} width={70} style={{ marginLeft: 'auto', marginBottom: 6 }} />
-            <SkelBlock height={11} width={50} style={{ marginLeft: 'auto' }} />
+      <div className="lb-stats">
+        {[0, 1, 2].map(i => (
+          <div className="lb-col" key={i}>
+            <div className="lb-col-stack">
+              <SkelBlock height={14} width={70} style={{ marginLeft: 'auto', marginBottom: 6 }} />
+              <SkelBlock height={11} width={50} style={{ marginLeft: 'auto' }} />
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }
@@ -129,26 +131,28 @@ function LeaderboardPage() {
                     </div>
                   </div>
 
-                  <div className="lb-col" data-label="Deployed">
-                    <div className="lb-col-stack">
-                      <div className="lb-val">{fmtFull(r.deployed)}</div>
-                      <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{winRate.toFixed(0)}% win rate</div>
-                    </div>
-                  </div>
-
-                  <div className="lb-col" data-label="PnL">
-                    <div className="lb-col-stack">
-                      <div className={`lb-val ${profitable ? 'g' : 'r'}`}>{fmtSigned(r.net_profit)}</div>
-                      <div className="lb-val-sub" style={{ color: profitable ? 'var(--green)' : 'var(--red)' }}>
-                        {profitable ? '▲' : '▼'} {Math.abs(roi).toFixed(1)}%
+                  <div className="lb-stats">
+                    <div className="lb-col" data-label="Deployed">
+                      <div className="lb-col-stack">
+                        <div className="lb-val">{fmtFull(r.deployed)}</div>
+                        <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{winRate.toFixed(0)}% win rate</div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="lb-col" data-label="Win rate">
-                    <div className="lb-col-stack">
-                      <div className="lb-val">{usdWinRate.toFixed(0)}<span className="lb-val-suffix">% $-wtd</span></div>
-                      <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{r.won}/{r.won + r.lost} resolved</div>
+                    <div className="lb-col" data-label="PnL">
+                      <div className="lb-col-stack">
+                        <div className={`lb-val ${profitable ? 'g' : 'r'}`}>{fmtSigned(r.net_profit)}</div>
+                        <div className="lb-val-sub" style={{ color: profitable ? 'var(--green)' : 'var(--red)' }}>
+                          {profitable ? '▲' : '▼'} {Math.abs(roi).toFixed(1)}%
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="lb-col" data-label="Win rate">
+                      <div className="lb-col-stack">
+                        <div className="lb-val">{usdWinRate.toFixed(0)}<span className="lb-val-suffix">% $-wtd</span></div>
+                        <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{r.won}/{r.won + r.lost} resolved</div>
+                      </div>
                     </div>
                   </div>
                 </div>
