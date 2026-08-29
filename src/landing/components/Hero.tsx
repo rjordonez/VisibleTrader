@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { BadgeCheck, Star } from 'lucide-react'
 import ProfitCard from './ProfitCard'
 import WinnersPreview from './WinnersPreview'
 import WinnersPreviewMobile from './WinnersPreviewMobile'
@@ -140,12 +141,19 @@ export default function Hero() {
           </div>
 
           <h1>
-            See what<br />
-            <span>the whales</span><br />
-            are trading, live.
+            The #1 Whale Tracker To <em className="hero-h1-emphasis">Beat</em> Prediction Markets
           </h1>
 
           <p className="hero-headline-sub">Real wallets. Real wins. Tracked the moment they trade.</p>
+
+          <div className="hero-rating">
+            <span className="hero-rating-stars">
+              {Array.from({ length: 5 }).map((_, i) => <Star key={i} size={13} fill="currentColor" strokeWidth={0} />)}
+            </span>
+            <span className="hero-rating-score">4.9/5</span>
+            <span className="hero-rating-divider">|</span>
+            <span className="hero-rating-verified"><BadgeCheck size={14} /> verified by Proof</span>
+          </div>
 
           <form className="hero-form" onSubmit={submit}>
             <div className="hero-form-inner">

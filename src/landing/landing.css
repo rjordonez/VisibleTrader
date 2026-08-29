@@ -480,6 +480,7 @@
 
 .hero-copy {
   position: relative;
+  z-index: 1;
   max-width: 640px;
   margin: 0 auto;
   text-align: center;
@@ -611,14 +612,18 @@
 
 .hero h1 {
   font-size: clamp(2rem, 4vw, 3.25rem);
-  font-weight: 600;
+  font-weight: 800;
   line-height: 1.1;
   letter-spacing: -0.03em;
   margin: 0 0 1rem;
 }
 
-.hero h1 span {
-  color: var(--text-1);
+.hero-h1-emphasis {
+  font-style: italic;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  text-decoration-color: rgba(255,255,255,0.5);
 }
 
 /* Same gray-subtext convention as .section-sub used throughout the rest
@@ -648,8 +653,10 @@
   flex: 1;
   padding: 0.75rem 1rem;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: var(--text-1);
   font-size: 0.9rem;
   font-family: 'Manrope', sans-serif;
@@ -3622,4 +3629,177 @@
 
   /* Pricing */
   .pricing-title { font-size: 1.5rem; }
+}
+
+/* ── Proof widget (bottom-left social-proof popup) ──
+   Rotates through individual "someone just won" cards (see
+   ProofWidget.tsx). Styled with the landing page's own dark surface/
+   border tokens instead of a separate white card, so it reads as part of
+   the site rather than a bolted-on third-party widget. text-transform
+   reset since .landing lowercases copy site-wide but this is presented as
+   a literal embedded widget, not landing-page copy. */
+.proof-widget {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 500;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  text-transform: none;
+  transform: translateY(16px) scale(0.97);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease;
+}
+.proof-widget.show {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.proof-card {
+  position: relative;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+}
+
+.proof-close {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  color: #fff;
+  border: 2px solid var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1;
+}
+.proof-close svg { flex-shrink: 0; }
+
+.proof-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.proof-body { min-width: 0; }
+
+.proof-name {
+  display: inline-block;
+  background: var(--bg-3);
+  color: var(--text-1);
+  font-weight: 700;
+  font-size: 0.75rem;
+  padding: 2px 8px 2px 0;
+  border-radius: 6px;
+  margin-bottom: 5px;
+}
+
+.proof-text {
+  font-size: 0.875rem;
+  color: var(--text-1);
+  line-height: 1.4;
+}
+.proof-text strong { color: var(--accent-hover); }
+
+.proof-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-3);
+  margin-top: 3px;
+}
+.proof-meta svg { color: var(--accent-hover); flex-shrink: 0; }
+.proof-dot { color: var(--text-3); }
+
+@media (max-width: 480px) {
+  .proof-widget { left: 12px; right: 12px; bottom: 12px; width: auto; }
+}
+
+/* ── Hero rating badge ── static, under the hero subtext (not part of the
+   rotating proof widget) — same dark surface/border tokens as the proof
+   widget above so the two read as one consistent style. */
+.hero-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 100px;
+  padding: 0.4rem 0.9rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.8125rem;
+}
+.hero-rating-stars { display: flex; gap: 2px; color: var(--green); flex-shrink: 0; }
+.hero-rating-score { font-weight: 700; color: var(--text-1); }
+.hero-rating-divider { color: var(--text-3); }
+.hero-rating-verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.hero-rating-verified svg { color: var(--accent-hover); flex-shrink: 0; }
+
+/* ── Promo banner (top of page, above the nav) ── in normal flow rather
+   than fixed, so the sticky nav below it (.nav, position:sticky; top:0)
+   pins to the true top only once this scrolls out of view — the usual
+   "promo bar scrolls away, nav takes over" behavior. text-transform reset
+   since this is a real, specific offer (with a live countdown), not
+   generic landing-page copy. */
+.promo-banner {
+  position: relative;
+  z-index: 100;
+  background: var(--accent);
+  color: #fff;
+  text-align: center;
+  padding: 0.6rem 2.75rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+.promo-banner-close {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #fff;
+  opacity: 0.8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+.promo-banner-close:hover { opacity: 1; }
+
+@media (max-width: 480px) {
+  .promo-banner { font-size: 0.6875rem; padding: 0.55rem 2rem; }
 }
