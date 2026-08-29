@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell, Search } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -15,12 +16,12 @@ import LookupPage from './LookupPage'
 import './app.css'
 
 const navItems = [
-  { id: 'home',        label: 'Home',        path: '/'            },
-  { id: 'signals',     label: 'Signals',     path: '/signals'     },
-  { id: 'profits',     label: 'Profits',     path: '/profits'     },
-  { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard' },
-  { id: 'alerts',      label: 'Alerts',      path: '/alerts'      },
-  { id: 'lookup',      label: 'Lookup',      path: '/lookup'      },
+  { id: 'home',        label: 'Home',        path: '/',            Icon: HomeIcon },
+  { id: 'signals',     label: 'Signals',     path: '/signals',     Icon: Zap },
+  { id: 'profits',     label: 'Profits',     path: '/profits',     Icon: TrendingUp },
+  { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
+  { id: 'alerts',      label: 'Alerts',      path: '/alerts',      Icon: Bell },
+  { id: 'lookup',      label: 'Lookup',      path: '/lookup',      Icon: Search },
 ]
 
 // Wraps TraderDetailPage so it can live at a real /trader/:wallet URL —
@@ -54,8 +55,6 @@ export default function AppShell() {
   const [category, setCategory] = useState('all')
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const mobileNavRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null))
@@ -73,17 +72,6 @@ export default function AppShell() {
     document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [userMenuOpen])
-
-  useEffect(() => {
-    if (!mobileNavOpen) return
-    const onClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (target.closest('.app-mobile-nav-toggle')) return
-      if (mobileNavRef.current && !mobileNavRef.current.contains(target)) setMobileNavOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [mobileNavOpen])
 
   const signOut = async () => {
     await supabase.auth.signOut()
@@ -112,15 +100,6 @@ export default function AppShell() {
             })}
           </nav>
 
-          <button
-            type="button"
-            className="app-mobile-nav-toggle"
-            onClick={() => setMobileNavOpen(o => !o)}
-            aria-label="Menu"
-          >
-            {mobileNavOpen ? '✕' : '☰'}
-          </button>
-
           {user && (
             <div className="app-user-menu" ref={userMenuRef}>
               <button
@@ -147,38 +126,28 @@ export default function AppShell() {
             </div>
           )}
         </div>
-
-        {mobileNavOpen && (
-          <nav className="app-mobile-nav" ref={mobileNavRef}>
-            {navItems.map(({ id, label, path }) => {
-              const target = dashboardPath(path)
-              return (
-                <Link
-                  key={id}
-                  to={target}
-                  className={`app-mobile-nav-item ${location.pathname === target ? 'active' : ''}`}
-                  onClick={() => setMobileNavOpen(false)}
-                >
-                  {label}
-                </Link>
-              )
-            })}
-            {user && (
-              <>
-                <div className="app-mobile-nav-divider" />
-                <Link
-                  to={settingsPath}
-                  className={`app-mobile-nav-item ${location.pathname === settingsPath ? 'active' : ''}`}
-                  onClick={() => setMobileNavOpen(false)}
-                >
-                  Settings
-                </Link>
-                <button className="app-mobile-nav-item danger" onClick={signOut}>Sign out</button>
-              </>
-            )}
-          </nav>
-        )}
       </header>
+
+      {/* Mobile-only fixed bottom tab bar — replaces the old hamburger +
+          slide-in drawer. Settings/sign-out stay in the avatar dropdown
+          above, not duplicated down here. Alerts/Profits dropped from
+          this row (still reachable from the desktop nav) to keep it to
+          4 items on the narrower mobile width. */}
+      <nav className="app-mobile-nav-bottom">
+        {navItems.filter(({ id }) => id !== 'alerts' && id !== 'profits').map(({ id, label, path, Icon }) => {
+          const target = dashboardPath(path)
+          return (
+            <Link
+              key={id}
+              to={target}
+              className={`app-mobile-nav-bottom-item ${location.pathname === target ? 'active' : ''}`}
+            >
+              <Icon size={20} />
+              <span>{label}</span>
+            </Link>
+          )
+        })}
+      </nav>
 
       <main className={`app-main ${locked ? 'app-main-locked' : ''}`}>
         <div className={locked ? 'search-locked-bg' : undefined}>

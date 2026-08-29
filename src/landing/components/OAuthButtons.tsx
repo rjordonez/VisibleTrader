@@ -50,7 +50,6 @@ export default function OAuthButtons({ onError }: { onError: (message: string) =
           {provider === 'apple' ? 'Redirecting…' : 'Continue with Apple'}
         </button>
       </div>
-      <div className="auth-divider"><span>or</span></div>
     </>
   )
 }

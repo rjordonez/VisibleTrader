@@ -99,72 +99,57 @@
   box-shadow: 0 2px 0 0 var(--accent);
 }
 
-/* Hamburger menu — hidden on desktop, replaces the horizontal (scrolling)
-   nav row below 768px with a proper stacked dropdown instead of relying on
-   side-scroll for the primary nav. */
-.app-mobile-nav-toggle {
+/* Fixed bottom tab bar — mobile only, replaces the old hamburger + slide-
+   down dropdown. Settings/sign-out live in the avatar dropdown only (see
+   .app-user-menu below), which is why that no longer hides on mobile the
+   way it did when the hamburger drawer duplicated that access. */
+.app-mobile-nav-bottom {
   display: none;
-  width: 32px;
-  height: 32px;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: none;
-  border: none;
-  color: var(--text-1);
-  font-size: 1.1rem;
-  line-height: 1;
-  cursor: pointer;
 }
-
-.app-mobile-nav {
-  position: fixed;
-  top: 60px;
-  left: 0;
-  right: 0;
-  z-index: 49;
-  max-height: calc(100vh - 60px);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0.5rem;
-  background: var(--shell-bg);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
-}
-
-.app-mobile-nav-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 0.85rem 1rem;
-  border-radius: 8px;
-  border: none;
-  background: none;
-  color: var(--text-2);
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
-  text-decoration: none;
-}
-.app-mobile-nav-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-1); }
-.app-mobile-nav-item.active { background: rgba(255, 255, 255, 0.06); color: var(--text-1); font-weight: 700; }
-.app-mobile-nav-item.danger { color: #f87171; }
-.app-mobile-nav-item.danger:hover { background: rgba(248, 113, 113, 0.1); }
-.app-mobile-nav-divider { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 6px 4px; }
 
 @media (max-width: 768px) {
   .app-header-nav { display: none; }
-  .app-mobile-nav-toggle { display: flex; margin-left: auto; }
-  /* Account access (Settings/Sign out) moves into the hamburger menu on
-     mobile instead of a separate avatar dropdown competing for header space. */
-  .app-user-menu { display: none; }
+
+  .app-mobile-nav-bottom {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 49;
+    background: var(--shell-bg);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+    padding: 0.4rem 0.25rem calc(0.4rem + env(safe-area-inset-bottom, 0px));
+  }
+  .app-mobile-nav-bottom-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 2px;
+    color: var(--text-3);
+    text-decoration: none;
+    font-size: 0.625rem;
+    font-weight: 600;
+    transition: color 0.15s;
+  }
+  .app-mobile-nav-bottom-item.active { color: var(--text-1); }
+
+  /* Room for the fixed bottom bar so page content (and anything else
+     pinned to the viewport bottom) doesn't sit underneath it. */
+  .app-main { padding-bottom: 68px; }
 }
 
 .app-user-menu {
   position: relative;
   flex-shrink: 0;
+  /* .app-header-nav supplies the flex:1 spacer that pushes this to the
+     right edge on desktop, but that nav is display:none on mobile —
+     without its own spacer here, this was landing right next to the
+     logo on mobile instead of at the top-right corner. */
+  margin-left: auto;
 }
 
 .app-avatar-btn {
