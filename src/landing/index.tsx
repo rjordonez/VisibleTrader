@@ -1,7 +1,5 @@
 import Hero from './components/Hero'
-import Testimonials from './components/Testimonials'
-import Features from './components/Features'
-import HowItWorks from './components/HowItWorks'
+import FeatureShowcase from './components/FeatureShowcase'
 import PricingPage from './PricingPage'
 import FAQ from './components/FAQ'
 import CTABanner from './components/CTABanner'
@@ -11,9 +9,7 @@ export default function Landing() {
   return (
     <>
       <Hero />
-      <Testimonials />
-      <Features />
-      <HowItWorks />
+      <FeatureShowcase />
       <PricingPage />
       <FAQ />
       <CTABanner />

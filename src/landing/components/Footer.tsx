@@ -10,8 +10,7 @@ export default function Footer() {
               VisibleTrader
             </a>
             <p>
-              Real-time tracking of Polymarket's top-performing wallets.
-              See what's actually being bought, by whom, the moment it happens.
+              The #1 Whale Tracker To Beat Prediction Markets
             </p>
             <div className="footer-socials">
               <a href="#" className="social-btn" aria-label="X / Twitter">

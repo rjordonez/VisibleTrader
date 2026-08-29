@@ -1,5 +1,6 @@
 import './landing.css'
 import { useState, useEffect } from 'react'
+import { Star, BadgeCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import posthog from '../lib/posthog'
 import { appUrl, marketingUrl } from '../lib/domains'
@@ -11,41 +12,24 @@ import { appUrl, marketingUrl } from '../lib/domains'
 const plans = [
   {
     name: 'Pro',
+    badge: 'One win covers the month',
     introPrice: '1' as string | undefined,
     recurringPrice: '40' as string | undefined,
     dayPrice: undefined as string | undefined,
     desc: 'Everything you need to follow real trading activity, live.',
     features: [
-      'Unlimited Live Ticker',
-      'Full Vetted Picks with price charts',
-      'Full Leaderboard + trader detail pages',
-      'Profits page: real, payout-adjusted P&L',
-      'Browser alerts on your watchlist',
-      'Configurable roster size & conviction tiers',
-      '24/7 live chat support',
+      { bold: 'Unlimited Live Ticker', rest: '' },
+      { bold: 'Vetted Picks', rest: 'with full price charts' },
+      { bold: 'Leaderboard', rest: '+ trader detail pages' },
+      { bold: 'Profits page', rest: 'with real, payout-adjusted P&L' },
+      { bold: 'Browser Alerts', rest: 'on your watchlist' },
+      { bold: 'Configurable roster size', rest: '& conviction tiers' },
+      { bold: '24/7 live chat support', rest: '' },
     ],
     cta: 'Start for $1',
     href: appUrl('/signup'),
     priceId: import.meta.env.VITE_STRIPE_PRICE_PRO_WEEKLY as string | undefined,
     highlighted: true,
-  },
-  {
-    name: 'Elite',
-    introPrice: undefined as string | undefined,
-    recurringPrice: undefined as string | undefined,
-    dayPrice: '4.97' as string | undefined,
-    desc: 'For serious traders who want the fastest, most granular access.',
-    features: [
-      'Everything in Pro',
-      'API access',
-      'Sub-second alert delivery',
-      'Custom watchlists & conviction filters',
-      'Dedicated account manager',
-    ],
-    cta: 'Contact us',
-    href: 'mailto:hello@visibletrader.io',
-    priceId: undefined as string | undefined,
-    highlighted: false,
   },
 ]
 
@@ -113,57 +97,87 @@ export default function PricingPage() {
       </div>
 
       <div className="pricing-grid">
-        {plans.map(plan => (
-          <div key={plan.name} className={`pricing-card ${plan.highlighted ? 'pricing-card-pro' : ''}`}>
-            {plan.highlighted && <div className="pricing-popular">Most popular</div>}
-            <div className="pricing-plan-name">{plan.name}</div>
+        {plans.map(plan => {
+          const pct = plan.introPrice && plan.recurringPrice
+            ? Math.round((1 - Number(plan.introPrice) / Number(plan.recurringPrice)) * 100)
+            : null
+          return (
+          <div key={plan.name} className="pricing-plan-stack">
+            <div className={`pricing-card pricing-card-glow ${plan.highlighted ? 'pricing-card-pro' : ''}`}>
+              {plan.badge && <div className="pricing-badge">{plan.badge}</div>}
 
-            {plan.introPrice ? (
-              <div className="pricing-price-block">
-                <div className="pricing-price-row">
-                  <span className="pricing-day-price">${plan.introPrice}</span>
-                </div>
-                <div className="pricing-day-label">
-                  first week, then ${plan.recurringPrice}/week
-                </div>
+              <div className="pricing-plan-head">
+                <div className="pricing-plan-icon">VT+</div>
+                <div className="pricing-plan-name">{plan.name}</div>
               </div>
-            ) : (
-              <div className="pricing-price-block">
-                <div className="pricing-price-row">
-                  <span className="pricing-day-price">${plan.dayPrice}</span>
+
+              <p className="pricing-desc">{plan.desc}</p>
+
+              {plan.introPrice ? (
+                <div className="pricing-price-block">
+                  <div className="pricing-price-row">
+                    <span className="pricing-just">Just</span>
+                    <span className="pricing-price-strike">${plan.recurringPrice}</span>
+                    <span className="pricing-day-price">${plan.introPrice}</span>
+                    {pct !== null && <span className="pricing-discount-pill">-{pct}%</span>}
+                  </div>
+                  <div className="pricing-day-label">
+                    first week, then ${plan.recurringPrice}/week
+                  </div>
                 </div>
-                <div className="pricing-day-label">per day, billed monthly</div>
+              ) : (
+                <div className="pricing-price-block">
+                  <div className="pricing-price-row">
+                    <span className="pricing-day-price">${plan.dayPrice}</span>
+                  </div>
+                  <div className="pricing-day-label">per day, billed monthly</div>
+                </div>
+              )}
+
+              {plan.priceId ? (
+                <button
+                  type="button"
+                  className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}
+                  onClick={() => startCheckout(plan.priceId!)}
+                  disabled={checkingOut}
+                >
+                  {checkingOut ? 'Starting checkout…' : plan.cta}
+                </button>
+              ) : (
+                <a href={plan.href} className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}>
+                  {plan.cta}
+                </a>
+              )}
+              {plan.highlighted && checkoutError && (
+                <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>{checkoutError}</p>
+              )}
+
+              <div className="hero-rating pricing-rating">
+                <span className="hero-rating-stars">
+                  {Array.from({ length: 5 }).map((_, i) => <Star key={i} size={13} fill="currentColor" strokeWidth={0} />)}
+                </span>
+                <span className="hero-rating-score">4.9/5</span>
+                <span className="hero-rating-divider">|</span>
+                <span className="hero-rating-verified"><BadgeCheck size={14} /> verified by Proof</span>
               </div>
-            )}
 
-            <p className="pricing-desc">{plan.desc}</p>
+              <div className="pricing-trust-row">
+                <span>✓ Instant access</span>
+                <span>✓ Cancel anytime</span>
+                <span>✓ Secure checkout</span>
+              </div>
+            </div>
 
-            {plan.priceId ? (
-              <button
-                type="button"
-                className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}
-                onClick={() => startCheckout(plan.priceId!)}
-                disabled={checkingOut}
-              >
-                {checkingOut ? 'Starting checkout…' : plan.cta}
-              </button>
-            ) : (
-              <a href={plan.href} className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}>
-                {plan.cta}
-              </a>
-            )}
-            {plan.highlighted && checkoutError && (
-              <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>{checkoutError}</p>
-            )}
-
-            <ul className="pricing-features">
-              {plan.features.map(f => (
-                <li key={f} className="pricing-feature">
-                  <span className="pricing-check">✓</span>
-                  {f}
-                </li>
-              ))}
-            </ul>
+            <div className="pricing-card pricing-features-card">
+              <ul className="pricing-features">
+                {plan.features.map(f => (
+                  <li key={f.bold} className="pricing-feature">
+                    <span className="pricing-check">✓</span>
+                    <span><strong>{f.bold}</strong>{f.rest ? ` ${f.rest}` : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
             {/* <div className="pricing-card-logos">
               {platformLogos.map(p => (
@@ -171,7 +185,8 @@ export default function PricingPage() {
               ))}
             </div> */}
           </div>
-        ))}
+          )
+        })}
       </div>
 
       <p className="pricing-fine">No contracts. Cancel anytime.</p>

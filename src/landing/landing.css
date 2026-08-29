@@ -915,11 +915,17 @@
 
 .pricing-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   gap: 1.25rem;
   align-items: start;
-  max-width: 640px;
+  max-width: 380px;
   margin: 0 auto;
+}
+
+.pricing-plan-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
 .pricing-card {
@@ -935,29 +941,50 @@
   background: rgba(2,132,199,0.05);
 }
 
-.pricing-popular {
+.pricing-card-glow {
+  box-shadow: 0 0 0 1px rgba(2,132,199,0.15), 0 20px 60px rgba(2,132,199,0.2);
+}
+
+.pricing-badge {
   position: absolute;
   top: -12px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--accent);
-  color: #fff;
+  right: 1.25rem;
+  background: rgba(16,185,129,0.15);
+  color: #34d399;
+  border: 1px solid rgba(16,185,129,0.3);
   font-size: 0.7rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.25rem 0.75rem;
+  padding: 0.3rem 0.75rem;
   border-radius: 100px;
   white-space: nowrap;
 }
 
-.pricing-plan-name {
+.pricing-plan-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.pricing-plan-icon {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  color: #fff;
   font-size: 0.8125rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-3);
-  margin-bottom: 0.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pricing-plan-name {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-1);
 }
 
 .pricing-price {
@@ -984,6 +1011,30 @@
   letter-spacing: -0.04em;
   color: var(--text-1);
   line-height: 1;
+}
+
+.pricing-just {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.pricing-price-strike {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: rgba(248,113,113,0.7);
+  text-decoration-thickness: 2px;
+}
+
+.pricing-discount-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #34d399;
+  background: rgba(16,185,129,0.15);
+  padding: 3px 9px;
+  border-radius: 100px;
 }
 
 .pricing-day-label {
@@ -1056,6 +1107,27 @@
   font-weight: 700;
   flex-shrink: 0;
   margin-top: 1px;
+}
+
+.pricing-feature strong { color: var(--text-1); font-weight: 700; }
+
+.pricing-rating.hero-rating {
+  display: flex;
+  width: fit-content;
+  margin: 0 auto 1rem;
+}
+
+.pricing-trust-row {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  font-size: 0.75rem;
+  color: var(--text-3);
+}
+
+.pricing-features-card {
+  padding: 1.5rem 1.75rem;
 }
 
 .pricing-fine {
@@ -1995,7 +2067,7 @@
     0 30px 70px rgba(0,0,0,0.55),
     inset 0 0 0 1px rgba(255,255,255,0.06);
   transform-origin: bottom center;
-  transform: rotateX(18deg);
+  transform: rotateX(40deg);
   /* Fades the phone into the headline overlaid on top of it instead of a
      hard edge. Standard mask-image split into its own @supports rule —
      same lightningcss quirk as backdrop-filter elsewhere in this file,
@@ -2195,56 +2267,10 @@
 }
 
 /* ── Features ── */
-/* ── Bento grid ── */
-.bento-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  grid-template-areas:
-    "arb     arb     ev"
-    "alerts  port    port"
-    "promo   promo   coach";
-}
-
-.bento-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.5rem;
-  overflow: hidden;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
-  cursor: pointer;
-  text-decoration: none;
-  color: inherit;
-}
-
-.bento-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-}
-
-.bento-arb    { grid-area: arb; }
-.bento-ev     { grid-area: ev; }
-.bento-alerts { grid-area: alerts; }
-.bento-port   { grid-area: port; }
-.bento-promo  { grid-area: promo; }
-.bento-coach  { grid-area: coach; }
-
-/* Flat text labels — no pill */
-.bento-label {
-  display: inline-block;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  margin-bottom: 0.5rem;
-  width: fit-content;
-}
-
+/* Flat text labels — no pill. Color variants only; the base .bento-label
+   (font-size/weight/layout) and the rest of the old bento-grid mock UI
+   were removed along with Features.tsx — these color classes are still
+   used by FeaturePage.tsx's own .fp-label. */
 .bento-label-green  { color: #10b981; }
 .bento-label-accent { color: var(--accent-text); }
 .bento-label-blue   { color: #38bdf8; }
@@ -2252,141 +2278,7 @@
 .bento-label-orange { color: #fb923c; }
 .bento-label-gray   { color: var(--text-3); }
 
-.bento-title {
-  font-size: 1.0625rem;
-  font-weight: 700;
-  margin: 0;
-  line-height: 1.25;
-}
-
-.bento-sub {
-  font-size: 0.85rem;
-  color: var(--text-3);
-  margin: 0 0 0.75rem;
-  line-height: 1.5;
-}
-
-/* ── Mock UI shared ── */
-.bento-mock {
-  margin-top: 1rem;
-  border-radius: 10px 10px 0 0;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-bottom: none;
-  padding: 1rem;
-  margin-left: -1.5rem;
-  margin-right: -1.5rem;
-  margin-bottom: -1.5rem;
-  -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 90%);
-  mask-image: linear-gradient(to bottom, black 40%, transparent 90%);
-  flex: 1;
-}
-
-/* Arbitrage mock */
-.bento-mock-arb { display: flex; flex-direction: column; gap: 0.65rem; }
-
-.arb-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.arb-platform {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.arb-logo {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  object-fit: contain;
-}
-
-.arb-prices { display: flex; gap: 0.5rem; }
-
-.arb-yes {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--green);
-  background: rgba(16,185,129,0.1);
-  padding: 2px 7px;
-  border-radius: 6px;
-}
-
-.arb-no {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--text-3);
-  background: rgba(255,255,255,0.05);
-  padding: 2px 7px;
-  border-radius: 6px;
-}
-
-.arb-divider { height: 1px; background: rgba(255,255,255,0.06); }
-
-.arb-profit-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 0.25rem;
-}
-
-.arb-profit-label { font-size: 0.78rem; color: var(--text-3); }
-
-.arb-profit-value {
-  font-size: 1rem;
-  font-weight: 800;
-  color: var(--green);
-}
-
-/* +EV mock */
-.bento-mock-ev { display: flex; flex-direction: column; gap: 0.5rem; }
-
-.ev-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.ev-market {
-  font-size: 0.78rem;
-  color: var(--text-2);
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ev-badge {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--accent-text);
-  background: rgba(160,160,170,0.15);
-  padding: 2px 7px;
-  border-radius: 6px;
-  white-space: nowrap;
-}
-
-/* Alerts mock */
-.bento-mock-alerts { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; }
-
-.alert-notif {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  background: rgba(255,255,255,0.05);
-  border-radius: 10px;
-  padding: 0.6rem 0.75rem;
-}
-
-.alert-notif-dim { opacity: 0.45; }
-
+/* Still used by FeaturePage.tsx's own recent-alerts mock. */
 .alert-app-icon {
   width: 28px;
   height: 28px;
@@ -2411,307 +2303,314 @@
 
 .alert-time { font-size: 0.68rem; color: var(--text-3); flex-shrink: 0; }
 
-/* Portfolio mock */
-.bento-mock-port { display: flex; flex-direction: column; gap: 0.75rem; }
+/* ── Feature showcase (replaces the old marquee testimonials) ──
+   2-col header (headline left, subtext+CTA right) above a 2x2 grid of
+   feature cards, each an eyebrow + bold headline + a real product UI
+   mockup below (same .bento-mock-style convention as Features.tsx
+   further down the page — coded UI, not illustrated character art). */
+.showcase-head {
+  margin-bottom: 3rem;
+}
+.showcase-headline {
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin: 0;
+}
 
-.port-stats {
-  display: flex;
+.showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 1.5rem;
 }
 
-.port-stat-val {
-  font-size: 1.1rem;
+.showcase-card {
+  aspect-ratio: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.showcase-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-hover);
+  margin-bottom: 0.75rem;
+}
+
+.showcase-card-title {
+  font-size: 1.5rem;
   font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin: 0 0 1.5rem;
   color: var(--text-1);
 }
 
-.port-stat-val.green { color: var(--green); }
-
-.port-stat-label {
-  font-size: 0.72rem;
-  color: var(--text-3);
-  margin-top: 2px;
-}
-
-.port-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  height: 52px;
-}
-
-.port-bar {
-  flex: 1;
-  background: linear-gradient(to top, var(--accent), rgba(2,132,199,0.3));
-  border-radius: 3px 3px 0 0;
-  min-height: 4px;
-}
-
-/* Promo mock */
-.bento-mock-promo { padding: 0.75rem; }
-
-.promo-card {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  padding: 1rem;
+.showcase-mock {
+  margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.6rem;
 }
 
-.promo-platform {
+/* Leaderboard mock — flex:1 (fills remaining card space, like the alert
+   mock) with bigger rows so it reads at the same scale as the reference
+   instead of sitting small/cramped in the bottom corner. */
+/* Fades the bottom row out instead of hard-cutting it, so the list reads
+   as "keeps going" past the card edge. Standard mask-image split into its
+   own @supports rule — same lightningcss quirk as backdrop-filter
+   elsewhere in this file, where writing both the standard and -webkit-
+   form in one rule gets one of them silently dropped by the build. */
+.showcase-mock-leaderboard {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0;
+  justify-content: center;
+  gap: 1.1rem;
+  -webkit-mask-image: linear-gradient(to bottom, black 65%, transparent 100%);
+}
+@supports (mask-image: linear-gradient(black, black)) {
+  .showcase-mock-leaderboard { mask-image: linear-gradient(to bottom, black 65%, transparent 100%); }
+}
+.showcase-lb-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.78rem;
-  color: var(--text-3);
+  gap: 0.85rem;
 }
-
-.promo-amount {
-  font-size: 2rem;
+.showcase-lb-medal {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8125rem;
   font-weight: 800;
-  color: #fb923c;
-  line-height: 1;
+  color: rgba(0,0,0,0.55);
+  flex-shrink: 0;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 1px 3px rgba(0,0,0,0.35);
 }
-
-.promo-amount-label {
-  font-size: 0.72rem;
+.showcase-lb-rank-plain {
+  width: 26px;
+  font-size: 0.8125rem;
+  font-weight: 700;
   color: var(--text-3);
-  margin-bottom: 0.25rem;
+  flex-shrink: 0;
+  text-align: center;
 }
-
-.promo-action {
+.showcase-lb-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  padding-top: 0.5rem;
-  margin-top: 0.25rem;
+  justify-content: center;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: #fff;
+}
+.showcase-lb-names {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.showcase-lb-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.showcase-lb-handle {
+  font-size: 0.8125rem;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.showcase-lb-pnl {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--green);
+  flex-shrink: 0;
 }
 
-.promo-trade { font-size: 0.75rem; color: var(--text-2); }
-
-.promo-ev-badge {
-  font-size: 0.72rem;
+/* Vetted picks mock */
+.showcase-mock-vetted { flex: 1; min-height: 0; margin-top: 0; justify-content: center; gap: 1.1rem; }
+.showcase-vp-row { display: flex; flex-direction: column; gap: 5px; }
+.showcase-vp-market {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.showcase-vp-badge {
+  align-self: flex-start;
+  font-size: 0.75rem;
   font-weight: 700;
   color: var(--green);
   background: rgba(16,185,129,0.12);
   padding: 2px 8px;
   border-radius: 6px;
-  white-space: nowrap;
 }
 
-/* ── Bento demo animations — triggered once on scroll into view ── */
-
-/* +EV: rows slide in staggered, end visible */
-@keyframes ev-slide-in {
-  from { opacity: 0; transform: translateX(14px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-.bento-ev .ev-row { opacity: 0; }
-.bento-ev.in-view .ev-row:nth-child(1) { animation: ev-slide-in 0.4s ease-out 0.1s forwards; }
-.bento-ev.in-view .ev-row:nth-child(2) { animation: ev-slide-in 0.4s ease-out 0.35s forwards; }
-.bento-ev.in-view .ev-row:nth-child(3) { animation: ev-slide-in 0.4s ease-out 0.6s forwards; }
-
-/* Mobile: first notification drops in, second fades in below */
-@keyframes notif-drop {
-  from { opacity: 0; transform: translateY(-10px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes notif-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 0.45; }
-}
-.bento-alerts .alert-notif                    { opacity: 0; }
-.bento-alerts.in-view .alert-notif:not(.alert-notif-dim) { animation: notif-drop    0.4s ease-out 0.15s forwards; }
-.bento-alerts.in-view .alert-notif-dim               { animation: notif-fade-in 0.4s ease-out 0.5s  forwards; }
-
-/* Portfolio: bars grow from bottom once */
-@keyframes bar-grow {
-  from { transform: scaleY(0); }
-  to   { transform: scaleY(1); }
-}
-.port-bar { transform-origin: bottom; transform: scaleY(0); }
-.bento-port.in-view .port-bar { animation: bar-grow 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-.bento-port.in-view .port-bar:nth-child(1)  { animation-delay: 0.05s; }
-.bento-port.in-view .port-bar:nth-child(2)  { animation-delay: 0.1s;  }
-.bento-port.in-view .port-bar:nth-child(3)  { animation-delay: 0.15s; }
-.bento-port.in-view .port-bar:nth-child(4)  { animation-delay: 0.2s;  }
-.bento-port.in-view .port-bar:nth-child(5)  { animation-delay: 0.25s; }
-.bento-port.in-view .port-bar:nth-child(6)  { animation-delay: 0.3s;  }
-.bento-port.in-view .port-bar:nth-child(7)  { animation-delay: 0.35s; }
-.bento-port.in-view .port-bar:nth-child(8)  { animation-delay: 0.4s;  }
-.bento-port.in-view .port-bar:nth-child(9)  { animation-delay: 0.45s; }
-.bento-port.in-view .port-bar:nth-child(10) { animation-delay: 0.5s;  }
-
-/* ── How it works ── */
-.how-it-works {
-  background: #0284c7;
-  position: relative;
-  overflow: visible;
-  padding-top: 10rem;
-  padding-bottom: 10rem;
-}
-
-.hiw-bar {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 56px;
-  background: var(--bg);
-  z-index: 1;
-}
-
-.hiw-bar-top {
-  top: 0;
-  border-radius: 0 0 28px 28px;
-}
-
-.hiw-bar-bot {
-  bottom: 0;
-  border-radius: 28px 28px 0 0;
-}
-
-.how-it-works .section-tag {
-  background: rgba(255,255,255,0.15);
-  color: rgba(255,255,255,0.9);
-  border-color: rgba(255,255,255,0.2);
-}
-
-.how-it-works h2 {
-  color: #fff;
-}
-
-.how-it-works .section-sub {
-  color: rgba(255,255,255,0.7);
-}
-
-.hiw-stats {
-  display: flex;
+/* Alert mock — iOS-style push notification, with two faint stacked
+   duplicates peeking out from behind it (a common "more notifications
+   behind this one" affordance) via absolute positioning + decreasing
+   width/opacity, not real separate content. */
+.showcase-mock-alert {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0;
+  align-items: stretch;
   justify-content: center;
-  gap: 5rem;
-  text-align: center;
 }
-
-.hiw-stat {
-  opacity: 0;
-  transform: translateY(24px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-  transition-delay: calc(var(--i) * 0.15s);
+.ios-notif-stack {
+  position: relative;
+  padding-bottom: 0.75rem;
+  margin-left: -1rem;
+  margin-right: -1rem;
 }
-
-.hiw-stats.in-view .hiw-stat {
-  opacity: 1;
-  transform: translateY(0);
+.ios-notif-behind {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 0;
+  height: 16px;
+  background: #232529;
+  border-radius: 0 0 16px 16px;
 }
-
-.hiw-stat-value {
-  font-size: clamp(2.5rem, 5vw, 4rem);
+.ios-notif-behind-1 { bottom: 6px; opacity: 0.7; }
+.ios-notif-behind-2 { left: 10%; right: 10%; bottom: 0; opacity: 0.4; }
+.ios-notif {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  background: #2c2e33;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  padding: 0.8rem 1rem;
+}
+.ios-notif-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.ios-notif-body { flex: 1; min-width: 0; }
+.ios-notif-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.ios-notif-title {
+  font-size: 0.9375rem;
   font-weight: 800;
   color: #fff;
-  letter-spacing: -0.04em;
-  line-height: 1;
-  margin-bottom: 0.4rem;
 }
-
-.hiw-stat-label {
-  font-size: 0.8125rem;
-  color: rgba(255,255,255,0.55);
-  font-weight: 500;
+.ios-notif-time {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.4);
+  flex-shrink: 0;
 }
-
-.how-it-works .platforms-label {
-  color: rgba(255,255,255,0.5);
-}
-
-.how-it-works .platform-logo-sq {
-  opacity: 0.85;
-  transition: opacity 0.15s;
-}
-
-.how-it-works .platform-logo-sq:hover {
-  opacity: 1;
-}
-
-.marquee-track {
+.ios-notif-sub {
   display: flex;
-  gap: 1.25rem;
-  animation: marquee 40s linear infinite;
-  width: max-content;
-  margin-bottom: 1.25rem;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: rgba(255,255,255,0.85);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-
-.marquee-track.reverse {
-  animation-direction: reverse;
-  animation-duration: 35s;
-}
-
-@keyframes marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-
-.testimonial-card {
-  position: relative;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.25rem 1.5rem;
-  width: 300px;
+.ios-notif-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #22c55e;
   flex-shrink: 0;
 }
 
-/* NOT YET FINAL — still tweaking sizing/placement, do not ship as-is.
-   Real payout screenshot, tucked into the card's top-right corner as
-   proof, slightly rotated so it reads as a photo pinned to the card rather
-   than another rigid UI element. float (not position:absolute) so the
-   testimonial text wraps around it instead of running underneath it, and
-   stays fully inside the card's own box rather than poking past the edge
-   — the marquee's wrapping `overflow: hidden` (needed to hide the
-   infinite-scroll seam) clips anything that extends past a card's bounds. */
-.testimonial-proof-corner {
-  float: right;
-  width: 96px;
-  height: 96px;
-  object-fit: cover;
-  border-radius: 8px;
-  border: 2px solid var(--bg);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.45);
-  transform: rotate(5deg);
-  margin: -4px -4px 8px 10px;
+/* Chart image mock — flex:1 (not margin-top:auto's natural-height sizing)
+   so it fills whatever space is left under the title, then object-fit
+   crops the wide chart source to that box instead of overflowing it. */
+.showcase-mock-chart {
+  flex: 1;
+  min-height: 0;
+  margin-top: 1rem;
+  margin-left: -1.75rem;
+  margin-right: -1.75rem;
+  margin-bottom: -1.75rem;
+  overflow: hidden;
+  border-radius: 0 0 24px 24px;
 }
+/* object-position keeps the right side (the endpoint + "+$1,275" tag —
+   the actual point of the chart) in frame instead of the default center
+   crop, which was losing it off the right edge given how wide the source
+   image is relative to this now-square box. */
+.showcase-mock-chart img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: right center; }
 
-.testimonial-text {
-  font-size: 0.875rem;
-  color: var(--text-2);
-  line-height: 1.6;
-  margin: 0 0 1rem;
+/* Onboarding mock — the hand image overlaps the bottom of the buttons
+   (absolutely positioned, extending past the card's own bottom edge)
+   the same way it does in the reference, so extra bottom padding on the
+   mock makes room for it instead of the card clipping it. */
+.showcase-mock-onboard {
+  position: relative;
+  padding-bottom: 2.25rem;
 }
-
-.testimonial-author {
+.showcase-oauth-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.6rem;
-}
-
-.testimonial-name {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--text-1);
-}
-
-.testimonial-handle {
-  font-size: 0.75rem;
-  color: var(--text-3);
-}
-
-.testimonial-profit {
-  margin-left: auto;
-  font-size: 0.8125rem;
+  padding: 0.7rem 1rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
   font-weight: 700;
-  color: var(--green);
+}
+.showcase-oauth-apple { background: #fff; color: #000; margin-bottom: 0.6rem; }
+.showcase-oauth-google { background: #16181d; color: #fff; border: 1px solid rgba(255,255,255,0.1); }
+.showcase-hand {
+  position: absolute;
+  bottom: -85px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Trust card */
+.showcase-mock-trust { flex: 1; min-height: 0; margin-top: 0; align-items: center; justify-content: center; gap: 1rem; }
+.showcase-lock-img { width: 150px; height: 150px; object-fit: contain; }
+.showcase-trust-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.showcase-trust-row svg { color: var(--accent-hover); flex-shrink: 0; margin-top: 2px; }
+
+@media (max-width: 768px) {
+  .showcase-grid { grid-template-columns: 1fr; }
 }
 
 /* ── Platforms ── */
@@ -3076,8 +2975,6 @@
 
 /* ── Footer ── */
 .footer {
-  background: var(--bg-2);
-  border-top: 1px solid var(--border);
   padding: 4rem 1.5rem 2rem;
 }
 
@@ -3148,7 +3045,6 @@
 }
 
 .footer-bottom {
-  border-top: 1px solid var(--border);
   padding-top: 1.5rem;
   display: flex;
   align-items: center;
@@ -3565,27 +3461,6 @@
   .section { padding: 4rem 1.25rem; }
   .section h2 { font-size: 1.625rem; }
 
-  /* Bento grid: 2 cols on tablet */
-  .bento-grid {
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas:
-      "arb    arb"
-      "ev     ev"
-      "alerts alerts"
-      "port   port"
-      "promo  promo"
-      "coach  coach";
-  }
-
-  /* HowItWorks */
-  .hiw-stats { flex-direction: column; gap: 2rem; align-items: center; }
-  .hiw-stat { width: 100%; }
-  .hiw-stat-value { font-size: 2.5rem; }
-  .platforms-wrap { margin-top: 2rem; }
-  .platform-logo-sq { width: 48px; height: 48px; }
-
-  /* Testimonials */
-  .testimonial-card { width: 260px; }
 
   /* FAQ */
   .faq-two-col { grid-template-columns: 1fr; gap: 2.5rem; }
@@ -3616,13 +3491,6 @@
 @media (max-width: 480px) {
   .hero h1 { font-size: 1.75rem; }
   .nav-actions .btn-ghost { display: none; }
-
-  /* Bento: single column */
-  .bento-grid {
-    grid-template-columns: 1fr;
-    grid-template-areas: none;
-  }
-  .bento-card { grid-area: unset !important; }
 
   /* Footer single column */
   .footer-top { grid-template-columns: 1fr; }
