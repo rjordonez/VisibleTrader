@@ -2925,7 +2925,7 @@
   object-fit: cover;
   object-position: bottom;
   opacity: 0.75;
-  filter: blur(6px) saturate(0.75) brightness(0.95);
+  filter: blur(4px) saturate(0.75) brightness(0.95);
 }
 
 /* ── Footer ── */

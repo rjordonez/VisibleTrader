@@ -45,11 +45,9 @@ function LeaderboardTab() {
       {loading && Array.from({ length: 8 }).map((_, i) => <div key={i} className="terminal-sidebar-skel" />)}
       {!loading && rows.length === 0 && <div className="terminal-sidebar-empty">No leaderboard data yet.</div>}
       {!loading && rows.map((r, i) => (
-        <a
+        <Link
           key={r.wallet}
-          href={`https://polymarket.com/profile/${r.wallet}`}
-          target="_blank"
-          rel="noopener noreferrer"
+          to={dashboardPath(`/trader/${r.wallet}`)}
           className="terminal-sidebar-row"
         >
           <div className="terminal-sidebar-rank">{i + 1}</div>
@@ -62,7 +60,7 @@ function LeaderboardTab() {
           <div className={`terminal-sidebar-price ${r.net_profit >= 0 ? 'g' : 'r'}`}>
             {r.net_profit >= 0 ? '▲' : '▼'} {fmtSigned(r.net_profit)}
           </div>
-        </a>
+        </Link>
       ))}
     </div>
   )

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { Opportunity, WalletContribution, ChartPoint } from './types'
 import {
   fetchWallets, fetchChart, categoryIcon, signalsTag, signalsTraderStatus,
-  walletReturn, fmtFull, fmtSigned, profileUrl, traderLabel, timeAgo,
+  walletReturn, fmtFull, fmtSigned, traderLabel, timeAgo,
 } from './helpers'
+import { dashboardPath } from '../lib/domains'
 import { PriceChart } from './PriceChart'
 import { SkelBlock, SkelDrillRows } from './Skeleton'
 
@@ -38,9 +40,9 @@ function SingleEntryRow({ w, latestPrice }: { w: WalletContribution; latestPrice
   const ret = walletReturn(w, latestPrice)
   return (
     <div className="sig-drill-row">
-      <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name">
+      <Link to={dashboardPath(`/trader/${w.wallet}`)} className="sig-drill-name">
         {traderLabel(w.wallet, w.wallet_name)}
-      </a>
+      </Link>
       <div className="sig-drill-body">
         <div className="sig-drill-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}</div>
         <div className="sig-drill-meta">
@@ -68,12 +70,12 @@ function TraderGroupRow({ group, latestPrice }: { group: TraderGroup; latestPric
   return (
     <div className="sig-trader-group">
       <div className="sig-drill-row sig-trader-group-header" onClick={() => setExpanded(e => !e)}>
-        <a
-          href={profileUrl(wallet)!} target="_blank" rel="noopener noreferrer" className="sig-drill-name"
+        <Link
+          to={dashboardPath(`/trader/${wallet}`)} className="sig-drill-name"
           onClick={e => e.stopPropagation()}
         >
           {traderLabel(wallet, wallet_name)}
-        </a>
+        </Link>
         <div className="sig-drill-body">
           <div className="sig-drill-detail">
             {entries.length} buys · avg {Math.round(avgPrice * 100)}¢ · {fmtFull(totalUsd)} invested

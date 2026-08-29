@@ -1,19 +1,28 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell, Search } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
 import type { User } from '@supabase/supabase-js'
-import SignalsDemo from './SignalsDemo'
-import HomePage from './HomePage'
-import ProfitsPage from './ProfitsPage'
-import LeaderboardPage from './LeaderboardPage'
-import TraderDetailPage from './TraderDetailPage'
-import AlertsPage from './AlertsPage'
-import SettingsPage from './SettingsPage'
-import LookupPage from './LookupPage'
 import './app.css'
+
+// Lazy — each tab (plus whatever it pulls in, recharts in particular) only
+// downloads once someone actually visits it, instead of every tab's code
+// shipping together in one chunk the moment AppShell itself loads. See
+// App.tsx's identical reasoning for the marketing/app split this mirrors.
+const SignalsDemo = lazy(() => import('./SignalsDemo'))
+const HomePage = lazy(() => import('./HomePage'))
+const ProfitsPage = lazy(() => import('./ProfitsPage'))
+const LeaderboardPage = lazy(() => import('./LeaderboardPage'))
+const TraderDetailPage = lazy(() => import('./TraderDetailPage'))
+const AlertsPage = lazy(() => import('./AlertsPage'))
+const SettingsPage = lazy(() => import('./SettingsPage'))
+const LookupPage = lazy(() => import('./LookupPage'))
+
+function TabLoading() {
+  return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3, #6b7280)', fontSize: '0.875rem' }}>Loading…</div>
+}
 
 const navItems = [
   { id: 'home',        label: 'Home',        path: '/',            Icon: HomeIcon },
@@ -151,17 +160,19 @@ export default function AppShell() {
 
       <main className={`app-main ${locked ? 'app-main-locked' : ''}`}>
         <div className={locked ? 'search-locked-bg' : undefined}>
-          <Routes>
-            <Route index element={<HomePage onOpenSignals={() => navigate(dashboardPath('/signals'))} category={category} onCategoryChange={setCategory} />} />
-            <Route path="signals" element={<SignalsDemo category={category} />} />
-            <Route path="profits" element={<ProfitsPage />} />
-            <Route path="leaderboard" element={<LeaderboardPage />} />
-            <Route path="alerts" element={<AlertsPage />} />
-            <Route path="lookup" element={<LookupPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="trader/:wallet" element={<TraderDetailRoute />} />
-            <Route path="*" element={<Navigate to={dashboardPath('/')} replace />} />
-          </Routes>
+          <Suspense fallback={<TabLoading />}>
+            <Routes>
+              <Route index element={<HomePage onOpenSignals={() => navigate(dashboardPath('/signals'))} category={category} onCategoryChange={setCategory} />} />
+              <Route path="signals" element={<SignalsDemo category={category} />} />
+              <Route path="profits" element={<ProfitsPage />} />
+              <Route path="leaderboard" element={<LeaderboardPage />} />
+              <Route path="alerts" element={<AlertsPage />} />
+              <Route path="lookup" element={<LookupPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="trader/:wallet" element={<TraderDetailRoute />} />
+              <Route path="*" element={<Navigate to={dashboardPath('/')} replace />} />
+            </Routes>
+          </Suspense>
         </div>
         {locked && (
           <div className="search-glass-overlay">

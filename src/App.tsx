@@ -1,23 +1,42 @@
-import { useEffect } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import LandingLayout from './landing/LandingLayout'
-import Landing from './landing/index'
-import PricingPage from './landing/PricingPage'
-import EstimatePage from './landing/EstimatePage'
-import CalculatorsPage from './landing/CalculatorsPage'
-import BlogPage from './landing/BlogPage'
-import CareersPage from './landing/CareersPage'
-import PrivacyPage from './landing/PrivacyPage'
-import TermsPage from './landing/TermsPage'
-import RefundPage from './landing/RefundPage'
-import SignupPage from './landing/SignupPage'
-import LoginPage from './landing/LoginPage'
-import ForgotPasswordPage from './landing/ForgotPasswordPage'
-import ResetPasswordPage from './landing/ResetPasswordPage'
-import AppShell from './app/index'
-import Terminal from './app/terminal/Terminal'
 import ProtectedRoute from './ProtectedRoute'
-import SearchPage from './SearchPage'
+
+// Route-level code splitting — every one of these used to be a static
+// top-level import, which meant the single JS bundle (1.2MB / 368KB gzipped,
+// confirmed via the build output) shipped both the entire marketing site
+// AND the entire authenticated app (recharts, every tab, the Terminal, all
+// landing pages) to every single visitor regardless of which one they
+// actually hit, since MarketingRoutes/AppRoutes are picked by a runtime
+// check (isAppHost) that Vite can't tree-shake around at build time. lazy()
+// turns each page into its own chunk, fetched only when that route actually
+// renders — a marketing visitor never downloads AppShell/Terminal/recharts,
+// and an app visitor never downloads the landing/blog/calculators pages.
+const Landing = lazy(() => import('./landing/index'))
+const PricingPage = lazy(() => import('./landing/PricingPage'))
+const EstimatePage = lazy(() => import('./landing/EstimatePage'))
+const CalculatorsPage = lazy(() => import('./landing/CalculatorsPage'))
+const BlogPage = lazy(() => import('./landing/BlogPage'))
+const CareersPage = lazy(() => import('./landing/CareersPage'))
+const PrivacyPage = lazy(() => import('./landing/PrivacyPage'))
+const TermsPage = lazy(() => import('./landing/TermsPage'))
+const RefundPage = lazy(() => import('./landing/RefundPage'))
+const SignupPage = lazy(() => import('./landing/SignupPage'))
+const LoginPage = lazy(() => import('./landing/LoginPage'))
+const ForgotPasswordPage = lazy(() => import('./landing/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('./landing/ResetPasswordPage'))
+const AppShell = lazy(() => import('./app/index'))
+const Terminal = lazy(() => import('./app/terminal/Terminal'))
+const SearchPage = lazy(() => import('./SearchPage'))
+
+function PageLoading() {
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#06070f', color: '#6b7280', fontFamily: 'Inter, system-ui, sans-serif', fontSize: '0.875rem' }}>
+      Loading…
+    </div>
+  )
+}
 
 // app.visibletrader.com serves auth + the dashboard; visibletrader.com
 // serves marketing only. In dev there's no real subdomain, so `/app/*` on
@@ -114,5 +133,9 @@ function AppRoutes() {
 }
 
 export default function App() {
-  return isAppHost ? <AppRoutes /> : <MarketingRoutes />
+  return (
+    <Suspense fallback={<PageLoading />}>
+      {isAppHost ? <AppRoutes /> : <MarketingRoutes />}
+    </Suspense>
+  )
 }
