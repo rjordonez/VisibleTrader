@@ -31,7 +31,7 @@ export default function WinnersPreviewMobile() {
           Never miss a signal.<br />Never trade alone.
         </h2>
         <p className="phone-hero-sub">
-          Real-time alerts the moment top traders move — with a fully verified track record.
+          Real-time alerts the moment top traders move, with a fully verified track record.
         </p>
       </div>
       <div className="phone-frame">

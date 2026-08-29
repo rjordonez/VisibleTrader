@@ -2091,6 +2091,11 @@
   text-align: center;
   padding: 0 1.5rem;
   pointer-events: none;
+  /* Marketing copy overlaid on top of the phone mockup, not literal app
+     UI content like the rest of .phone-container — so it follows the
+     landing page's lowercase convention instead of the .phone-container
+     reset that keeps the mockup's own screen content cased normally. */
+  text-transform: lowercase;
 }
 
 .phone-hero-headline {
