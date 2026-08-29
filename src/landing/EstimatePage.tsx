@@ -175,7 +175,7 @@ export default function EstimatePage() {
               This is a real example, not a projection of what you'll personally earn. Individual results vary and every trade carries risk.
             </p>
 
-            <a href={`/signup?email=${encodeURIComponent(email)}`} className="ep-btn" style={{ display: 'inline-block' }}>Try for free</a>
+            <a href={`/signup?email=${encodeURIComponent(email)}`} className="ep-btn" style={{ display: 'inline-block' }}>Get started</a>
 
             <div className="ep-links">
               <button className="ep-link" onClick={() => navigate('/#tools')}>See how signals are ranked</button>

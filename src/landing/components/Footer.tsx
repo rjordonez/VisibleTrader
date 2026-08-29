@@ -22,38 +22,34 @@ export default function Footer() {
             </div>
           </div>
 
-          <div className="footer-col">
-            <h5>Tools</h5>
-            <ul>
-              <li><Link to="/features/live-ticker">Live Ticker</Link></li>
-              <li><Link to="/features/vetted-picks">Vetted Picks</Link></li>
-              <li><Link to="/features/leaderboard">Leaderboard</Link></li>
-              <li><Link to="/features/profits">Profits</Link></li>
-              <li><Link to="/features/alerts">Alerts</Link></li>
-              <li><Link to="/features/settings">Settings</Link></li>
-            </ul>
-          </div>
+          <div className="footer-cols">
+            <div className="footer-col">
+              <h5>Calculators</h5>
+              <ul>
+                <li><Link to="/calculators">EV Calculator</Link></li>
+                <li><Link to="/calculators">Arbitrage Calculator</Link></li>
+                <li><Link to="/calculators">Kelly Criterion</Link></li>
+                <li><Link to="/calculators">Odds Converter</Link></li>
+                <li><Link to="/calculators">No-Vig Calculator</Link></li>
+              </ul>
+            </div>
 
-          <div className="footer-col">
-            <h5>Calculators</h5>
-            <ul>
-              <li><Link to="/calculators">EV Calculator</Link></li>
-              <li><Link to="/calculators">Arbitrage Calculator</Link></li>
-              <li><Link to="/calculators">Kelly Criterion</Link></li>
-              <li><Link to="/calculators">Odds Converter</Link></li>
-              <li><Link to="/calculators">No-Vig Calculator</Link></li>
-            </ul>
-          </div>
+            <div className="footer-col">
+              <h5>Company</h5>
+              <ul>
+                <li><Link to="/blog">Blog</Link></li>
+                <li><Link to="/careers">Careers</Link></li>
+              </ul>
+            </div>
 
-          <div className="footer-col">
-            <h5>Company</h5>
-            <ul>
-              <li><Link to="/pricing">Pricing</Link></li>
-              <li><a href="/#faq">FAQ</a></li>
-              <li><a href="/#tools">Features</a></li>
-              <li><a href="#">Privacy</a></li>
-              <li><a href="#">Terms</a></li>
-            </ul>
+            <div className="footer-col">
+              <h5>Legal</h5>
+              <ul>
+                <li><Link to="/privacy">Privacy Policy</Link></li>
+                <li><Link to="/terms">Terms of Service</Link></li>
+                <li><Link to="/refund-policy">Refund Policy</Link></li>
+              </ul>
+            </div>
           </div>
         </div>
 

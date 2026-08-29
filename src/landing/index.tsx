@@ -1,8 +1,8 @@
 import Hero from './components/Hero'
 import FeatureShowcase from './components/FeatureShowcase'
 import PricingPage from './PricingPage'
-import FAQ from './components/FAQ'
 import CTABanner from './components/CTABanner'
+import OceanFloor from './components/OceanFloor'
 import Footer from './components/Footer'
 
 export default function Landing() {
@@ -11,8 +11,8 @@ export default function Landing() {
       <Hero />
       <FeatureShowcase />
       <PricingPage />
-      <FAQ />
       <CTABanner />
+      <OceanFloor />
       <Footer />
     </>
   )

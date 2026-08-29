@@ -4,8 +4,12 @@ import LandingLayout from './landing/LandingLayout'
 import Landing from './landing/index'
 import PricingPage from './landing/PricingPage'
 import EstimatePage from './landing/EstimatePage'
-import FeaturePage from './landing/FeaturePage'
 import CalculatorsPage from './landing/CalculatorsPage'
+import BlogPage from './landing/BlogPage'
+import CareersPage from './landing/CareersPage'
+import PrivacyPage from './landing/PrivacyPage'
+import TermsPage from './landing/TermsPage'
+import RefundPage from './landing/RefundPage'
 import SignupPage from './landing/SignupPage'
 import LoginPage from './landing/LoginPage'
 import ForgotPasswordPage from './landing/ForgotPasswordPage'
@@ -44,8 +48,12 @@ function MarketingRoutes() {
       <Route element={<LandingLayout />}>
         <Route path="/" element={<Landing />} />
         <Route path="/pricing" element={<PricingPage />} />
-        <Route path="/features/:id" element={<FeaturePage />} />
         <Route path="/calculators" element={<CalculatorsPage />} />
+        <Route path="/blog" element={<BlogPage />} />
+        <Route path="/careers" element={<CareersPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/refund-policy" element={<RefundPage />} />
       </Route>
       <Route path="/estimate" element={<EstimatePage />} />
       <Route path="/app/*" element={<CrossDomainRedirect />} />

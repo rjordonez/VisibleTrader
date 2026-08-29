@@ -241,7 +241,7 @@ export default function SearchPage() {
         )}
         <div className="search-header-links">
           {loggedIn === false && <a href={appUrl('/login')}>Log in</a>}
-          {loggedIn ? <a href={appUrl('/')}>Go to dashboard →</a> : <a href={appUrl('/signup')} className="search-glass-btn" style={{ padding: '0.5rem 1.1rem', fontSize: '0.8125rem' }}>Start free trial</a>}
+          {loggedIn ? <a href={appUrl('/')}>Go to dashboard →</a> : <a href={appUrl('/signup')} className="search-glass-btn" style={{ padding: '0.5rem 1.1rem', fontSize: '0.8125rem' }}>First week $1</a>}
         </div>
       </div>
 

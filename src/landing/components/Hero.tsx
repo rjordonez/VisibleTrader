@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { BadgeCheck, Star } from 'lucide-react'
 import ProfitCard from './ProfitCard'
 import WinnersPreview from './WinnersPreview'
@@ -95,27 +95,7 @@ function RollingNumber({ value }: { value: number }) {
 }
 
 export default function Hero() {
-  const navigate = useNavigate()
-  const [email, setEmail] = useState('')
-  const [submitting, setSubmitting] = useState(false)
   const tradeCount = useLiveTradeCounter()
-
-  // Capturing the lead is best-effort — a failed insert (network blip, RLS
-  // hiccup) shouldn't trap someone who's ready to sign up on the landing
-  // page. Email carries through as a query param so the signup form only
-  // asks for a password, not the email again. The email field is hidden on
-  // mobile (see .hero-form-inner input in landing.css), so email is empty
-  // there — in that case just go straight to signup, nothing to capture.
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSubmitting(true)
-    if (!email) {
-      navigate('/signup')
-      return
-    }
-    await supabase.from('leads').insert({ email, source: 'hero_form' })
-    navigate(`/signup?email=${encodeURIComponent(email)}`)
-  }
 
   return (
     <section className="hero">
@@ -155,20 +135,9 @@ export default function Hero() {
             <span className="hero-rating-verified"><BadgeCheck size={14} /> verified by Proof</span>
           </div>
 
-          <form className="hero-form" onSubmit={submit}>
-            <div className="hero-form-inner">
-              <input
-                type="email"
-                placeholder="Your email..."
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-              />
-              <button type="submit" className="btn-primary" disabled={submitting}>
-                {submitting ? 'One sec…' : 'Get started'}
-              </button>
-            </div>
-          </form>
+          <div className="hero-form">
+            <Link to="/signup" className="btn-primary">Get started</Link>
+          </div>
         </div>
 
         {/* Right: live signal preview card */}
@@ -189,7 +158,7 @@ export default function Hero() {
       {/* ── Trust bar ── */}
       <div className="hero-trust-bar">
         {[
-          '7-Day Free Trial',
+          '$1 First Week',
           'Real Wallets, Real Trades',
           'Polymarket',
           'Sub-Second Signal Latency',

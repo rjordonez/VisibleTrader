@@ -9,27 +9,6 @@ const ChevronDown = () => (
   </svg>
 )
 
-const ChevronRight = () => (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-)
-
-const ChevronLeft = () => (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <path d="M9 3L5 7l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-)
-
-const tools = [
-  { name: 'Live Ticker',       desc: 'Every qualifying Polymarket trade, live',      href: '/features/live-ticker', color: '#38bdf8' },
-  { name: 'Vetted Picks',      desc: 'Capital-weighted conviction from top wallets', href: '/features/vetted-picks', color: '#10b981' },
-  { name: 'Leaderboard',       desc: 'Real, verified win rate per wallet',           href: '/features/leaderboard', color: '#a78bfa' },
-  { name: 'Profits',           desc: 'Payout-adjusted P&L, resolved and open',       href: '/features/profits',     color: '#fb923c' },
-  { name: 'Alerts',            desc: 'Browser alerts on your watchlist',             href: '/features/alerts',      color: '#2dd4bf' },
-  { name: 'Settings',          desc: 'Configure roster size and conviction tiers',   href: '/features/settings',    color: '#818cf8' },
-]
-
 const calculators = [
   { name: 'EV Calculator',        desc: 'Calculate expected value of any contract',       href: '/calculators', color: '#818cf8' },
   { name: 'Arbitrage Calculator', desc: 'Find guaranteed profit between two prices',      href: '/calculators', color: '#10b981' },
@@ -38,9 +17,9 @@ const calculators = [
   { name: 'No-Vig Calculator',    desc: 'Strip the vig and find true market probability', href: '/calculators', color: '#f472b6' },
 ]
 
-type Menu = 'closed' | 'main' | 'tools' | 'resources'
+type Menu = 'closed' | 'main'
 
-function DropdownSection({ label, items }: { label: string; items: typeof tools }) {
+function DropdownSection({ label, items }: { label: string; items: typeof calculators }) {
   return (
     <div className="nav-dropdown">
       <div className="nav-dropdown-label">{label}</div>
@@ -56,34 +35,6 @@ function DropdownSection({ label, items }: { label: string; items: typeof tools 
         ))}
       </div>
     </div>
-  )
-}
-
-function DrawerSubLevel({ title, items, onBack, onClose }: {
-  title: string
-  items: typeof tools
-  onBack: () => void
-  onClose: () => void
-}) {
-  return (
-    <>
-      <div className="nav-drawer-header">
-        <button className="nav-drawer-back" onClick={onBack}><ChevronLeft /> Back</button>
-        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{title}</span>
-        <button className="nav-drawer-close" onClick={onClose}>✕</button>
-      </div>
-      <div className="nav-drawer-body">
-        {items.map(t => (
-          <a key={t.name} href={t.href} className="nav-drawer-tool" onClick={onClose}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span className="nav-dropdown-dot" style={{ background: t.color }} />
-              <span className="nav-drawer-tool-name">{t.name}</span>
-            </div>
-            <div className="nav-drawer-tool-desc">{t.desc}</div>
-          </a>
-        ))}
-      </div>
-    </>
   )
 }
 
@@ -111,14 +62,10 @@ export default function Navbar() {
           <Link to="/" className="nav-logo">VisibleTrader.com</Link>
 
           <ul className="nav-links">
-            <li className="nav-dropdown-wrap">
-              <span className="nav-link-with-chevron">Tools <ChevronDown /></span>
-              <DropdownSection label="For Prediction Markets" items={tools} />
-            </li>
             <li><Link to="/pricing">Pricing</Link></li>
             <li className="nav-dropdown-wrap">
               <span className="nav-link-with-chevron">Resources <ChevronDown /></span>
-              <DropdownSection label="Free Calculators" items={calculators} />
+              <DropdownSection label="Calculators" items={calculators} />
             </li>
           </ul>
         </div>
@@ -148,29 +95,17 @@ export default function Navbar() {
               <button className="nav-drawer-close" onClick={close}>✕</button>
             </div>
             <div className="nav-drawer-body">
-              <button className="nav-drawer-link" style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text-1)', fontFamily: 'inherit', fontSize: '0.9375rem', fontWeight: 500 }} onClick={() => setMenu('tools')}>
-                <span>Tools</span>
-                <ChevronRight />
-              </button>
-              <Link to="/pricing" className="nav-drawer-link" onClick={close}><span>Pricing</span></Link>
-              <button className="nav-drawer-link" style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text-1)', fontFamily: 'inherit', fontSize: '0.9375rem', fontWeight: 500 }} onClick={() => setMenu('resources')}>
-                <span>Resources</span>
-                <ChevronRight />
-              </button>
-              <div className="nav-drawer-divider" />
               {signedIn ? (
                 <a href={appUrl('/')} className="nav-drawer-cta" onClick={close}>Go to app</a>
               ) : (
                 <>
                   <a href={appUrl('/login')} className="nav-drawer-link" onClick={close}>Log in</a>
-                  <Link to="/pricing" className="nav-drawer-cta" onClick={close}>Try for free</Link>
+                  <Link to="/pricing" className="nav-drawer-cta" onClick={close}>Get Started</Link>
                 </>
               )}
             </div>
           </>
         )}
-        {menu === 'tools'     && <DrawerSubLevel title="Tools"     items={tools}       onBack={() => setMenu('main')} onClose={close} />}
-        {menu === 'resources' && <DrawerSubLevel title="Resources" items={calculators} onBack={() => setMenu('main')} onClose={close} />}
       </div>
     </>
   )

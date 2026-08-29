@@ -263,17 +263,19 @@ function FAQ({ faqs }: { faqs: { q: string; a: string }[] }) {
   return (
     <div className="calc-faq">
       <h3 className="calc-section-title">Frequently Asked Questions</h3>
-      {faqs.map((f, i) => (
-        <div key={i} className="faq-item">
-          <button className="faq-question" onClick={() => setOpen(open === i ? null : i)}>
-            <svg className={`faq-chevron ${open === i ? 'open' : ''}`} width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            {f.q}
-          </button>
-          {open === i && <div className="faq-answer">{f.a}</div>}
-        </div>
-      ))}
+      <div className="faq-list blog-answers-list">
+        {faqs.map((f, i) => (
+          <div key={i} className="faq-item">
+            <button className="faq-question" onClick={() => setOpen(open === i ? null : i)}>
+              <svg className={`faq-chevron ${open === i ? 'open' : ''}`} width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {f.q}
+            </button>
+            {open === i && <div className="faq-answer">{f.a}</div>}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -284,7 +286,7 @@ function CTAStrip() {
     <div className="calc-cta-strip">
       <div>
         <div className="calc-cta-title">Less work, more profit.</div>
-        <div className="calc-cta-sub">These calculators are free. Upgrade for real-time +EV and arbitrage alerts across every platform.</div>
+        <div className="calc-cta-sub">Upgrade for real-time +EV and arbitrage alerts across every platform.</div>
       </div>
       <form className="calc-cta-form" onSubmit={e => { e.preventDefault(); setEmail('') }}>
         <input className="calc-input" type="email" placeholder="Your email" value={email} onChange={e => setEmail(e.target.value)} required />

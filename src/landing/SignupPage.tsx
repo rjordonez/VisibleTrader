@@ -10,7 +10,7 @@ export default function SignupPage() {
     <div className="auth-content">
       <div className="auth-card">
         <h1 className="auth-title">Create your account</h1>
-        <p className="auth-sub">Start free, upgrade whenever you're ready.</p>
+        <p className="auth-sub">Get started in seconds.</p>
 
         <OAuthButtons onError={setError} />
 
