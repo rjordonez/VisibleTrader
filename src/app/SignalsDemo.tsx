@@ -452,10 +452,22 @@ function SignalsDemo({ category }: { category: string }) {
     }
   }
   const mergedWins = Array.from(mergedWinsMap.values())
-  // All discovery filtering + sorting now happens server-side in the query
-  // itself (see buildQueryRef above) — the fetched page is already exactly
-  // the filtered, sorted set, so nothing left to do here.
-  const filteredOpportunities = opportunities
+  // Discovery filtering + the profit/recency ordering happen server-side
+  // (see buildQueryRef above) — nothing here is excluded, this only
+  // reorders what's already fetched, floating the picks actually worth
+  // looking at first without hiding the rest:
+  //  1. Profit-positive first — a losing pick is still shown, just not up top.
+  //  2. Within each of those, still-genuinely-uncertain 10-90c picks before
+  //     90-100c/0-10c ones — that's where a resolved market's price pins
+  //     to, so it's effectively already decided, not a live edge anymore.
+  // Array.prototype.sort is stable (ES2019+) and sorting twice with the
+  // higher-priority key last preserves the first sort as the tie-breaker —
+  // so profit is the primary key and price-bucket the secondary, exactly
+  // the priority order asked for, without a combined comparator.
+  const isDecidedPrice = (o: Opportunity) => o.latest_price >= 0.90 || o.latest_price <= 0.10
+  const filteredOpportunities = [...opportunities]
+    .sort((a, b) => Number(isDecidedPrice(a)) - Number(isDecidedPrice(b)))
+    .sort((a, b) => Number(b.total_profit > 0) - Number(a.total_profit > 0))
   // Tracked tab intentionally ignores the discovery filters above (category,
   // win rate, price, etc.) — a watchlist shouldn't lose items just because
   // an unrelated filter chip happens to be active elsewhere on the page.

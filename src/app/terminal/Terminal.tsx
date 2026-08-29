@@ -99,12 +99,15 @@ export default function Terminal() {
 
   const q = search.trim().toLowerCase()
   const bySearch = q ? opportunities.filter(o => o.title.toLowerCase().includes(q)) : opportunities
-  // A resolved/settled market's price sits pinned at the very ends (0¢/100¢)
-  // — filtering to the 30-70¢ band both surfaces genuinely live, still-
-  // uncertain markets first (the ones actually worth watching) and drops
-  // already-decided ones out of the list entirely, with no extra UI needed.
-  const byPriceRange = bySearch.filter(o => o.latest_price >= 0.30 && o.latest_price <= 0.70)
-  const filtered = byCategory(byPriceRange, category)
+  const byCat = byCategory(bySearch, category)
+  // Not a hard filter — a resolved/settled market's price sits pinned at
+  // the very ends (0¢/100¢), so those are pushed toward the bottom of the
+  // list instead of dropped, keeping the still-live, actually-uncertain
+  // ones up top without hiding anything. Stable sort, so it only reorders
+  // across this one/decided split — the existing cumulative_usd order
+  // (from the query) is preserved within each half.
+  const isDecidedPrice = (o: Opportunity) => o.latest_price >= 0.90 || o.latest_price <= 0.10
+  const filtered = [...byCat].sort((a, b) => Number(isDecidedPrice(a)) - Number(isDecidedPrice(b)))
 
   return (
     <div className="sig-page terminal-shell">
