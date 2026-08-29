@@ -2611,6 +2611,11 @@
 
 @media (max-width: 768px) {
   .showcase-grid { grid-template-columns: 1fr; }
+  /* Square aspect-ratio only really works at desktop's 3-col width — at
+     full mobile width it forces every card's height to match its width,
+     which was clipping the leaderboard card's 4 rows. Let height follow
+     content instead. */
+  .showcase-card { aspect-ratio: auto; min-height: 280px; }
 }
 
 /* ── Platforms ── */
