@@ -5,8 +5,8 @@
   --bg-3: #111827;
   --surface: #161b28;
   --border: rgba(255, 255, 255, 0.07);
-  --accent: #1e8f0d;
-  --accent-hover: #56ab4a;
+  --accent: #0284c7;
+  --accent-hover: #0ea5e9;
   /* Cool gray for text/secondary elements (badge labels, active-item
      text, small icons) that previously reused the accent — keeps the
      brand green reserved for real buttons/CTAs/section fills instead of
@@ -21,10 +21,38 @@
 }
 
 .landing {
-  background: var(--bg);
+  /* A blue ellipse near the top of page 1 (not a full-page wash — that
+     read as too blue overall), fading to transparent on every side so the
+     solid --bg layer underneath shows through — which also means page 2+
+     is automatically solid black with no separate cutoff needed, it's
+     just outside the ellipse's own reach. The vertical center MUST be a
+     fixed length, not a percentage — .landing spans the entire page
+     (thousands of px, every section down to the footer), so a % there
+     resolves against that whole height instead of "near the top of the
+     viewport", which was pushing the actual visible portion of the
+     ellipse almost entirely off-screen. */
+  background:
+    radial-gradient(ellipse 110vw 32vh at 50% 0, #0e3a66, transparent 70%),
+    var(--bg);
   color: var(--text-1);
   font-family: 'Manrope', system-ui, -apple-system, sans-serif;
-  overflow-x: clip;
+  /* overflow-x: clip (single-axis) forces the UA to silently recompute
+     overflow-y to auto per the spec's mixed visible/non-visible interop
+     rule — combined with the sticky nav below, that's a known trigger for
+     a top-edge paint gap on mobile Safari. overflow: hidden (both axes,
+     standard/well-supported) avoids the mixed-value case entirely. */
+  overflow: hidden;
+  /* Applies to (and inherits into) all the real landing-page copy in one
+     place instead of rewriting every string in every component — text-
+     transform only changes rendering, not the actual text content, so
+     nothing here needs updating if copy changes later. Explicitly reset
+     to none on the demo-preview sections (they represent literal app UI,
+     not landing-page copy) and on form inputs (transforming what someone
+     actually types, even just visually, reads as broken/deceptive). */
+  text-transform: lowercase;
+}
+.dashboard-container, .phone-container, input {
+  text-transform: none;
 }
 
 /* ── Navbar ── */
@@ -37,8 +65,7 @@
   justify-content: space-between;
   padding: 0 2rem;
   height: 60px;
-  background: rgba(6, 7, 15, 0.88);
-  -webkit-backdrop-filter: blur(14px);
+  background: transparent; /* desktop only — the mobile pill below has its own opaque .nav override */
   font-family: 'Manrope', system-ui, sans-serif;
 }
 
@@ -61,9 +88,7 @@
 }
 
 .nav-links {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
+  display: none; /* hidden temporarily (2026-08-28) — was "display: flex; align-items: center; gap: 0.25rem;" — restore that to bring Tools/Pricing/Resources back */
   list-style: none;
   margin: 0;
   padding: 0;
@@ -210,7 +235,11 @@
   inset: 0;
   background: rgba(0,0,0,0.5);
   z-index: 199;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
 }
+.nav-overlay.open { opacity: 1; pointer-events: all; }
 
 .nav-drawer {
   position: fixed;
@@ -291,6 +320,12 @@
   margin: 0.4rem 0;
 }
 
+/* Full styling lives in the mobile media query below — .nav-drawer only
+   ever opens on mobile (via .nav-hamburger, itself mobile-only), so this
+   base rule is just a safe default in case it's ever inspected outside
+   that context. */
+.nav-drawer-cta { display: none; }
+
 .nav-drawer-tool {
   display: flex;
   flex-direction: column;
@@ -364,6 +399,25 @@
   border-radius: var(--radius);
 }
 
+/* Transparent/glassy variant for the hero's CTA and the desktop nav's Log
+   in button — scoped by descendant selector (higher specificity than
+   .btn-primary alone) rather than changing .btn-primary itself, which is
+   still the shared solid-green CTA style used elsewhere (pricing, CTA
+   banner). Just these two should look different, and the same as each
+   other. */
+.hero-form-inner .btn-primary,
+.nav-actions .btn-primary {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.hero-form-inner .btn-primary:hover,
+.nav-actions .btn-primary:hover {
+  background: rgba(255,255,255,0.14);
+  border-color: rgba(255,255,255,0.28);
+}
+
 /* ── Hero ── */
 .hero {
   position: relative;
@@ -391,10 +445,6 @@
   animation: slide-from-left 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.hero-sub {
-  animation: fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
-}
-
 .hero-form {
   animation: fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.25s both;
 }
@@ -418,15 +468,140 @@
 
 /* Two-column layout */
 .hero-cols {
-  display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 3rem;
+  /* Was a 2-col grid (copy left, ProfitCard right) — the right column is
+     hidden for now (see .hero-card-wrap), so this centers the remaining
+     copy as a single column instead of leaving that space empty. */
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 1.5rem;
   margin-bottom: 3.5rem;
 }
 
 .hero-copy {
-  text-align: left;
+  position: relative;
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+/* Decorative only, purely atmospheric. Positioned against .hero (not
+   .hero-copy) and DOM-first within it (see Hero.tsx) — later siblings
+   (.hero-cols) then paint over it in plain document order, no z-index
+   needed at all, which sidesteps the stacking-context gotcha a negative
+   z-index ran into here before (a positioned ancestor needs an explicit
+   z-index of its own, not just position:relative, to actually contain a
+   negative-z-index descendant). Living outside .hero-copy also means its
+   size no longer shrinks when that column's own max-width changes — it
+   only ever depends on .hero's much wider box. Hidden on mobile — the
+   hero is already busy there (phone mockup, stacked form) and this would
+   just add visual noise at that width. */
+.hero-bg-art {
+  position: absolute;
+  /* Was -60px, which put the diver's head/tanks (the busiest, most
+     detailed part of the image) directly across the headline — pushed
+     down far enough that the headline reads clean, with the figure
+     trailing down past the email form into the empty space below instead
+     of fighting the text for attention. */
+  top: 320px;
+  left: 50%;
+  width: 345px;
+  opacity: 0.9;
+  /* Tints the (mostly white/gray) diving suit blue instead of showing its
+     real off-white color — sepia introduces a warm color cast onto an
+     otherwise near-grayscale image (hue-rotate alone does nothing to true
+     grays, there's no hue there to rotate), then hue-rotate swings that
+     warm tone around to blue and saturate brings it back up since the
+     sepia+rotate combo alone looks washed out. */
+  filter: sepia(0.55) saturate(3) hue-rotate(175deg) brightness(0.85)
+    drop-shadow(0 0 28px rgba(120, 190, 255, 0.10));
+  pointer-events: none;
+  user-select: none;
+  /* Slow, small-amplitude bob — reads as gently floating, not obviously
+     "animating". Long duration + small distance is what keeps it
+     subtle; translateX(-50%) has to live inside the keyframes themselves
+     (an animated transform fully replaces any static transform value,
+     it doesn't compose with one set separately), so it's carried through
+     every step below to keep the horizontal centering. */
+  animation: diver-float 6s ease-in-out infinite;
+}
+
+@keyframes diver-float {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50%      { transform: translateX(-50%) translateY(14px); }
+}
+
+/* Same decorative/atmospheric treatment as .hero-bg-art (same blue tint,
+   same DOM-order-not-z-index stacking behind the text), positioned in the
+   top-right corner instead and mirrored horizontally via scaleX(-1) — that
+   has to live inside the keyframes themselves same as the diver's
+   translateX(-50%), an animated transform replaces a static one rather
+   than composing with it. */
+.hero-whale-art {
+  position: absolute;
+  top: -170px;
+  right: -400px;
+  width: 750px;
+  opacity: 0.85;
+  transform: scaleX(-1) rotate(10deg);
+  filter: sepia(0.55) saturate(3) hue-rotate(175deg) brightness(0.85);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Underwater light rays — each one fades in, holds, fades out, then waits
+   out the rest of its own cycle before repeating. Different duration +
+   delay per ray (not just delay with a shared duration) is what keeps the
+   overall pattern from ever resolving into an obvious synchronized pulse
+   — true randomness isn't available in plain CSS, so this fakes it with a
+   long, non-repeating-feeling combination instead. One ray "on" at a time
+   is the common case since each is lit for a fairly small slice of its
+   own cycle relative to how long it stays off. */
+.hero-rays {
+  position: absolute;
+  /* Extends up past .hero's own top edge into the navbar's vertical space
+     — .nav is a separate, sticky element sitting above .hero in normal
+     flow, not an overlapping one, so without this the rays hit a hard
+     seam exactly at the height the transparent nav ends instead of
+     appearing to shine up through it. */
+  top: -140px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hero-ray {
+  position: absolute;
+  top: -15%;
+  width: 40px;
+  height: 150%;
+  /* Lower alpha (was 0.35) — the white was reading too strong/solid. The
+     45% fade stop (was 70%) is chosen against this element's own 150%
+     height so the actual fade-to-transparent point lands at 0.45 * 1.5 =
+     67.5% of the way down — comfortably inside the visible area. The old
+     70% stop against the same 150% height put the fade point at 105%,
+     i.e. below the fold entirely, which is why it never looked like it
+     was fading at all. */
+  background: linear-gradient(to bottom, rgba(180,210,255,0.16), transparent 45%);
+  filter: blur(5px);
+  opacity: 0;
+}
+/* Kept well inside 0-100% (nothing past ~20%/80%) so a rotated, blurred
+   beam near an edge doesn't get visibly guillotined by .hero-rays' own
+   overflow:hidden. --ray-peak varies each ray's own max opacity (instead
+   of every one hitting a flat 1) for a less uniform, more organic look;
+   the keyframes' "on" window is only 6% of each cycle now (was 12%, was
+   24% before that) and durations are longer, both making overlaps rarer
+   and the whole thing read as less frequent overall. */
+.hero-ray:nth-child(1) { left: 22%; transform: rotate(9deg);   --ray-peak: 0.55; animation: ray-shine 18s ease-in-out infinite; animation-delay: 0s; }
+.hero-ray:nth-child(2) { left: 40%; transform: rotate(-7deg);  --ray-peak: 0.8;  animation: ray-shine 23s ease-in-out infinite; animation-delay: 6s; }
+.hero-ray:nth-child(3) { left: 58%; transform: rotate(5deg);   --ray-peak: 0.4;  animation: ray-shine 20s ease-in-out infinite; animation-delay: 13s; }
+.hero-ray:nth-child(4) { left: 76%; transform: rotate(-9deg);  --ray-peak: 0.65; animation: ray-shine 26s ease-in-out infinite; animation-delay: 3s; }
+
+@keyframes ray-shine {
+  0%, 91%, 100% { opacity: 0; }
+  22%, 28% { opacity: var(--ray-peak, 0.6); }
 }
 
 @keyframes pulse {
@@ -446,12 +621,16 @@
   color: var(--text-1);
 }
 
-.hero-sub {
-  font-size: 0.9375rem;
-  color: var(--text-3);
-  margin: 0 0 2rem;
-  line-height: 1.6;
-  font-weight: 400;
+/* Same gray-subtext convention as .section-sub used throughout the rest
+   of the landing page (font-size/color/line-height), just centered and
+   without that class's 3rem bottom margin (too much dead space above the
+   email form at this narrower, hero-specific width). */
+.hero-headline-sub {
+  font-size: 1.0625rem;
+  color: var(--text-2);
+  line-height: 1.65;
+  max-width: 480px;
+  margin: 0 auto 1.5rem;
 }
 
 .hero-form {
@@ -462,6 +641,7 @@
   display: flex;
   gap: 0.5rem;
   max-width: 480px;
+  margin: 0 auto;
 }
 
 .hero-form input {
@@ -484,6 +664,7 @@
 .hero-trust-row {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.75rem;
 }
 
@@ -530,12 +711,13 @@
 /* Right card */
 .hero-card-wrap {
   position: relative;
+  display: none; /* hidden temporarily (2026-08-28) — remove this line to bring the locked ProfitCard preview back */
 }
 
 /* ── Profit Card (shared shell) ── */
 .profit-card {
   background: var(--surface);
-  border: 1px solid rgba(30,143,13,0.22);
+  border: 1px solid rgba(2,132,199,0.22);
   border-radius: var(--radius);
   padding: 1.5rem;
   box-shadow: 0 24px 60px rgba(0,0,0,0.5);
@@ -684,7 +866,6 @@
    Splitting the standard property into its own @supports rule keeps both
    declarations distinct so neither gets dropped. */
 @supports (backdrop-filter: blur(1px)) {
-  .nav { backdrop-filter: blur(14px); }
   .profit-glass-overlay { backdrop-filter: blur(12px); }
   .profit-glass-btn { backdrop-filter: blur(4px); }
 }
@@ -743,8 +924,8 @@
 }
 
 .pricing-card-pro {
-  border-color: rgba(30,143,13,0.4);
-  background: rgba(30,143,13,0.05);
+  border-color: rgba(2,132,199,0.4);
+  background: rgba(2,132,199,0.05);
 }
 
 .pricing-popular {
@@ -1152,7 +1333,7 @@
 
 .ep-option-selected {
   border-color: var(--accent) !important;
-  background: rgba(30,143,13,0.1) !important;
+  background: rgba(2,132,199,0.1) !important;
   color: var(--text-1) !important;
 }
 
@@ -1321,6 +1502,41 @@
 
 
 /* ── Dashboard Preview ── */
+/* Eyebrow + headline + subtext sitting above the demo preview (desktop
+   only — see the mobile media query below) — same 3-part pattern as a
+   common "section intro" convention, but its own copy/styling rather than
+   a copy: green eyebrow (brand accent, not blue) and a lowercase,
+   sentence-style headline instead of a title-case one. */
+.demo-intro {
+  /* Pushes the whole intro+demo block down to roughly a second-screen
+     reveal instead of sitting right under the hero CTA — a rough estimate
+     since it isn't measured against a real rendered hero height, so it
+     may need tuning once actually seen. */
+  margin-top: 45vh;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+.demo-intro-eyebrow {
+  font-family: 'Menlo', 'Courier New', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--green);
+  margin-bottom: 0.75rem;
+}
+.demo-intro-headline {
+  font-size: 2.25rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+  margin: 0 0 0.75rem;
+}
+.demo-intro-sub {
+  font-size: 1rem;
+  color: var(--text-3);
+  margin: 0;
+}
+
 .dashboard-container {
   position: relative;
   margin-bottom: 2rem;
@@ -1328,44 +1544,104 @@
   margin-right: -2rem;
 }
 
-.dashboard-container::before {
-  content: '';
-  position: absolute;
-  /* Sized via inset from the container's own real edges, not a guessed
-     absolute width/height — self-correcting regardless of the card's real
-     rendered height. Bottom is pulled up to the container's own vertical
-     midpoint (not flush with 0): .dashboard-wrap's mask fades the card to
-     transparent over its bottom ~20%, and this glow sits right behind it —
-     if the glow's box extended down to the card's real bottom, it would
-     shine straight through that transparent region even with the bleed
-     outside the box clipped off. Keeping the glow entirely out of the
-     lower half means there's nothing back there to show through. */
-  inset: -90px -180px 50% -180px;
-  background: radial-gradient(ellipse at center, rgba(30,143,13,0.55), transparent 70%);
-  filter: blur(55px);
-  /* blur bleeds past its own box on every side by default — clip-path
-     enforces the hard stop. Top/sides stay generous (unchanged bleed);
-     bottom is flush with this box's own (now-raised) bottom edge. */
-  clip-path: inset(-150px -250px 0 -250px);
-  z-index: -1;
-  pointer-events: none;
-}
-
 .dashboard-wrap {
   position: relative;
   border-radius: var(--radius);
   overflow: hidden;
-  /* Card's own fade — moved here (off .dashboard-container) so it doesn't
-     also mask the ambient glow sitting behind it: CSS mask gradients tile
-     past the masked element's own box, which was silently clipping the
-     glow to fully transparent everywhere outside the card. */
-  -webkit-mask-image: linear-gradient(to bottom, black 35%, transparent 80%);
-  mask-image: linear-gradient(to bottom, black 35%, transparent 80%);
   border: 1px solid var(--border);
   box-shadow: 0 32px 80px rgba(0,0,0,0.6);
   user-select: none;
   pointer-events: none;
   cursor: default;
+}
+
+/* ── Monitor + phone device mockup wrapping the demo preview ──
+   .monitor-frame is the bezel around the existing .dashboard-wrap card
+   (untouched inside), with a webcam dot and a stand below it; a phone
+   mockup (PhoneOverlay.tsx, reusing the same .phone-* classes the real
+   mobile hero mockup uses) overlaps its bottom-right corner, matching the
+   monitor+phone "device shot" convention on the reference. Both float on
+   an ambient glow (.device-glow) behind them. */
+.device-glow {
+  position: absolute;
+  inset: -60px -120px -80px;
+  background: radial-gradient(ellipse at 50% 35%, rgba(64,120,255,0.28), transparent 65%);
+  filter: blur(60px);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.monitor-frame {
+  position: relative;
+  background: linear-gradient(155deg, #26272e, #131418 70%);
+  border-radius: 20px;
+  padding: 16px 16px 0;
+  box-shadow: 0 50px 110px rgba(0,0,0,0.65);
+}
+
+.monitor-camera {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #050505;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
+}
+
+.monitor-screen {
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.monitor-stand-neck {
+  width: 110px;
+  height: 54px;
+  margin: 0 auto;
+  background: linear-gradient(to bottom, #2c2d33, #17181c);
+  clip-path: polygon(32% 0, 68% 0, 100% 100%, 0 100%);
+}
+
+.monitor-stand-base {
+  width: 300px;
+  height: 16px;
+  margin: 0 auto;
+  background: #1c1d21;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.45);
+}
+
+.device-phone-overlay {
+  position: absolute;
+  bottom: 10px;
+  right: 30px;
+  width: 190px;
+  z-index: 3;
+  filter: drop-shadow(0 24px 45px rgba(0,0,0,0.55));
+  /* Own keyframe, not a reuse of .hero-bg-art's diver-float — that one
+     bakes in translateX(-50%) for the diver's horizontal centering, which
+     would wrongly shift this element (positioned via bottom/right, no
+     centering needed) sideways by half its own width. */
+  animation: phone-float 5.5s ease-in-out infinite;
+  animation-delay: -1.8s; /* offsets its bob out of sync with the diver's, so they don't move in lockstep */
+}
+
+.device-phone-overlay-img {
+  display: block;
+  width: 100%;
+  /* The screenshot's own bounding box is a plain rectangle (the phone
+     shape inside it is rounded, but its corners are just flat page-color
+     fill) — rounding + clipping the image itself hides that rectangular
+     edge wherever it sits over something other than flat --bg. */
+  border-radius: 28px;
+  overflow: hidden;
+}
+
+@keyframes phone-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(12px); }
 }
 
 .dashboard-chrome {
@@ -1629,6 +1905,64 @@
   display: inline-block;
 }
 
+/* ── Winners preview table (desktop) ── self-contained, mirrors the real
+   app's Winners tab (src/app/app.css's .lb-*) but kept as its own classes
+   here rather than reusing app.css directly — landing/ and app/ are a
+   deliberately enforced boundary (see .dependency-cruiser.cjs), so this
+   stays a visual echo, not a real dependency. */
+.wp-table { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.wp-head, .wp-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1.7fr 0.85fr 0.85fr;
+  gap: 10px;
+  align-items: center;
+}
+.wp-head {
+  padding: 7px 12px;
+  font-size: 0.625rem; font-weight: 600; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid var(--border);
+}
+.wp-row { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.wp-row:last-child { border-bottom: none; }
+.wp-trader { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.wp-avatar {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.6875rem; font-weight: 700; color: #fff;
+}
+.wp-name { font-size: 0.75rem; font-weight: 700; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-sub { font-size: 0.625rem; color: var(--text-3); margin-top: 1px; }
+.wp-market { min-width: 0; font-size: 0.75rem; color: var(--text-1); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-market span { color: var(--text-3); font-weight: 500; }
+.wp-col { text-align: right; }
+.wp-val { font-size: 0.75rem; font-weight: 700; color: var(--text-1); }
+.wp-val.g { color: var(--green); }
+.wp-val-sub { font-size: 0.625rem; margin-top: 1px; color: var(--text-3); }
+.wp-val-sub.g { color: var(--green); }
+
+/* ── Winners preview cards (mobile phone-frame) ── */
+.wp-mobile-list { display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+.wp-mobile-card {
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px;
+  background: rgba(255,255,255,0.015);
+}
+.wp-mobile-market { font-size: 0.75rem; font-weight: 600; color: var(--text-1); margin-bottom: 8px; line-height: 1.35; }
+.wp-mobile-market span { color: var(--text-3); font-weight: 500; }
+.wp-mobile-trader { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.wp-mobile-name { font-size: 0.75rem; font-weight: 700; color: var(--text-1); }
+.wp-mobile-sub { font-size: 0.625rem; color: var(--text-3); margin-top: 1px; }
+.wp-mobile-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.wp-mobile-stat {
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px;
+}
+.wp-mobile-stat-label { font-size: 0.5625rem; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.wp-mobile-stat-val { font-size: 0.75rem; font-weight: 700; color: var(--text-1); }
+.wp-mobile-stat-val.g { color: var(--green); }
+.wp-mobile-stat-sub { font-size: 0.625rem; margin-top: 1px; color: var(--text-3); }
+.wp-mobile-stat-sub.g { color: var(--green); }
+
 /* ── Dashboard Preview (mobile phone-frame) ──
    The desktop browser-chrome mockup hides itself under 768px (too dense
    for that width) with nothing shown in its place — this is that
@@ -1799,12 +2133,7 @@
 
 /* ── Trust bar ── */
 .hero-trust-bar {
-  display: flex;
-  justify-content: center;
-  gap: 2.5rem;
-  flex-wrap: wrap;
-  padding: 1.5rem 0 3rem;
-  margin-top: 0.5rem;
+  display: none; /* hidden (2026-08-28) — was "display: flex; justify-content: center; gap: 2.5rem; flex-wrap: wrap; padding: 1.5rem 0 3rem; margin-top: 0.5rem;" to restore */
 }
 
 .hero-trust-item {
@@ -2106,7 +2435,7 @@
 
 .port-bar {
   flex: 1;
-  background: linear-gradient(to top, var(--accent), rgba(30,143,13,0.3));
+  background: linear-gradient(to top, var(--accent), rgba(2,132,199,0.3));
   border-radius: 3px 3px 0 0;
   min-height: 4px;
 }
@@ -2212,7 +2541,7 @@
 
 /* ── How it works ── */
 .how-it-works {
-  background: #1e8f0d;
+  background: #0284c7;
   position: relative;
   overflow: visible;
   padding-top: 10rem;
@@ -2440,8 +2769,8 @@
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  background: rgba(30,143,13,0.12);
-  border: 1px solid rgba(30,143,13,0.2);
+  background: rgba(2,132,199,0.12);
+  border: 1px solid rgba(2,132,199,0.2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2677,7 +3006,7 @@
 
 /* ── CTA Banner ── */
 .cta-banner {
-  background: #1e8f0d;
+  background: #0284c7;
   border: none;
   border-radius: 20px;
   padding: 4rem 2rem;
@@ -2729,7 +3058,7 @@
 
 .cta-form .btn-primary {
   background: #fff;
-  color: #1e8f0d;
+  color: #0284c7;
   border-color: #fff;
 }
 
@@ -3004,7 +3333,7 @@
 
 /* CTA strip */
 .calc-cta-strip {
-  background: #1e8f0d;
+  background: #0284c7;
   border-radius: var(--radius);
   padding: 1.75rem 2rem;
   margin-bottom: 2.5rem;
@@ -3048,7 +3377,7 @@
 
 .calc-cta-form .btn-primary {
   background: #fff;
-  color: #1e8f0d;
+  color: #0284c7;
   border-color: #fff;
   white-space: nowrap;
 }
@@ -3107,22 +3436,104 @@
 
 /* Mobile */
 @media (max-width: 768px) {
-  /* Nav: hide links, show hamburger */
-  .nav { padding: 0 1.25rem; }
+  /* Nav: hide links, show hamburger. Closed state is a floating rounded
+     pill (margin off the edges + its own surface color + shadow) instead
+     of a flat full-width bar, so it visually separates from the page
+     behind it. Open state (.nav-drawer) becomes a floating rounded panel
+     anchored near the top instead of a full-height slide-in strip from
+     the right — same open/close state machine in Navbar.tsx, just a
+     different shape/entrance animation for it. */
+  .nav {
+    margin: 10px 10px 0;
+    padding: 0 1.1rem;
+    height: 68px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
   .nav-links { display: none; }
   .nav-actions { display: none; }
   .nav-hamburger { display: flex; }
   .nav-left { gap: 0; }
 
+  /* Single easing curve shared with the overlay (see .nav-overlay above)
+     so backdrop + panel read as one motion instead of two mismatched
+     ones — that mismatch (backdrop popping in instantly while the panel
+     eased in) was the main thing making this feel un-clean. Scaling from
+     top center (not the default center) makes the panel feel anchored to
+     the pill/hamburger that opened it rather than just materializing. */
+  .nav-drawer {
+    top: 10px; left: 10px; right: 10px; bottom: auto;
+    width: auto; height: auto; max-height: calc(100vh - 20px);
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+    overflow-y: auto;
+    transform-origin: top center;
+    transform: translateY(-8px) scale(0.96);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+  }
+  .nav-drawer.open {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+    pointer-events: all;
+  }
+  .nav-drawer-header { border-radius: 20px 20px 0 0; }
+  .nav-drawer-close {
+    background: rgba(255,255,255,0.06);
+    border-radius: 10px;
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .nav-drawer-cta {
+    display: block;
+    margin: 0.75rem 1.25rem 1.25rem;
+    padding: 0.9rem;
+    background: #fff;
+    color: #06070f;
+    text-align: center;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    border-radius: 999px;
+    text-decoration: none;
+  }
+
   /* Hero */
   .hero { padding: 2.5rem 0.75rem 0; }
   .hero h1 { font-size: 2rem; }
-  .hero-sub { font-size: 0.9375rem; }
-  .hero-form-inner { flex-direction: column; }
-  .hero-form-inner .btn-primary { width: 100%; text-align: center; }
+  .hero-form-inner { flex-direction: column; align-items: center; }
+  /* No email capture step on mobile — the button goes straight to signup
+     (see the empty-email branch in Hero.tsx's submit handler). */
+  .hero-form-inner input { display: none; }
+  .hero-form-inner .btn-primary { width: fit-content; text-align: center; }
   /* Replaced on mobile by the headline overlaid on the phone mockup's
      bottom fade (.phone-hero-overlay) instead of a checkmark list. */
   .hero-trust-bar { display: none; }
+  /* Diver brought back on mobile (was fully hidden), sitting in the empty
+     gap below the CTA button (before the phone mockup further down) — not
+     overlapping the headline/copy above it. No z-index needed — same
+     DOM-order stacking as the desktop version (this renders before
+     .hero-cols/.phone-container in Hero.tsx, so later paint wins). */
+  .hero-bg-art {
+    display: block;
+    top: 300px;
+    width: 340px;
+    opacity: 0.95;
+  }
+  /* Whale brought back on mobile too, small and tucked in front of the
+     diver's spear/gaze direction (up and to his right) so the two read as
+     looking at each other instead of the whale being cut for space. Same
+     left-facing flip as the desktop version. */
+  .hero-whale-art {
+    display: block;
+    top: 260px;
+    right: -60px;
+    width: 260px;
+    opacity: 0.9;
+  }
 
   /* Dashboard: browser-chrome version hides (too dense at this width),
      phone-frame version takes its place. Hiding the whole container, not
@@ -3131,7 +3542,11 @@
      staying visible (plus the container's own margin/spacing) even with
      the card itself hidden. */
   .dashboard-container { display: none; }
-  .phone-container { display: flex; }
+  .demo-intro { display: none; }
+  /* Pushed way down — roughly a second-screen reveal, same idea as
+     .demo-intro's margin-top: 45vh on desktop — so the diver gets real
+     room to read as a big background figure before the phone appears. */
+  .phone-container { display: flex; margin-top: 45vh; }
 
   /* ProfitCard: with its title/button already hidden below this width,
      it was just a blurred card with a floating lock icon and no

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ProfitCard from './ProfitCard'
-import DashboardPreview from './DashboardPreview'
-import DashboardPreviewMobile from './DashboardPreviewMobile'
+import WinnersPreview from './WinnersPreview'
+import WinnersPreviewMobile from './WinnersPreviewMobile'
 import { supabase } from '../../lib/supabase'
 
 // opportunity_wallets is a real, permanent, roster-trade-entry table — no
@@ -102,16 +102,27 @@ export default function Hero() {
   // Capturing the lead is best-effort — a failed insert (network blip, RLS
   // hiccup) shouldn't trap someone who's ready to sign up on the landing
   // page. Email carries through as a query param so the signup form only
-  // asks for a password, not the email again.
+  // asks for a password, not the email again. The email field is hidden on
+  // mobile (see .hero-form-inner input in landing.css), so email is empty
+  // there — in that case just go straight to signup, nothing to capture.
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
+    if (!email) {
+      navigate('/signup')
+      return
+    }
     await supabase.from('leads').insert({ email, source: 'hero_form' })
     navigate(`/signup?email=${encodeURIComponent(email)}`)
   }
 
   return (
     <section className="hero">
+      <img src="/hero-whale.png" alt="" aria-hidden="true" className="hero-whale-art" />
+      <img src="/hero-astronaut.png" alt="" aria-hidden="true" className="hero-bg-art" />
+      <div className="hero-rays" aria-hidden="true">
+        {Array.from({ length: 4 }).map((_, i) => <div className="hero-ray" key={i} />)}
+      </div>
 
       {/* ── Two-column top ── */}
       <div className="hero-cols">
@@ -130,14 +141,11 @@ export default function Hero() {
 
           <h1>
             See what<br />
-            <span>proven winners</span><br />
+            <span>the whales</span><br />
             are trading, live.
           </h1>
 
-          <p className="hero-sub">
-            VisibleTrader watches the top-performing wallets on Polymarket in real time and
-            surfaces what they're buying, the moment they buy it.
-          </p>
+          <p className="hero-headline-sub">Real wallets. Real wins. Tracked the moment they trade.</p>
 
           <form className="hero-form" onSubmit={submit}>
             <div className="hero-form-inner">
@@ -162,8 +170,13 @@ export default function Hero() {
       </div>
 
       {/* ── Dashboard preview ── */}
-      <DashboardPreview />
-      <DashboardPreviewMobile />
+      <div className="demo-intro">
+        <div className="demo-intro-eyebrow">REAL TRADES · REAL TIME</div>
+        <h2 className="demo-intro-headline">this is what winning looks like.</h2>
+        <p className="demo-intro-sub">A live feed of real, tracked wins — the moment they close.</p>
+      </div>
+      <WinnersPreview />
+      <WinnersPreviewMobile />
 
       {/* ── Trust bar ── */}
       <div className="hero-trust-bar">

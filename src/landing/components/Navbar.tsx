@@ -127,10 +127,7 @@ export default function Navbar() {
           {signedIn ? (
             <a href={appUrl('/')} className="btn-primary">Go to app</a>
           ) : (
-            <>
-              <a href={appUrl('/login')} className="btn-ghost">Log in</a>
-              <Link to="/pricing" className="btn-primary">Try for free</Link>
-            </>
+            <a href={appUrl('/login')} className="btn-primary">Log in</a>
           )}
         </div>
 
@@ -141,7 +138,7 @@ export default function Navbar() {
         </button>
       </nav>
 
-      {menu !== 'closed' && <div className="nav-overlay" onClick={close} />}
+      <div className={`nav-overlay ${menu !== 'closed' ? 'open' : ''}`} onClick={close} />
 
       <div className={`nav-drawer ${menu !== 'closed' ? 'open' : ''}`}>
         {menu === 'main' && (
@@ -162,11 +159,11 @@ export default function Navbar() {
               </button>
               <div className="nav-drawer-divider" />
               {signedIn ? (
-                <a href={appUrl('/')} className="nav-drawer-link" style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={close}>Go to app</a>
+                <a href={appUrl('/')} className="nav-drawer-cta" onClick={close}>Go to app</a>
               ) : (
                 <>
                   <a href={appUrl('/login')} className="nav-drawer-link" onClick={close}>Log in</a>
-                  <Link to="/pricing" className="nav-drawer-link" style={{ color: 'var(--accent)', fontWeight: 600 }} onClick={close}>Try for free</Link>
+                  <Link to="/pricing" className="nav-drawer-cta" onClick={close}>Try for free</Link>
                 </>
               )}
             </div>

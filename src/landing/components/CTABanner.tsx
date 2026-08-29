@@ -19,7 +19,7 @@ export default function CTABanner() {
             onChange={e => setEmail(e.target.value)}
             required
           />
-          <button type="submit" className="btn-primary">Get started free</button>
+          <button type="submit" className="btn-primary">Get started</button>
         </form>
       </div>
     </div>

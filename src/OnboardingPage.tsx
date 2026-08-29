@@ -33,7 +33,7 @@ const questions = [
 
 // Two value-prop slides shown after the questions, before the paywall —
 // each graphic is a small inline mockup (no image assets), same approach
-// already used for the landing page's DashboardPreview.
+// already used for the landing page's WinnersPreview.
 const slides = [
   {
     title: 'Never miss a signal',

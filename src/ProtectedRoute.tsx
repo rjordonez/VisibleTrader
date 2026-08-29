@@ -12,10 +12,7 @@ const ACTIVE_SUB_STATUSES = new Set(['trialing', 'active'])
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<'loading' | 'authed' | 'anon'>('loading')
   const [subActive, setSubActive] = useState<boolean | null>(null)
-  // Tracked separately from `status` (rather than read fresh off the
-  // session each render) so OnboardingPage's onComplete can flip this
-  // immediately instead of waiting on Supabase's auth-state-change event
-  // to round-trip back after updateUser().
+
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null)
 
   useEffect(() => {

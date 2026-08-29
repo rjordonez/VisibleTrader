@@ -1,15 +1,4 @@
-/** dependency-cruiser config — the build-time architecture gate.
- *
- * Runs before tsc/vite in `npm run build` (see package.json) so an
- * architecture violation fails fast, before spending time on the
- * type-check/bundle step. `npm run lint:arch` runs it standalone.
- *
- * Scope: src/** only (JS/TS dependency graph). scripts/*.py (the backend)
- * has no equivalent automated gate in this stack — dependency-cruiser
- * can't analyze Python imports. See scripts/archive/ for the practical
- * substitute there (a manual, human-legible "still active" vs
- * "historical" signal).
- */
+
 module.exports = {
   forbidden: [
     {
