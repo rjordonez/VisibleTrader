@@ -157,7 +157,7 @@ export default function Hero() {
                 required
               />
               <button type="submit" className="btn-primary" disabled={submitting}>
-                {submitting ? 'One sec…' : 'Get started free'}
+                {submitting ? 'One sec…' : 'Get started'}
               </button>
             </div>
           </form>

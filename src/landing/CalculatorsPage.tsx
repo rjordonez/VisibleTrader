@@ -288,7 +288,7 @@ function CTAStrip() {
       </div>
       <form className="calc-cta-form" onSubmit={e => { e.preventDefault(); setEmail('') }}>
         <input className="calc-input" type="email" placeholder="Your email" value={email} onChange={e => setEmail(e.target.value)} required />
-        <button type="submit" className="btn-primary">Get started free</button>
+        <button type="submit" className="btn-primary">Get started</button>
       </form>
     </div>
   )
