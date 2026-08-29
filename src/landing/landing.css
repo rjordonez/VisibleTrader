@@ -3753,7 +3753,7 @@
   margin-bottom: 1.5rem;
   font-size: 0.8125rem;
 }
-.hero-rating-stars { display: flex; gap: 2px; color: var(--green); flex-shrink: 0; }
+.hero-rating-stars { display: flex; gap: 2px; color: var(--accent-hover); flex-shrink: 0; }
 .hero-rating-score { font-weight: 700; color: var(--text-1); }
 .hero-rating-divider { color: var(--text-3); }
 .hero-rating-verified {
