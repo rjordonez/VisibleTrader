@@ -17,6 +17,12 @@ export const marketingUrl = (path: string) =>
 export const dashboardPath = (path: string) =>
   import.meta.env.DEV ? `/app${path}` : path
 
+// Same idea as dashboardPath, but for the Terminal — a separate top-level
+// route tree (its own chrome, no AppShell nav) mounted at /terminal in prod
+// and /app/terminal in dev, mirroring how AppShell itself is mounted.
+export const terminalPath = (path: string) =>
+  import.meta.env.DEV ? `/app/terminal${path}` : `/terminal${path}`
+
 // OAuth providers (Google/Apple) redirect the browser to a literal
 // absolute URL after consent — appUrl()'s relative dev-mode output
 // doesn't work for that, so this always returns a full URL in both envs.

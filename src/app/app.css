@@ -5,7 +5,7 @@
    was only ~4% lighter than pure black and read as indistinguishable —
    this is a real, visible step up (RGB ~20 vs ~11). */
 .app-shell {
-  --shell-bg: #15181f;
+  --shell-bg: #050505;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -291,10 +291,10 @@
    no border-radius:99px anywhere, borders instead of filled pill backgrounds,
    underline tabs instead of a segmented pill control. ── */
 .sig-page {
-  --bg: #15181f;
-  --surface: #1c202a;
-  --surface-2: #242834;
-  --chip: #2a2f3c;
+  --bg: #050505;
+  --surface: #0c0c0e;
+  --surface-2: #101012;
+  --chip: #17171a;
   --border: rgba(255,255,255,0.08);
   --text: #f2f3f5;
   --text-dim: #8f97a3;
@@ -558,6 +558,20 @@
 .sig-drill-label { font-size: 10px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 10px; }
 .sig-drill-row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
 .sig-drill-row:first-child { border-top: none; }
+
+/* Wraps the contributing-traders list (MarketDetailContent) in its own
+   card, same surface-2/border/rounded treatment as .sig-movers/.sig-hero —
+   defined here (app.css, loaded everywhere MarketDetailContent renders:
+   the modal on Home/Signals and the Terminal) rather than in terminal.css,
+   which only the Terminal route loads. */
+.sig-drill-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 20px;
+}
+.sig-drill-card .sig-drill-row:first-child { border-top: none; }
 
 /* ── Loading skeletons — reserve real content's footprint so nothing
    resizes when async data (hero chart / contributors) lands ── */
@@ -866,37 +880,6 @@
   scrollbar-width: none;
 }
 .sig-modal::-webkit-scrollbar { display: none; }
-
-/* Chart + activity on the left, contributing traders on the right — same
-   grid/collapse pattern as .sig-hero-row. min-width:0 on both columns for
-   the same reason noted there: grid items default to a content-based
-   minimum width, which lets a long unwrapped row force its column (and
-   the chart inside it) wider than its track. */
-.sig-modal-cols { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; }
-@media (max-width: 640px) { .sig-modal-cols { grid-template-columns: 1fr; } }
-.sig-modal-col-main, .sig-modal-col-side { min-width: 0; }
-
-/* The side column here is narrower than .sig-drill-name's fixed-width
-   side-by-side layout was designed for (built when contributing traders
-   had the whole modal width to work with) — a longer name had nowhere to
-   go but an ugly mid-word ellipsis cutoff. Reflow to name-on-its-own-line,
-   toggle top-right, detail/profit/status stacked below spanning full
-   width, scoped to just this column so the wider contexts that still use
-   .sig-drill-row (HomePage's hero, etc) are untouched. */
-.sig-modal-col-side .sig-drill-row,
-.sig-modal-col-side .sig-trader-group-header {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  column-gap: 8px;
-  row-gap: 3px;
-  align-items: start;
-}
-.sig-modal-col-side .sig-drill-name {
-  grid-column: 1; grid-row: 1;
-  width: auto; white-space: normal; overflow: visible; text-overflow: clip;
-}
-.sig-modal-col-side .sig-drill-body { grid-column: 1 / -1; grid-row: 2; }
-.sig-modal-col-side .sig-trader-group-toggle { grid-column: 2; grid-row: 1; margin-left: 0; }
 
 .sig-activity { margin-bottom: 8px; }
 .sig-activity-row { margin-bottom: 12px; }

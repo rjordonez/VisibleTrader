@@ -15,6 +15,7 @@ import LoginPage from './landing/LoginPage'
 import ForgotPasswordPage from './landing/ForgotPasswordPage'
 import ResetPasswordPage from './landing/ResetPasswordPage'
 import AppShell from './app/index'
+import Terminal from './app/terminal/Terminal'
 import ProtectedRoute from './ProtectedRoute'
 import SearchPage from './SearchPage'
 
@@ -83,6 +84,11 @@ function AppRoutes() {
           Sitting outside ProtectedRoute like /search above so it's reachable
           without a subscription. */}
       <Route path="/pricing" element={<PricingPage />} />
+      {/* Full-bleed, own-chrome page — deliberately outside AppShell's
+          <Routes> below so it never renders the normal app-header/tab nav/
+          mobile bottom bar (see the plan this was built from). Still
+          behind ProtectedRoute like everything else under here. */}
+      <Route path="/terminal/*" element={<ProtectedRoute><Terminal /></ProtectedRoute>} />
       {/* Dev-only: mirrors the routes above under /app so the local
           `localhost:5173/app/...` testing convention keeps working —
           dead code in prod, stripped by Vite's import.meta.env.DEV check. */}
@@ -94,6 +100,7 @@ function AppRoutes() {
           <Route path="/app/reset-password" element={<ResetPasswordPage />} />
           <Route path="/app/search" element={<SearchPage />} />
           <Route path="/app/pricing" element={<PricingPage />} />
+          <Route path="/app/terminal/*" element={<ProtectedRoute><Terminal /></ProtectedRoute>} />
         </>
       )}
       {/* AppShell renders its own nested <Routes> for /signals, /profits,

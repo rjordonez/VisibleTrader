@@ -24,7 +24,7 @@ function SignalsDemo({ category }: { category: string }) {
   const [trackedPicks, setTrackedPicks]   = useState<Set<string>>(new Set())
   const [trackBusy, setTrackBusy]         = useState<string | null>(null)
   const [todayOnly, setTodayOnly]         = useState(false)
-  const [sortMode, setSortMode]           = useState<'recent' | 'profit'>('recent')
+  const [sortMode, setSortMode]           = useState<'recent' | 'profit'>('profit')
   const [minWinRate, setMinWinRate]       = useState(0)
   const [minBetRatio, setMinBetRatio]     = useState(0)
   const [minPrice, setMinPrice]           = useState(0)
