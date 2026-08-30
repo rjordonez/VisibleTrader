@@ -12,7 +12,7 @@ export default function RefundPage() {
 
         <h2>Who we are</h2>
         <p>
-          This Refund Policy for Rex Ordonez, doing business as VisibleTrader ("we", "us", or "our"), explains
+          This Refund Policy for Revan Group LLC, doing business as VisibleTrader ("we", "us", or "our"), explains
           how refunds work when you subscribe to our services ("Services"). By subscribing you agree to this
           policy along with our Terms of Service and Privacy Policy.
         </p>

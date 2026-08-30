@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import posthog from './lib/posthog'
+import './app/app.css'
 
 // Shown by ProtectedRoute for a signed-in user who hasn't been through
 // this yet (user_metadata.onboarding_completed unset) — before the
@@ -160,7 +161,7 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
   const slide = !isQuestion ? slides[step - questions.length] : null
 
   return (
-    <div className="onboarding-root">
+    <div className="onboarding-root sig-page">
       <div className="onboarding-card">
         <div className="onboarding-progress">
           <div className="onboarding-progress-segments">

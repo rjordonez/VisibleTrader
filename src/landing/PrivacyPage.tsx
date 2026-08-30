@@ -12,7 +12,7 @@ export default function PrivacyPage() {
 
         <h2>1. Who we are</h2>
         <p>
-          This Privacy Notice for Rex Ordonez, doing business as VisibleTrader ("we", "us", or "our"), describes
+          This Privacy Notice for Revan Group LLC, doing business as VisibleTrader ("we", "us", or "our"), describes
           how and why we access, collect, store, use, disclose, and otherwise process ("process") your personal
           information when you use our services ("Services"), including when you:
         </p>

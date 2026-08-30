@@ -1,7 +1,6 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import LandingLayout from './landing/LandingLayout'
-import ProtectedRoute from './ProtectedRoute'
 
 // Route-level code splitting — every one of these used to be a static
 // top-level import, which meant the single JS bundle (1.2MB / 368KB gzipped,
@@ -28,6 +27,12 @@ const ForgotPasswordPage = lazy(() => import('./landing/ForgotPasswordPage'))
 const ResetPasswordPage = lazy(() => import('./landing/ResetPasswordPage'))
 const AppShell = lazy(() => import('./app/index'))
 const Terminal = lazy(() => import('./app/terminal/Terminal'))
+// Only ever used inside AppRoutes (never MarketingRoutes) — but was still a
+// static top-level import, which pulled it (and now, transitively via
+// OnboardingPage, app.css) into the shared base bundle every visitor
+// downloads. Lazy like everything else above keeps marketing visitors from
+// ever touching it.
+const ProtectedRoute = lazy(() => import('./ProtectedRoute'))
 const SearchPage = lazy(() => import('./SearchPage'))
 
 function PageLoading() {

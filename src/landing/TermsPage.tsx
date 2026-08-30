@@ -18,8 +18,8 @@ export default function TermsPage() {
 
         <h2>1. Who we are and what you are agreeing to</h2>
         <p>
-          These Terms of Service ("Terms") form a binding agreement between you and Rex Ordonez, a sole
-          proprietorship doing business as VisibleTrader ("VisibleTrader", "we", "us", or "our"). They govern your
+          These Terms of Service ("Terms") form a binding agreement between you and Revan Group LLC, a California
+          limited liability company doing business as VisibleTrader ("VisibleTrader", "we", "us", or "our"). They govern your
           access to and use of visibletrader.com, the VisibleTrader app, and any related services, features, and
           content (together, the "Services"). By creating an account, clicking to accept, or using the Services,
           you agree to these Terms, our Privacy Policy, and our Refund Policy. If you do not agree, do not use the
@@ -185,7 +185,7 @@ export default function TermsPage() {
 
         <h2>13. Limitation of liability</h2>
         <p>
-          To the fullest extent permitted by law, in no event will VisibleTrader or Rex Ordonez be liable for any
+          To the fullest extent permitted by law, in no event will VisibleTrader or Revan Group LLC be liable for any
           indirect, incidental, special, consequential, exemplary, or punitive damages, or for lost profits, lost
           revenue, lost data, business interruption, loss of goodwill, or losses from trading or any decision made
           using the Services, even if we have been advised of the possibility of such damages.
@@ -201,7 +201,7 @@ export default function TermsPage() {
 
         <h2>14. Indemnity</h2>
         <p>
-          You will defend, indemnify, and hold harmless VisibleTrader and Rex Ordonez from and against any claim,
+          You will defend, indemnify, and hold harmless VisibleTrader and Revan Group LLC from and against any claim,
           loss, liability, damage, cost, and expense (including reasonable attorneys' fees) arising out of or
           related to (a) your use of the Services, (b) your bets or trades, (c) your breach of these Terms or any
           law, or (d) your violation of any third-party right. This does not apply to the extent a claim is caused
@@ -307,7 +307,7 @@ export default function TermsPage() {
 
         <h2>24. Contact</h2>
         <p>
-          Rex Ordonez, doing business as VisibleTrader. Email visibletradehq@gmail.com. Our mailing address is
+          Revan Group LLC, doing business as VisibleTrader. Email visibletradehq@gmail.com. Our mailing address is
           available on request.
         </p>
 
