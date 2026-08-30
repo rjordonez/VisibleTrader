@@ -215,7 +215,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     // from the cached leaderboard view and is typically fast, so it paints
     // (stats row + Follow button) well before positions/category resolve
     // instead of the whole page waiting on whichever of the three is slowest.
-    supabase.from('leaderboard').select('*').eq('wallet', w).maybeSingle()
+    Promise.resolve(supabase.from('leaderboard').select('*').eq('wallet', w).maybeSingle())
       .then(({ data, error: err }) => {
         if (cancelled) return
         if (err) throw err
@@ -262,7 +262,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         setSummaryLoading(false)
       })
 
-    supabase.from('wallet_positions').select('*').eq('wallet', w).eq('market_closed', true).order('resolved_ts', { ascending: false })
+    Promise.resolve(supabase.from('wallet_positions').select('*').eq('wallet', w).eq('market_closed', true).order('resolved_ts', { ascending: false }))
       .then(({ data, error: err }) => {
         if (cancelled) return
         if (err) throw err
@@ -284,7 +284,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
       })
       .catch(() => { if (!cancelled) setPositionsLoading(false) })
 
-    supabase.from('wallet_category_breakdown').select('*').eq('wallet', w).order('profit', { ascending: false })
+    Promise.resolve(supabase.from('wallet_category_breakdown').select('*').eq('wallet', w).order('profit', { ascending: false }))
       .then(({ data }) => {
         if (cancelled) return
         setByCategory((data ?? []) as CategoryRow[])
