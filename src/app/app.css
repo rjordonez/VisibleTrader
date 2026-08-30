@@ -869,8 +869,7 @@
   display: flex;
 }
 .sig-modal {
-  background: rgba(36, 40, 52, 0.78);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(20, 22, 29, 0.96);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: clamp(16px, 4vw, 24px);
@@ -899,8 +898,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.12);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(40, 44, 56, 0.92);
   border: 1px solid var(--border);
   border-radius: 50%;
   color: var(--text-dim);
@@ -909,16 +907,6 @@
   transition: background 0.12s, color 0.12s;
 }
 .sig-modal-close:hover { background: rgba(255, 255, 255, 0.22); color: var(--text); }
-
-/* Vite's CSS build (lightningcss) silently collapses a standard property
-   and its -webkit- twin down to just one when both are written in the same
-   rule — and it keeps the -webkit- one, which Chrome doesn't honor alone.
-   Splitting the standard property into its own @supports rule keeps both
-   declarations distinct so neither gets dropped. */
-@supports (backdrop-filter: blur(1px)) {
-  .sig-modal { backdrop-filter: blur(16px); }
-  .sig-modal-close { backdrop-filter: blur(12px); }
-}
 
 /* ── Onboarding gate (OnboardingPage.tsx) ── */
 .onboarding-root {
