@@ -886,7 +886,7 @@
 .sig-activity-labels { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
 .sig-activity-sub { color: var(--text-dim); font-weight: 500; }
 .sig-activity-bar { display: flex; height: 5px; border-radius: 3px; overflow: hidden; background: var(--border); gap: 2px; }
-.sig-activity-bar-fill { min-width: 0; }
+.sig-activity-bar-fill { min-width: 0; transition: width 0.4s ease; }
 .sig-activity-bar-fill.buy { background: #00d17a; }
 .sig-activity-bar-fill.sell { background: #ff3b5c; }
 .sig-modal-close {

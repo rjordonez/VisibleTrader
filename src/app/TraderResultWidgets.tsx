@@ -1,5 +1,6 @@
 import { categoryLabel, fmtSigned, fmtAbbrevSigned, traderLabel } from './helpers'
 import { CumulativeChart } from './PriceChart'
+import { SkelBlock, SkelTableRows } from './Skeleton'
 
 // Shared by SearchPage.tsx (public, entitlement-gated) and TraderDetailPage.tsx
 // (authenticated, always-entitled since ProtectedRoute already requires an
@@ -25,7 +26,26 @@ export function CumulativeChartSection({ data, label, height = 220 }: { data: { 
 // called where real position-level data exists, same as
 // CumulativeChartSection above: there's nothing to build a locked/fake
 // version against, so callers simply don't render this otherwise.
-export function HighlightsRow({ items }: { items: { title: string; outcome: string; profit: number }[] }) {
+// Same .sig-card container in both states (loading vs loaded) so this
+// section never changes shape/position when its data resolves — only the
+// content inside it swaps, matching the real stat/label layout exactly
+// instead of a generic skeleton with different proportions.
+export function HighlightsRow({ items, loading = false }: { items: { title: string; outcome: string; profit: number }[]; loading?: boolean }) {
+  if (loading) {
+    return (
+      <div className="sig-card" style={{ cursor: 'default' }}>
+        <div className="sig-stat">
+          <span className="sig-stat-label">Biggest Win</span>
+          <SkelBlock width={90} height={20} />
+        </div>
+        <div style={{ marginTop: -4, marginBottom: 9 }}><SkelBlock width="70%" height={12} /></div>
+        <div className="sig-stat">
+          <span className="sig-stat-label">Recent Form</span>
+          <SkelBlock width={70} height={20} />
+        </div>
+      </div>
+    )
+  }
   if (items.length === 0) return null
   const biggest = items.reduce((best, p) => (p.profit > best.profit ? p : best), items[0])
   const recent = items.slice(0, 10)
@@ -47,8 +67,10 @@ export function HighlightsRow({ items }: { items: { title: string; outcome: stri
 
 export interface CategoryRow { category: string; n: number; won: number; lost: number; profit: number }
 
-export function CategoryBreakdownSection({ categoryBreakdown }: { categoryBreakdown: CategoryRow[] }) {
-  if (categoryBreakdown.length === 0) return null
+// Same wrapper/table/thead in both states, per HighlightsRow's reasoning
+// above — only the tbody rows swap from skeleton to real data.
+export function CategoryBreakdownSection({ categoryBreakdown, loading = false }: { categoryBreakdown: CategoryRow[]; loading?: boolean }) {
+  if (!loading && categoryBreakdown.length === 0) return null
   return (
     <div>
       <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Where they win</div>
@@ -56,7 +78,8 @@ export function CategoryBreakdownSection({ categoryBreakdown }: { categoryBreakd
         <table className="sig-table">
           <thead><tr><th>Category</th><th className="num">Trades</th><th className="num">Win Rate</th><th className="num">Profit</th></tr></thead>
           <tbody>
-            {categoryBreakdown.map(c => (
+            {loading && <SkelTableRows cols={4} count={3} />}
+            {!loading && categoryBreakdown.map(c => (
               <tr key={c.category}>
                 <td>{categoryLabel(c.category)}</td>
                 <td className="num">{c.n}</td>

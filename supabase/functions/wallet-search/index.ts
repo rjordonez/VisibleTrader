@@ -120,13 +120,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { wallet } = await req.json()
-    if (!wallet || typeof wallet !== 'string') {
+    const { wallet: rawWallet } = await req.json()
+    if (!rawWallet || typeof rawWallet !== 'string') {
       return new Response(JSON.stringify({ error: 'wallet is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
     }
+    // Every wallet address in the DB is stored lowercase — normalizing once
+    // here lets every query below use plain equality (real index usage)
+    // instead of .ilike(), which can't use the wallet btree index (confirmed
+    // live: ~2.4s for a 136k-trade wallet vs ~1s with plain equality on the
+    // same query) while still matching a mixed-case pasted address.
+    const wallet: string = rawWallet.toLowerCase()
 
     // Service role throughout — this function IS the access-control layer
     // for this one endpoint, not RLS. See the file header comment.
@@ -143,7 +149,7 @@ Deno.serve(async (req) => {
     // lookup (independent of each other) rather than before it.
     const [entitled, { data: summary }] = await Promise.all([
       checkEntitled(supabase, req.headers.get('Authorization')),
-      supabase.from('leaderboard').select('*').ilike('wallet', wallet).maybeSingle(),
+      supabase.from('leaderboard').select('*').eq('wallet', wallet).maybeSingle(),
     ])
 
     if (!summary) {
@@ -201,8 +207,8 @@ Deno.serve(async (req) => {
     }
 
     const [positionsRes, categoryRes] = await Promise.all([
-      supabase.from('wallet_positions').select('*').ilike('wallet', wallet).eq('market_closed', true).order('resolved_ts', { ascending: false }),
-      supabase.from('wallet_category_breakdown').select('*').ilike('wallet', wallet).order('profit', { ascending: false }),
+      supabase.from('wallet_positions').select('*').eq('wallet', wallet).eq('market_closed', true).order('resolved_ts', { ascending: false }),
+      supabase.from('wallet_category_breakdown').select('*').eq('wallet', wallet).order('profit', { ascending: false }),
     ])
     const positions = (positionsRes.data ?? []) as PositionRow[]
     const categoryBreakdown = (categoryRes.data ?? []) as CategoryRow[]

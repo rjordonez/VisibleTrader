@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { traderLabel, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './helpers'
-import { SkelStatsRow, SkelTableRows } from './Skeleton'
+import { SkelStatsRow, SkelTableRows, SkelBlock } from './Skeleton'
 import {
   CumulativeChartSection, HighlightsRow, CategoryBreakdownSection, SimilarTradersTable,
   type CategoryRow, type SimilarTrader,
@@ -127,7 +127,16 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   const [positions, setPositions] = useState<TraderPosition[]>([])
   const [byCategory, setByCategory] = useState<CategoryRow[]>([])
   const [similarTraders, setSimilarTraders] = useState<SimilarTrader[]>([])
-  const [loading, setLoading] = useState(true)
+  // Split so each section paints as soon as its own query resolves instead
+  // of every section waiting on the slowest of the three — summary comes
+  // from the cached leaderboard view (fast) while positions/category are
+  // live-aggregated and can take much longer for high-volume wallets, so
+  // gating everything behind one flag meant the whole page sat on a single
+  // blank skeleton for as long as the slowest query took.
+  const [summaryLoading, setSummaryLoading] = useState(true)
+  const [positionsLoading, setPositionsLoading] = useState(true)
+  const [categoryLoading, setCategoryLoading] = useState(true)
+  const [similarLoading, setSimilarLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [livePositions, setLivePositions] = useState<LivePosition[]>([])
   const [liveClosed, setLiveClosed] = useState<LiveClosedPosition[]>([])
@@ -188,32 +197,34 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([
-      supabase.from('leaderboard').select('*').ilike('wallet', wallet).maybeSingle(),
-      supabase.from('wallet_positions').select('*').ilike('wallet', wallet).eq('market_closed', true).order('resolved_ts', { ascending: false }),
-      supabase.from('wallet_category_breakdown').select('*').ilike('wallet', wallet).order('profit', { ascending: false }),
-    ])
-      .then(([summaryRes, positionsRes, categoryRes]) => {
+    setSummaryLoading(true)
+    setPositionsLoading(true)
+    setCategoryLoading(true)
+    setError(null)
+
+    // Every wallet address in the DB is stored lowercase — these queries
+    // used to rely on .ilike() for a free case-insensitive match, but ilike
+    // can't use the wallet btree index (confirmed live: ~2.4s for a
+    // 136k-trade wallet vs ~1s with plain equality on the same query).
+    // Normalizing here instead keeps case-insensitivity for a
+    // manually-typed/pasted mixed-case URL while letting these use a real
+    // indexed equality lookup.
+    const w = wallet.toLowerCase()
+
+    // Three independent fetches instead of one Promise.all — summary comes
+    // from the cached leaderboard view and is typically fast, so it paints
+    // (stats row + Follow button) well before positions/category resolve
+    // instead of the whole page waiting on whichever of the three is slowest.
+    supabase.from('leaderboard').select('*').eq('wallet', w).maybeSingle()
+      .then(({ data, error: err }) => {
         if (cancelled) return
-        if (summaryRes.error) throw summaryRes.error
-        if (positionsRes.error) throw positionsRes.error
-        if (categoryRes.error) throw categoryRes.error
-        const summaryData = (summaryRes.data ?? null) as TraderSummary | null
-        const positionsData = (positionsRes.data ?? []) as TraderPosition[]
+        if (err) throw err
+        const summaryData = (data ?? null) as TraderSummary | null
         setSummary(summaryData)
-        setPositions(positionsData)
-        setByCategory((categoryRes.data ?? []) as CategoryRow[])
-        setLoading(false)
-        setError(null)
+        setSummaryLoading(false)
         loadTrackedStatus([wallet])
 
-        if (summaryData) {
-          findSimilarTraders(positionsData, wallet).then(st => {
-            if (cancelled) return
-            setSimilarTraders(st)
-            loadTrackedStatus(st.map(t => t.wallet))
-          }).catch(() => {})
-        } else {
+        if (!summaryData) {
           // We only have history for wallets we've tracked ourselves — for
           // everyone else, fall back to Polymarket's own public (CORS-open,
           // no auth needed) data API so "no tracked history" doesn't mean
@@ -234,11 +245,12 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
               const pairs = [...livePos, ...liveClosedPos]
                 .filter(p => p.conditionId && p.outcome)
                 .map(p => ({ condition_id: p.conditionId, outcome: p.outcome }))
+              setSimilarLoading(true)
               findSimilarTraders(pairs, wallet).then(st => {
                 if (cancelled) return
                 setSimilarTraders(st)
                 loadTrackedStatus(st.map(t => t.wallet))
-              }).catch(() => {})
+              }).catch(() => {}).finally(() => { if (!cancelled) setSimilarLoading(false) })
             })
             .catch(() => {})
             .finally(() => { if (!cancelled) setLiveLoading(false) })
@@ -247,8 +259,39 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
       .catch((e: Error) => {
         if (cancelled) return
         setError(e.message)
-        setLoading(false)
+        setSummaryLoading(false)
       })
+
+    supabase.from('wallet_positions').select('*').eq('wallet', w).eq('market_closed', true).order('resolved_ts', { ascending: false })
+      .then(({ data, error: err }) => {
+        if (cancelled) return
+        if (err) throw err
+        const positionsData = (data ?? []) as TraderPosition[]
+        setPositions(positionsData)
+        setPositionsLoading(false)
+        // Only the tracked-history branch drives similar traders off our own
+        // positions — the live-fallback branch above computes its own pairs
+        // once summary comes back null, so an empty tracked result here
+        // (untracked wallet) correctly does nothing rather than double-fire.
+        if (positionsData.length > 0) {
+          setSimilarLoading(true)
+          findSimilarTraders(positionsData, wallet).then(st => {
+            if (cancelled) return
+            setSimilarTraders(st)
+            loadTrackedStatus(st.map(t => t.wallet))
+          }).catch(() => {}).finally(() => { if (!cancelled) setSimilarLoading(false) })
+        }
+      })
+      .catch(() => { if (!cancelled) setPositionsLoading(false) })
+
+    supabase.from('wallet_category_breakdown').select('*').eq('wallet', w).order('profit', { ascending: false })
+      .then(({ data }) => {
+        if (cancelled) return
+        setByCategory((data ?? []) as CategoryRow[])
+        setCategoryLoading(false)
+      })
+      .catch(() => { if (!cancelled) setCategoryLoading(false) })
+
     return () => { cancelled = true }
   }, [wallet, loadTrackedStatus])
 
@@ -284,7 +327,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         <div>
           <h1 className="app-section-title">{traderLabel(wallet, summary?.wallet_name ?? null)}</h1>
           <p className="app-section-sub">
-            {loading ? 'Loading…' : error ? 'Connection trouble — retrying…' : (
+            {summaryLoading ? 'Loading…' : error ? 'Connection trouble — retrying…' : (
               trackedWallets[wallet] ? (
                 <span className="sig-watch-remove" style={{ display: 'inline' }} onClick={() => untrackWallet(wallet)}>
                   {busyWallet === wallet ? 'Removing…' : 'Unfollow'}
@@ -304,51 +347,47 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
           <div style={{ color: '#ff3b5c', padding: '0 0 20px', fontSize: '0.875rem' }}>{error}</div>
         )}
 
-        {loading && !error && (
+        {/* Rendered speculatively while summary is still loading (not just
+            once it resolves truthy) — the vast majority of wallets reached
+            via internal links (leaderboard rows, contributing-trader lists)
+            are tracked, so this avoids the whole grid popping into existence
+            at once the moment summary resolves. The rare untracked case
+            still swaps cleanly to the live-fallback branch below once we
+            know for sure. */}
+        {!error && (summaryLoading || summary) && (
           <>
-            <SkelStatsRow count={5} />
-            <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>All resolved positions</div>
-            <div className="sig-table-wrap">
-              <table className="sig-table">
-                <thead>
-                  <tr><th>Market</th><th className="num">Stake</th><th className="num">Price</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
-                </thead>
-                <tbody>
-                  <SkelTableRows cols={6} count={8} />
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-
-        {!loading && !error && summary && (
-          <>
-            <div className="sig-stats-row" style={{ marginBottom: 24 }}>
-              <div className="sig-stat-cell">
-                <div className="sig-stat-cell-label">Net P&L</div>
-                <div className={`sig-stat-cell-val ${summary.net_profit >= 0 ? 'g' : 'r'}`}>{fmtSigned(summary.net_profit)}</div>
+            {summaryLoading ? <SkelStatsRow count={5} /> : summary && (
+              <div className="sig-stats-row" style={{ marginBottom: 24 }}>
+                <div className="sig-stat-cell">
+                  <div className="sig-stat-cell-label">Net P&L</div>
+                  <div className={`sig-stat-cell-val ${summary.net_profit >= 0 ? 'g' : 'r'}`}>{fmtSigned(summary.net_profit)}</div>
+                </div>
+                <div className="sig-stat-cell">
+                  <div className="sig-stat-cell-label" title="Winning trades ÷ total resolved trades">Win Rate (#)</div>
+                  <div className="sig-stat-cell-val">{winRate.toFixed(1)}%</div>
+                </div>
+                <div className="sig-stat-cell">
+                  <div className="sig-stat-cell-label" title="Dollars in winning trades ÷ total dollars deployed">Win Rate ($)</div>
+                  <div className="sig-stat-cell-val">{usdWinRate.toFixed(1)}%</div>
+                </div>
+                <div className="sig-stat-cell">
+                  <div className="sig-stat-cell-label">ROI</div>
+                  <div className={`sig-stat-cell-val ${roi >= 0 ? 'g' : 'r'}`}>{roi >= 0 ? '+' : ''}{roi.toFixed(1)}%</div>
+                </div>
+                <div className="sig-stat-cell">
+                  <div className="sig-stat-cell-label">Resolved Trades</div>
+                  <div className="sig-stat-cell-val">{summary.n}</div>
+                </div>
               </div>
-              <div className="sig-stat-cell">
-                <div className="sig-stat-cell-label" title="Winning trades ÷ total resolved trades">Win Rate (#)</div>
-                <div className="sig-stat-cell-val">{winRate.toFixed(1)}%</div>
-              </div>
-              <div className="sig-stat-cell">
-                <div className="sig-stat-cell-label" title="Dollars in winning trades ÷ total dollars deployed">Win Rate ($)</div>
-                <div className="sig-stat-cell-val">{usdWinRate.toFixed(1)}%</div>
-              </div>
-              <div className="sig-stat-cell">
-                <div className="sig-stat-cell-label">ROI</div>
-                <div className={`sig-stat-cell-val ${roi >= 0 ? 'g' : 'r'}`}>{roi >= 0 ? '+' : ''}{roi.toFixed(1)}%</div>
-              </div>
-              <div className="sig-stat-cell">
-                <div className="sig-stat-cell-label">Resolved Trades</div>
-                <div className="sig-stat-cell-val">{summary.n}</div>
-              </div>
-            </div>
+            )}
 
             <div className="search-dashboard-grid">
               <div className="search-dashboard-main">
-                <CumulativeChartSection data={trackedCumulative} label="P&L over time" height={chartHeight} />
+                {positionsLoading ? (
+                  <SkelBlock height={chartHeight} style={{ marginBottom: 24 }} />
+                ) : (
+                  <CumulativeChartSection data={trackedCumulative} label="P&L over time" height={chartHeight} />
+                )}
 
                 <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>All resolved positions</div>
                 <div className="sig-table-wrap">
@@ -357,7 +396,8 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                       <tr><th>Market</th><th className="num">Stake</th><th className="num">Price</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
                     </thead>
                     <tbody>
-                      {positions.slice(0, visibleTrades).map((p, i) => (
+                      {positionsLoading && <SkelTableRows cols={6} count={10} />}
+                      {!positionsLoading && positions.slice(0, visibleTrades).map((p, i) => (
                         <tr key={i}>
                           <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
                           <td className="num" data-label="Stake">{fmtFull(p.usd)}</td>
@@ -369,12 +409,12 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                       ))}
                     </tbody>
                   </table>
-                  {positions.length > visibleTrades && (
+                  {!positionsLoading && positions.length > visibleTrades && (
                     <button className="sig-load-more" onClick={() => setVisibleTrades(v => v + PAGE_STEP)}>
                       Load more ({positions.length - visibleTrades} remaining)
                     </button>
                   )}
-                  {visibleTrades > 10 && positions.length <= visibleTrades && (
+                  {!positionsLoading && visibleTrades > 10 && positions.length <= visibleTrades && (
                     <button className="sig-load-more" onClick={() => setVisibleTrades(10)}>
                       Show fewer
                     </button>
@@ -383,22 +423,31 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
               </div>
 
               <div className="search-dashboard-side">
-                <HighlightsRow items={positions} />
-                <CategoryBreakdownSection categoryBreakdown={byCategory} />
+                <HighlightsRow items={positions} loading={positionsLoading} />
+                <CategoryBreakdownSection categoryBreakdown={byCategory} loading={categoryLoading} />
                 <div>
                   <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Similar top traders</div>
-                  <SimilarTradersTable
-                    similarTraders={similarTraders} linkFor={linkToTrader}
-                    trackedWallets={trackedWallets} busyWallet={busyWallet} onTrack={trackWallet} onUntrack={untrackWallet}
-                    loggedIn={true}
-                  />
+                  {similarLoading ? (
+                    <div className="sig-table-wrap">
+                      <table className="sig-table">
+                        <thead><tr><th>Trader</th><th className="num">Overlap</th><th className="num">Net P&L</th></tr></thead>
+                        <tbody><SkelTableRows cols={3} count={5} /></tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <SimilarTradersTable
+                      similarTraders={similarTraders} linkFor={linkToTrader}
+                      trackedWallets={trackedWallets} busyWallet={busyWallet} onTrack={trackWallet} onUntrack={untrackWallet}
+                      loggedIn={true}
+                    />
+                  )}
                 </div>
               </div>
             </div>
           </>
         )}
 
-        {!loading && !error && !summary && (
+        {!summaryLoading && !error && !summary && (
           <>
             <div className="sig-empty" style={{ marginBottom: 20 }}>
               Not in our tracked history yet — showing live data straight from Polymarket instead.

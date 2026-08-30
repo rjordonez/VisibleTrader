@@ -34,6 +34,7 @@ BALANCE_OF_SELECTOR = '0x70a08231'  # balanceOf(address)
 BALANCE_REFRESH_SECONDS = 15 * 60
 AGGREGATE_REFRESH_SECONDS = 90  # opportunities_live's best_win_rate/best_bet_ratio join — see refresh_opportunity_aggregates()
 LEADERBOARD_REFRESH_SECONDS = 120  # leaderboard_cache — see refresh_leaderboard()
+WALLET_CATEGORY_REFRESH_SECONDS = 180  # wallet_category_breakdown_cache — see refresh_wallet_category_breakdown()
 WARM_SEARCH_SECONDS = 4 * 60  # keeps the wallet-search Edge Function's isolate warm — see ping_wallet_search()
 ROSTER_SIZE = 500
 TIERS = [1000, 5000, 20000, 50000, 100000]
@@ -913,6 +914,37 @@ def refresh_leaderboard(db):
     print('  [aggregates] refreshed leaderboard_cache')
 
 
+def refresh_wallet_category_breakdown(db):
+    """Runs periodically (WALLET_CATEGORY_REFRESH_SECONDS, see main()) —
+    recomputes wallet_category_breakdown_cache, the table the
+    `wallet_category_breakdown` view now just passes through. This used to
+    be a live GROUP BY joining opportunity_wallets against a re-aggregated
+    "one category per market" subquery over the *entire* opportunities
+    table, recomputed from scratch on every single call regardless of which
+    wallet was asked about — see
+    supabase/migrations/20260830010000_precompute_wallet_category_breakdown_and_index.sql
+    for the full story and the query this mirrors."""
+    now = datetime.now(timezone.utc)
+    db.execute('''
+        INSERT INTO wallet_category_breakdown_cache (wallet, category, n, won, lost, profit, updated_at)
+        SELECT ow.wallet, COALESCE(o.category, 'other'),
+          COUNT(*),
+          SUM(CASE WHEN ow.resolved_win = true THEN 1 ELSE 0 END),
+          SUM(CASE WHEN ow.resolved_win = false THEN 1 ELSE 0 END),
+          SUM(CASE WHEN ow.resolved_win = true THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END),
+          %s
+        FROM opportunity_wallets ow
+        JOIN (SELECT condition_id, outcome, MAX(category) AS category FROM opportunities GROUP BY condition_id, outcome) o
+          ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
+        WHERE ow.market_closed = true
+        GROUP BY ow.wallet, o.category
+        ON CONFLICT (wallet, category) DO UPDATE SET
+          n = EXCLUDED.n, won = EXCLUDED.won, lost = EXCLUDED.lost, profit = EXCLUDED.profit,
+          updated_at = EXCLUDED.updated_at
+    ''', (now,))
+    print('  [aggregates] refreshed wallet_category_breakdown_cache')
+
+
 def sweep_resolved_positions(db):
     """Runs periodically (not per-trade — this is a network call per distinct open
     market, too slow to do inline). Finds every market with still-open positions,
@@ -1553,6 +1585,7 @@ def main():
     last_balance_refresh = 0.0  # fire once on startup, not just after the first interval
     last_aggregate_refresh = 0.0  # fire once on startup, not just after the first interval
     last_leaderboard_refresh = 0.0  # fire once on startup, not just after the first interval
+    last_wallet_category_refresh = 0.0  # fire once on startup, not just after the first interval
     last_warm_search = 0.0  # fire once on startup, not just after the first interval
 
     last_activity['ts'] = time.time()
@@ -1640,6 +1673,10 @@ def main():
                 if now - last_leaderboard_refresh > LEADERBOARD_REFRESH_SECONDS:  # leaderboard_cache
                     executor.submit(refresh_leaderboard, db)
                     last_leaderboard_refresh = now
+
+                if now - last_wallet_category_refresh > WALLET_CATEGORY_REFRESH_SECONDS:  # wallet_category_breakdown_cache
+                    executor.submit(refresh_wallet_category_breakdown, db)
+                    last_wallet_category_refresh = now
 
                 if now - last_warm_search > WARM_SEARCH_SECONDS:  # keeps wallet-search's Edge Function isolate warm
                     executor.submit(ping_wallet_search)
