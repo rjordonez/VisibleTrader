@@ -143,8 +143,12 @@ export default function TerminalSidebar({ opportunities, loading, category, onCa
         </button>
       </div>
 
-      {tab === 'markets' && (
-        <>
+      {/* Hidden (not unmounted) rather than conditionally rendered — each
+          tab fetches its own data on mount and polls afterward; unmounting
+          on every tab switch threw that away and forced a full
+          skeleton-then-refetch every single time you came back to a tab,
+          on top of whatever the actual network round-trip costs. */}
+      <div style={{ display: tab === 'markets' ? undefined : 'none' }}>
           <div className="terminal-sidebar-cats">
             <select value={category} onChange={e => onCategoryChange(e.target.value)}>
               <option value="all">All categories</option>
@@ -191,11 +195,14 @@ export default function TerminalSidebar({ opportunities, loading, category, onCa
               )
             })}
           </div>
-        </>
-      )}
+      </div>
 
-      {tab === 'leaderboard' && <LeaderboardTab />}
-      {tab === 'alerts' && <AlertsTab />}
+      <div style={{ display: tab === 'leaderboard' ? undefined : 'none' }}>
+        <LeaderboardTab />
+      </div>
+      <div style={{ display: tab === 'alerts' ? undefined : 'none' }}>
+        <AlertsTab />
+      </div>
     </aside>
   )
 }
