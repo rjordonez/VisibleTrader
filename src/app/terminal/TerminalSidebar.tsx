@@ -116,39 +116,48 @@ export default function TerminalSidebar({ opportunities, loading, category, onCa
 }) {
   const [tab, setTab] = useState<SidebarTab>('markets')
 
-  if (collapsed) {
-    return (
-      <aside className="terminal-sidebar terminal-sidebar-collapsed terminal-card">
-        <button type="button" className="terminal-sidebar-collapse-btn" onClick={onToggleCollapsed} title="Expand sidebar">
-          <ChevronsRight size={16} />
-        </button>
-      </aside>
-    )
-  }
-
   return (
-    <aside className="terminal-sidebar terminal-card">
-      <div className="terminal-sidebar-tabs">
-        <button type="button" className={tab === 'markets' ? 'active' : ''} onClick={() => setTab('markets')}>
-          <Zap size={13} /> Markets
-        </button>
-        <button type="button" className={tab === 'leaderboard' ? 'active' : ''} onClick={() => setTab('leaderboard')}>
-          <Trophy size={13} /> Leaderboard
-        </button>
-        <button type="button" className={tab === 'alerts' ? 'active' : ''} onClick={() => setTab('alerts')}>
-          <Bell size={13} /> Alerts
-        </button>
-        <button type="button" className="terminal-sidebar-collapse-btn" onClick={onToggleCollapsed} title="Collapse sidebar">
-          <ChevronsLeft size={16} />
-        </button>
-      </div>
+    <aside className={`terminal-sidebar terminal-card ${collapsed ? 'terminal-sidebar-collapsed' : ''}`}>
+      {/* Absolutely positioned (not part of the tabs row's normal flex flow)
+          and anchored to .terminal-sidebar's own right edge — visually it
+          still sits exactly where it always did, at the end of the tabs
+          row, but a `right` offset tracks the sidebar's own current width
+          every frame of the transition, so it slides along and stays
+          visible/clickable the whole time instead of getting clipped away
+          with the rest of the row as the sidebar narrows. */}
+      <button
+        type="button" className="terminal-sidebar-toggle-btn" onClick={onToggleCollapsed}
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
+      </button>
 
-      {/* Hidden (not unmounted) rather than conditionally rendered — each
-          tab fetches its own data on mount and polls afterward; unmounting
-          on every tab switch threw that away and forced a full
-          skeleton-then-refetch every single time you came back to a tab,
-          on top of whatever the actual network round-trip costs. */}
-      <div style={{ display: tab === 'markets' ? undefined : 'none' }}>
+      {/* Fixed width regardless of the outer's animated width — the outer
+          just clips it via overflow:hidden as it shrinks, which is what
+          produces the slide-closed look, rather than this content
+          reflowing/wrapping mid-transition. Everything below stays mounted
+          across collapse/expand (same "hidden not unmounted" reasoning as
+          the tab switching below) so collapsing the sidebar doesn't throw
+          away already-fetched data either. */}
+      <div className="terminal-sidebar-inner">
+        <div className="terminal-sidebar-tabs">
+          <button type="button" className={tab === 'markets' ? 'active' : ''} onClick={() => setTab('markets')}>
+            <Zap size={13} /> Markets
+          </button>
+          <button type="button" className={tab === 'leaderboard' ? 'active' : ''} onClick={() => setTab('leaderboard')}>
+            <Trophy size={13} /> Leaderboard
+          </button>
+          <button type="button" className={tab === 'alerts' ? 'active' : ''} onClick={() => setTab('alerts')}>
+            <Bell size={13} /> Alerts
+          </button>
+        </div>
+
+        {/* Hidden (not unmounted) rather than conditionally rendered — each
+            tab fetches its own data on mount and polls afterward; unmounting
+            on every tab switch threw that away and forced a full
+            skeleton-then-refetch every single time you came back to a tab,
+            on top of whatever the actual network round-trip costs. */}
+        <div style={{ display: tab === 'markets' ? undefined : 'none' }}>
           <div className="terminal-sidebar-cats">
             <select value={category} onChange={e => onCategoryChange(e.target.value)}>
               <option value="all">All categories</option>
@@ -197,11 +206,12 @@ export default function TerminalSidebar({ opportunities, loading, category, onCa
           </div>
       </div>
 
-      <div style={{ display: tab === 'leaderboard' ? undefined : 'none' }}>
-        <LeaderboardTab />
-      </div>
-      <div style={{ display: tab === 'alerts' ? undefined : 'none' }}>
-        <AlertsTab />
+        <div style={{ display: tab === 'leaderboard' ? undefined : 'none' }}>
+          <LeaderboardTab />
+        </div>
+        <div style={{ display: tab === 'alerts' ? undefined : 'none' }}>
+          <AlertsTab />
+        </div>
       </div>
     </aside>
   )

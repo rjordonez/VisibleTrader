@@ -80,22 +80,47 @@
 }
 
 /* ── Left sidebar: browsable market list — a floating rounded card that
-   scrolls internally, not a flush full-height panel. ── */
+   scrolls internally, not a flush full-height panel. Width animates on
+   collapse/expand; overflow:hidden clips .terminal-sidebar-inner (a fixed
+   280px regardless of the outer width) as it shrinks, which is what
+   produces the slide-closed look instead of content reflowing mid-
+   transition. */
 .terminal-sidebar {
+  position: relative;
   width: 300px;
   flex-shrink: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
+  overflow: hidden;
   padding: 14px 10px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.15s ease, height 0.15s ease;
 }
-.terminal-sidebar::-webkit-scrollbar { display: none; }
+/* Collapsed state drops the full-height card down to a small square (its
+   own align-self so .terminal-locked-inner's stretch doesn't force it
+   tall) instead of staying a tall 44px-wide strip. */
+.terminal-sidebar.terminal-sidebar-collapsed {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  align-self: flex-start;
+}
+/* Belt-and-suspenders on top of the outer's overflow:hidden — .inner is a
+   fixed 280px wide flex item, and at 44px collapsed that's a big enough
+   mismatch that content (e.g. the "Markets" tab label) was still visibly
+   painting outside the clipped box. visibility:hidden guarantees no pixels
+   render regardless of any flex-sizing edge case, while keeping it mounted
+   so its fetched data survives the collapse. */
+.terminal-sidebar-collapsed .terminal-sidebar-inner { visibility: hidden; }
 
 /* Mirrors fomo's Alerts / Tokens / Leaderboard row at the top of its
-   sidebar — switches the whole sidebar body, not just a filter. */
+   sidebar — switches the whole sidebar body, not just a filter.
+   padding-right reserves room for .terminal-sidebar-toggle-btn, which
+   overlays this row (see its own comment) rather than sitting inside it. */
 .terminal-sidebar-tabs {
   display: flex;
   gap: 4px;
-  padding: 2px 2px 12px;
+  padding: 2px 36px 12px 2px;
   margin-bottom: 10px;
   border-bottom: 1px solid var(--border);
 }
@@ -119,8 +144,17 @@
 .terminal-sidebar-tabs button:hover { color: var(--text); }
 .terminal-sidebar-tabs button.active { color: var(--text); background: var(--surface); }
 
-.terminal-sidebar-collapse-btn {
-  flex: 0 0 auto;
+/* Overlays the tabs row rather than sitting inside its flex flow — see
+   .terminal-sidebar's comment for why. `right` tracks the sidebar's own
+   current (animating) width, so this stays visually in the same spot at
+   the end of the tabs row, and stays visible/clickable throughout the
+   collapse/expand transition instead of getting clipped away with the
+   rest of the row's content. */
+.terminal-sidebar-toggle-btn {
+  position: absolute;
+  top: 14px;
+  right: 10px;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -130,19 +164,24 @@
   padding: 7px;
   border-radius: 7px;
   cursor: pointer;
+  transition: top 0.15s ease, right 0.15s ease;
 }
-.terminal-sidebar-collapse-btn:hover { color: var(--text); background: var(--surface); }
+/* Collapsed: centered in the small square instead of matching the
+   expanded state's tabs-row position. */
+.terminal-sidebar-collapsed .terminal-sidebar-toggle-btn { top: 7px; right: 7px; }
+.terminal-sidebar-toggle-btn:hover { color: var(--text); background: var(--surface); }
 
-/* Collapsed: a thin strip with just the expand button, no tabs/list — the
-   fetched leaderboard/market data isn't kept alive while collapsed, same
-   trade-off as any other tab switch in this sidebar. */
-.terminal-sidebar-collapsed {
-  width: 44px;
-  padding: 14px 6px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
+/* Fixed width so it never reflows during the outer's width transition —
+   see .terminal-sidebar's comment above. */
+.terminal-sidebar-inner {
+  width: 280px;
+  min-width: 280px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
 }
+.terminal-sidebar-inner::-webkit-scrollbar { display: none; }
 
 .terminal-sidebar-cats { padding: 0 8px 12px; }
 .terminal-sidebar-cats select {
@@ -252,6 +291,13 @@
    column — without this override the trader-profile chart renders
    narrower than the market chart despite both using the same height. */
 .terminal-main .sig-panel { max-width: none; }
+
+/* .sig-hero-q is shared with the market-detail popup (SignalModal) and
+   HomePage's hero card, both of which stay at their existing size — the
+   Terminal has a full page to work with, so its market title gets bigger,
+   scoped here rather than touching the shared class or MarketDetailContent
+   itself. */
+.terminal-main .sig-hero-q { font-size: 26px; }
 
 .terminal-empty {
   height: 100%;
