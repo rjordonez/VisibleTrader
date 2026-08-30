@@ -1,11 +1,19 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   ResponsiveContainer, ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, ReferenceDot, ReferenceLine,
 } from 'recharts'
 import type { ChartPoint, WalletContribution } from './types'
 import { signalsTraderStatus } from './helpers'
 
-interface ChartMarker { t: number; p: number; color: string }
+// A handful of markets get hundreds of individual buys (one real case: 673)
+// — rendering a ReferenceDot per trade means hundreds of SVG nodes, most of
+// which land on top of each other at this chart's resolution anyway. Capped
+// to the biggest trades by $, which is also the more useful signal (a $50k
+// buy is worth calling out; a $3 one isn't) — the trader list below still
+// shows every single entry, this cap is chart-markers-only.
+const MAX_CHART_MARKERS = 150
+
+interface ChartMarker { t: number; p: number; color: string; usd: number }
 
 function fmtChartTime(t: number) {
   return new Date(t * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -33,58 +41,83 @@ function niceTicks(min: number, max: number, count: number, clampMin = -Infinity
 
 export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallets: WalletContribution[] }) {
   const [hoverT, setHoverT] = useState<number | null>(null)
-  if (history.length < 2) return null
-  const times = history.map(h => h.t)
-  const minT = Math.min(...times)
-  const maxT = Math.max(...times)
 
-  // stepAfter interpolation holds each point's price until the next one —
-  // a trader's own recorded buy price can differ slightly from the line's
-  // sampled price at that same instant (different data sources, sampling
-  // granularity), which read as dots floating off the line entirely once
-  // the chart is zoomed in. Snapping the dot's y to the line's own value at
-  // that x keeps it visually anchored to the graph; the real buy price
-  // still shows in the tooltip on hover.
-  const sortedHistory = [...history].sort((a, b) => a.t - b.t)
-  const priceOnLineAt = (t: number) => {
-    let p = sortedHistory[0].p
-    for (const h of sortedHistory) {
-      if (h.t > t) break
-      p = h.p
+  // Everything here only depends on history/wallets, never on hoverT — but
+  // hovering the chart sets hoverT on basically every mousemove pixel, and
+  // without this memo the whole thing (including the per-trade markers
+  // list, up to hundreds of entries on an active market) was recomputing
+  // from scratch on every one of those events. That's the actual lag; the
+  // hover dot itself is cheap.
+  const chartData = useMemo(() => {
+    if (history.length < 2) return null
+    const times = history.map(h => h.t)
+    const minT = Math.min(...times)
+    const maxT = Math.max(...times)
+
+    // stepAfter interpolation holds each point's price until the next one —
+    // a trader's own recorded buy price can differ slightly from the line's
+    // sampled price at that same instant (different data sources, sampling
+    // granularity), which read as dots floating off the line entirely once
+    // the chart is zoomed in. Snapping the dot's y to the line's own value at
+    // that x keeps it visually anchored to the graph; the real buy price
+    // still shows in the tooltip on hover.
+    const sortedHistory = [...history].sort((a, b) => a.t - b.t)
+    const priceOnLineAt = (t: number) => {
+      let p = sortedHistory[0].p
+      for (const h of sortedHistory) {
+        if (h.t > t) break
+        p = h.p
+      }
+      return p
     }
-    return p
-  }
 
-  const markers: ChartMarker[] = wallets
-    .map(w => {
-      const t = new Date(w.ts).getTime() / 1000
-      if (t < minT || t > maxT) return null
-      const st = signalsTraderStatus(w)
-      return { t, p: priceOnLineAt(t), color: st.color }
-    })
-    .filter((m): m is ChartMarker => m !== null)
+    const allMarkers: ChartMarker[] = wallets
+      .map(w => {
+        const t = new Date(w.ts).getTime() / 1000
+        if (t < minT || t > maxT) return null
+        const st = signalsTraderStatus(w)
+        return { t, p: priceOnLineAt(t), color: st.color, usd: w.usd }
+      })
+      .filter((m): m is ChartMarker => m !== null)
 
-  // Zoom the y-axis to where the price actually moved instead of always
-  // showing the full 0-100% range — a market sitting in the 80-100% band
-  // read as almost a flat line at full range, hiding real movement.
-  const prices = [...history.map(h => h.p), ...markers.map(m => m.p)]
-  const minP = Math.min(...prices)
-  const maxP = Math.max(...prices)
-  const pricePad = Math.max(0.03, (maxP - minP) * 0.2)
-  const rawMin = Math.max(0, minP - pricePad)
-  const rawMax = Math.min(1, maxP + pricePad)
-  const { min: domainMin, max: domainMax, ticks: yTicks } = niceTicks(rawMin, rawMax, 5, 0, 1)
+    // A handful of markets get hundreds of individual buys (one real case:
+    // 673) — a ReferenceDot per trade means hundreds of SVG nodes, most of
+    // which land on top of each other at this chart's resolution anyway.
+    // Capped to the biggest trades by $, which is also the more useful
+    // signal — the trader list below still shows every single entry, this
+    // cap is chart-markers-only.
+    const markers = allMarkers.length > MAX_CHART_MARKERS
+      ? [...allMarkers].sort((a, b) => b.usd - a.usd).slice(0, MAX_CHART_MARKERS)
+      : allMarkers
 
-  // Only the current/last price gets a dot — mirrors Polymarket's own chart,
-  // where the line itself carries the history and a single endpoint marker
-  // calls out "this is where it is now." Pinned via ReferenceDot (a single
-  // element at one specific coordinate) rather than Line's per-point `dot`
-  // callback — that callback gets invoked once for every data point (not
-  // just on hover), and something about it rendering-then-self-suppressing
-  // for all but the last point was leaving visible artifacts on markets
-  // with many points, even with no hover involved. ReferenceDot sidesteps
-  // that mechanism entirely.
-  const endpoint = sortedHistory[sortedHistory.length - 1]
+    // Zoom the y-axis to where the price actually moved instead of always
+    // showing the full 0-100% range — a market sitting in the 80-100% band
+    // read as almost a flat line at full range, hiding real movement.
+    const prices = [...history.map(h => h.p), ...markers.map(m => m.p)]
+    const minP = Math.min(...prices)
+    const maxP = Math.max(...prices)
+    const pricePad = Math.max(0.03, (maxP - minP) * 0.2)
+    const rawMin = Math.max(0, minP - pricePad)
+    const rawMax = Math.min(1, maxP + pricePad)
+    const { min: domainMin, max: domainMax, ticks: yTicks } = niceTicks(rawMin, rawMax, 5, 0, 1)
+
+    // Only the current/last price gets a dot — mirrors Polymarket's own chart,
+    // where the line itself carries the history and a single endpoint marker
+    // calls out "this is where it is now." Pinned via ReferenceDot (a single
+    // element at one specific coordinate) rather than Line's per-point `dot`
+    // callback — that callback gets invoked once for every data point (not
+    // just on hover), and something about it rendering-then-self-suppressing
+    // for all but the last point was leaving visible artifacts on markets
+    // with many points, even with no hover involved. ReferenceDot sidesteps
+    // that mechanism entirely.
+    const endpoint = sortedHistory[sortedHistory.length - 1]
+
+    return { minT, maxT, priceOnLineAt, markers, domainMin, domainMax, yTicks, endpoint }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, wallets])
+
+  if (!chartData) return null
+  const { minT, maxT, priceOnLineAt, markers, domainMin, domainMax, yTicks, endpoint } = chartData
 
   return (
     <div>
