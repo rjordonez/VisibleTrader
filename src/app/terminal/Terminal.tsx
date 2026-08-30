@@ -34,6 +34,7 @@ export default function Terminal() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('all')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -156,6 +157,8 @@ export default function Terminal() {
             loading={loading}
             category={category}
             onCategoryChange={setCategory}
+            collapsed={sidebarCollapsed}
+            onToggleCollapsed={() => setSidebarCollapsed(v => !v)}
           />
           <div className="terminal-main">
             <Routes>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ExternalLink, Star } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Opportunity, TickerTrade, WalletPosition } from './types'
 import {
@@ -19,10 +19,7 @@ function SignalsDemo({ category }: { category: string }) {
   const [tickerLoading, setTickerLoading] = useState(true)
   const [wins, setWins]                   = useState<WalletPosition[]>([])
   const [winsLoading, setWinsLoading]     = useState(true)
-  const [tab, setTab]                     = useState<'ticker' | 'wins' | 'vetted' | 'tracked'>('ticker')
-  const [userId, setUserId]               = useState<string | null>(null)
-  const [trackedPicks, setTrackedPicks]   = useState<Set<string>>(new Set())
-  const [trackBusy, setTrackBusy]         = useState<string | null>(null)
+  const [tab, setTab]                     = useState<'ticker' | 'wins' | 'vetted'>('ticker')
   const [todayOnly, setTodayOnly]         = useState(false)
   const [sortMode, setSortMode]           = useState<'recent' | 'profit'>('profit')
   const [minWinRate, setMinWinRate]       = useState(0)
@@ -352,48 +349,6 @@ function SignalsDemo({ category }: { category: string }) {
     return () => { cancelled = true; clearInterval(interval); unsubVisible() }
   }, [])
 
-  // Tracked picks — a personal watchlist (RLS-scoped to auth.uid(), see
-  // tracked_picks migration), so this select naturally returns only the
-  // signed-in user's own rows with no client-side filtering needed.
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null))
-  }, [])
-
-  useEffect(() => {
-    Promise.resolve(
-      userId
-        ? supabase.from('tracked_picks').select('condition_id, outcome')
-        : Promise.resolve({ data: [] as { condition_id: string; outcome: string }[] })
-    )
-      .then(({ data }) => {
-        const rows = (data ?? []) as { condition_id: string; outcome: string }[]
-        setTrackedPicks(new Set(rows.map(r => `${r.condition_id}::${r.outcome}`)))
-      })
-      .catch(() => {})
-  }, [userId])
-
-  const toggleTrack = (o: Opportunity) => {
-    if (!userId) return
-    const key = `${o.condition_id}::${o.outcome}`
-    const isTracked = trackedPicks.has(key)
-    setTrackBusy(key)
-    const req = isTracked
-      ? Promise.resolve(supabase.from('tracked_picks').delete()
-          .eq('user_id', userId).eq('condition_id', o.condition_id).eq('outcome', o.outcome))
-      : Promise.resolve(supabase.from('tracked_picks').upsert(
-          { user_id: userId, condition_id: o.condition_id, outcome: o.outcome },
-          { onConflict: 'user_id,condition_id,outcome', ignoreDuplicates: true }
-        ))
-    req.then(({ error }) => {
-      if (error) throw error
-      setTrackedPicks(s => {
-        const next = new Set(s)
-        if (isTracked) next.delete(key); else next.add(key)
-        return next
-      })
-    }).catch(() => {}).finally(() => setTrackBusy(null))
-  }
-
   const filteredTicker = byCategory(ticker, category)
     .filter(t => !todayOnly || isToday(t.ts))
     .filter(t => {
@@ -468,14 +423,8 @@ function SignalsDemo({ category }: { category: string }) {
   const filteredOpportunities = [...opportunities]
     .sort((a, b) => Number(isDecidedPrice(a)) - Number(isDecidedPrice(b)))
     .sort((a, b) => Number(b.total_profit > 0) - Number(a.total_profit > 0))
-  // Tracked tab intentionally ignores the discovery filters above (category,
-  // win rate, price, etc.) — a watchlist shouldn't lose items just because
-  // an unrelated filter chip happens to be active elsewhere on the page.
-  const trackedOpportunities = opportunities.filter(o => trackedPicks.has(`${o.condition_id}::${o.outcome}`))
-
   const renderOpportunityCard = (o: Opportunity) => {
     const key = `${o.condition_id}::${o.outcome}`
-    const isTracked = trackedPicks.has(key)
     const ic = categoryIcon(o.category)
     const pct = gaugePct(o.entries, o.exited, o.closed)
     const color = gaugeColor(pct)
@@ -505,16 +454,6 @@ function SignalsDemo({ category }: { category: string }) {
             >
               <ExternalLink size={15} />
             </a>
-          )}
-          {userId && (
-            <button
-              className="sig-track-btn"
-              disabled={trackBusy === key}
-              onClick={e => { e.stopPropagation(); toggleTrack(o) }}
-              title={isTracked ? 'Untrack this pick' : 'Track this pick'}
-            >
-              <Star size={15} fill={isTracked ? '#f2b73f' : 'none'} color={isTracked ? '#f2b73f' : 'currentColor'} />
-            </button>
           )}
           <div style={{ fontSize: 12.5, fontWeight: 700, color: o.total_profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
             {fmtSigned(o.total_profit)}
@@ -578,9 +517,6 @@ function SignalsDemo({ category }: { category: string }) {
             <div className={tab === 'ticker' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('ticker')}>Live Ticker</div>
             <div className={tab === 'wins' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('wins')}>Winners</div>
             <div className={tab === 'vetted' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('vetted')}>Vetted Picks</div>
-            <div className={tab === 'tracked' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('tracked')}>
-              Tracked{trackedPicks.size > 0 ? ` (${trackedPicks.size})` : ''}
-            </div>
           </div>
 
           <div className="sig-filters">
@@ -839,17 +775,6 @@ function SignalsDemo({ category }: { category: string }) {
           </>
         )}
 
-        {tab === 'tracked' && (
-          <div className="sig-grid">
-            {!userId && (
-              <div className="sig-empty">Sign in to track picks.</div>
-            )}
-            {userId && trackedOpportunities.length === 0 && (
-              <div className="sig-empty">No tracked picks yet — star a signal from Vetted Picks to add it here.</div>
-            )}
-            {userId && trackedOpportunities.map(renderOpportunityCard)}
-          </div>
-        )}
 
         <div className="sig-foot">
           {tab === 'ticker' ? 'Raw trade activity, $100+ · not a recommendation'

@@ -39,7 +39,7 @@ function niceTicks(min: number, max: number, count: number, clampMin = -Infinity
   return { min: niceMin, max: niceMax, ticks }
 }
 
-export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallets: WalletContribution[] }) {
+export function PriceChart({ history, wallets, height = 220 }: { history: ChartPoint[]; wallets: WalletContribution[]; height?: number }) {
   const [hoverT, setHoverT] = useState<number | null>(null)
 
   // Everything here only depends on history/wallets, never on hoverT — but
@@ -121,7 +121,7 @@ export function PriceChart({ history, wallets }: { history: ChartPoint[]; wallet
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={height}>
         <ComposedChart
           data={history} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
           onMouseMove={(state: { activeLabel?: string | number }) => {
@@ -180,7 +180,7 @@ function fmtCum(v: number) {
   return `${v >= 0 ? '+' : '-'}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
 }
 
-export function CumulativeChart({ data }: { data: { d: string; cum: number }[] }) {
+export function CumulativeChart({ data, height = 220 }: { data: { d: string; cum: number }[]; height?: number }) {
   const [hoverI, setHoverI] = useState<number | null>(null)
   if (data.length < 2) return null
 
@@ -213,7 +213,7 @@ export function CumulativeChart({ data }: { data: { d: string; cum: number }[] }
 
   return (
     <div style={{ marginBottom: 24 }}>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={height}>
         <ComposedChart
           data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
           onMouseMove={(state: { activeLabel?: string | number }) => {

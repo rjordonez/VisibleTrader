@@ -119,6 +119,31 @@
 .terminal-sidebar-tabs button:hover { color: var(--text); }
 .terminal-sidebar-tabs button.active { color: var(--text); background: var(--surface); }
 
+.terminal-sidebar-collapse-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  padding: 7px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.terminal-sidebar-collapse-btn:hover { color: var(--text); background: var(--surface); }
+
+/* Collapsed: a thin strip with just the expand button, no tabs/list — the
+   fetched leaderboard/market data isn't kept alive while collapsed, same
+   trade-off as any other tab switch in this sidebar. */
+.terminal-sidebar-collapsed {
+  width: 44px;
+  padding: 14px 6px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
 .terminal-sidebar-cats { padding: 0 8px 12px; }
 .terminal-sidebar-cats select {
   width: 100%;
@@ -221,6 +246,12 @@
   scrollbar-width: none;
 }
 .terminal-main::-webkit-scrollbar { display: none; }
+
+/* TraderDetailPage's .sig-panel is capped at 1040px app-wide, but the
+   Terminal's market view has no such wrapper and fills the full main
+   column — without this override the trader-profile chart renders
+   narrower than the market chart despite both using the same height. */
+.terminal-main .sig-panel { max-width: none; }
 
 .terminal-empty {
   height: 100%;

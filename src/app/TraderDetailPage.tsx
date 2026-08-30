@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
-import { traderLabel, profileUrl, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './helpers'
+import { traderLabel, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './helpers'
 import { SkelStatsRow, SkelTableRows } from './Skeleton'
 import {
   CumulativeChartSection, HighlightsRow, CategoryBreakdownSection, SimilarTradersTable,
@@ -113,17 +112,17 @@ async function findSimilarTraders(
     .slice(0, 5)
 }
 
-function TraderDetailPage({ wallet, onBack, linkToTrader = w => dashboardPath(`/trader/${w}`) }: {
+function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220 }: {
   wallet: string
-  onBack: () => void
   // Overridable so the Terminal (its own self-contained route tree, see
   // src/app/terminal/) can keep "jump to another wallet"/similar-traders
   // navigation inside itself instead of bouncing out to the main app's
   // /trader/:wallet route, which is what dashboardPath always points to.
   linkToTrader?: (wallet: string) => string
+  // Same reasoning as MarketDetailContent's identical prop — the Terminal
+  // has a full page to work with, so it passes a taller value here too.
+  chartHeight?: number
 }) {
-  const navigate = useNavigate()
-  const [jumpInput, setJumpInput] = useState('')
   const [summary, setSummary] = useState<TraderSummary | null>(null)
   const [positions, setPositions] = useState<TraderPosition[]>([])
   const [byCategory, setByCategory] = useState<CategoryRow[]>([])
@@ -134,8 +133,13 @@ function TraderDetailPage({ wallet, onBack, linkToTrader = w => dashboardPath(`/
   const [liveClosed, setLiveClosed] = useState<LiveClosedPosition[]>([])
   const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([])
   const [liveLoading, setLiveLoading] = useState(false)
-  const [showAllTrades, setShowAllTrades] = useState(false)
-  const [showAllLive, setShowAllLive] = useState(false)
+  // Reveals 50 more rows per click instead of an all-or-nothing toggle —
+  // jumping straight from 10 rows to potentially 1000+ table rows in one
+  // go is the same kind of DOM-size performance issue the chart markers
+  // cap (PriceChart.tsx) already fixed.
+  const [visibleTrades, setVisibleTrades] = useState(10)
+  const [visibleLive, setVisibleLive] = useState(10)
+  const PAGE_STEP = 50
   const [userId, setUserId] = useState<string | null>(null)
   const [trackedWallets, setTrackedWallets] = useState<Record<string, boolean>>({})
   const [busyWallet, setBusyWallet] = useState<string | null>(null)
@@ -180,13 +184,6 @@ function TraderDetailPage({ wallet, onBack, linkToTrader = w => dashboardPath(`/
       })
       .catch(() => {})
       .finally(() => setBusyWallet(null))
-  }
-
-  const jumpToWallet = (e: React.FormEvent) => {
-    e.preventDefault()
-    const trimmed = jumpInput.trim()
-    if (!trimmed) return
-    navigate(linkToTrader(trimmed))
   }
 
   useEffect(() => {
@@ -285,33 +282,21 @@ function TraderDetailPage({ wallet, onBack, linkToTrader = w => dashboardPath(`/
     <div className="sig-page">
       <div className="app-section-header">
         <div>
-          <button className="sig-btn secondary" onClick={onBack} style={{ marginBottom: 12 }}>← Back to Leaderboard</button>
           <h1 className="app-section-title">{traderLabel(wallet, summary?.wallet_name ?? null)}</h1>
           <p className="app-section-sub">
             {loading ? 'Loading…' : error ? 'Connection trouble — retrying…' : (
-              <>
-                <a href={profileUrl(wallet)!} target="_blank" rel="noopener noreferrer">View on Polymarket ↗</a>
-                {' · '}
-                {trackedWallets[wallet] ? (
-                  <span className="sig-watch-remove" style={{ display: 'inline' }} onClick={() => untrackWallet(wallet)}>
-                    {busyWallet === wallet ? 'Removing…' : 'Untrack'}
-                  </span>
-                ) : (
-                  <span style={{ cursor: 'pointer', color: 'var(--blue)' }} onClick={() => trackWallet(wallet)}>
-                    {busyWallet === wallet ? 'Adding…' : '+ Track this trader'}
-                  </span>
-                )}
-              </>
+              trackedWallets[wallet] ? (
+                <span className="sig-watch-remove" style={{ display: 'inline' }} onClick={() => untrackWallet(wallet)}>
+                  {busyWallet === wallet ? 'Removing…' : 'Unfollow'}
+                </span>
+              ) : (
+                <span style={{ cursor: 'pointer', color: 'var(--blue)' }} onClick={() => trackWallet(wallet)}>
+                  {busyWallet === wallet ? 'Adding…' : '+ Follow this trader'}
+                </span>
+              )
             )}
           </p>
         </div>
-        <form className="search-header-form" onSubmit={jumpToWallet} style={{ maxWidth: 320 }}>
-          <input
-            className="search-input" type="text" placeholder="Look up another wallet…"
-            value={jumpInput} onChange={e => setJumpInput(e.target.value)}
-          />
-          <button type="submit" className="search-submit">Go</button>
-        </form>
       </div>
 
       <div className="sig-panel">
@@ -363,7 +348,7 @@ function TraderDetailPage({ wallet, onBack, linkToTrader = w => dashboardPath(`/
 
             <div className="search-dashboard-grid">
               <div className="search-dashboard-main">
-                <CumulativeChartSection data={trackedCumulative} label="P&L over time" />
+                <CumulativeChartSection data={trackedCumulative} label="P&L over time" height={chartHeight} />
 
                 <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>All resolved positions</div>
                 <div className="sig-table-wrap">
@@ -372,7 +357,7 @@ function TraderDetailPage({ wallet, onBack, linkToTrader = w => dashboardPath(`/
                       <tr><th>Market</th><th className="num">Stake</th><th className="num">Price</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
                     </thead>
                     <tbody>
-                      {(showAllTrades ? positions : positions.slice(0, 10)).map((p, i) => (
+                      {positions.slice(0, visibleTrades).map((p, i) => (
                         <tr key={i}>
                           <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
                           <td className="num" data-label="Stake">{fmtFull(p.usd)}</td>
@@ -384,9 +369,14 @@ function TraderDetailPage({ wallet, onBack, linkToTrader = w => dashboardPath(`/
                       ))}
                     </tbody>
                   </table>
-                  {positions.length > 10 && (
-                    <button className="sig-load-more" onClick={() => setShowAllTrades(v => !v)}>
-                      {showAllTrades ? 'Show fewer' : `Show all ${positions.length} trades`}
+                  {positions.length > visibleTrades && (
+                    <button className="sig-load-more" onClick={() => setVisibleTrades(v => v + PAGE_STEP)}>
+                      Load more ({positions.length - visibleTrades} remaining)
+                    </button>
+                  )}
+                  {visibleTrades > 10 && positions.length <= visibleTrades && (
+                    <button className="sig-load-more" onClick={() => setVisibleTrades(10)}>
+                      Show fewer
                     </button>
                   )}
                 </div>
@@ -453,7 +443,7 @@ function TraderDetailPage({ wallet, onBack, linkToTrader = w => dashboardPath(`/
 
                 <div className="search-dashboard-grid">
                   <div className="search-dashboard-main">
-                    <CumulativeChartSection data={liveCumulative} label="Realized P&L over time (live from Polymarket)" />
+                    <CumulativeChartSection data={liveCumulative} label="Realized P&L over time (live from Polymarket)" height={chartHeight} />
 
                     {livePositions.length > 0 && (
                       <>
@@ -487,7 +477,7 @@ function TraderDetailPage({ wallet, onBack, linkToTrader = w => dashboardPath(`/
                               <tr><th>Market</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
                             </thead>
                             <tbody>
-                              {(showAllLive ? sortedLiveClosed : sortedLiveClosed.slice(0, 10)).map((p, i) => (
+                              {sortedLiveClosed.slice(0, visibleLive).map((p, i) => (
                                 <tr key={i}>
                                   <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
                                   <td data-label="Result" style={{ color: p.curPrice >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{p.curPrice >= 0.5 ? 'Won' : 'Lost'}</td>
@@ -497,9 +487,14 @@ function TraderDetailPage({ wallet, onBack, linkToTrader = w => dashboardPath(`/
                               ))}
                             </tbody>
                           </table>
-                          {sortedLiveClosed.length > 10 && (
-                            <button className="sig-load-more" onClick={() => setShowAllLive(v => !v)}>
-                              {showAllLive ? 'Show fewer' : `Show all ${sortedLiveClosed.length} trades`}
+                          {sortedLiveClosed.length > visibleLive && (
+                            <button className="sig-load-more" onClick={() => setVisibleLive(v => v + PAGE_STEP)}>
+                              Load more ({sortedLiveClosed.length - visibleLive} remaining)
+                            </button>
+                          )}
+                          {visibleLive > 10 && sortedLiveClosed.length <= visibleLive && (
+                            <button className="sig-load-more" onClick={() => setVisibleLive(10)}>
+                              Show fewer
                             </button>
                           )}
                         </div>

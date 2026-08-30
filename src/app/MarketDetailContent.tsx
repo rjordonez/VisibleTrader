@@ -169,12 +169,15 @@ function ActivitySummary({ wallets }: { wallets: WalletContribution[] }) {
 // full contributing-traders list. Used both inside SignalModal (a popup)
 // and full-width on the Terminal's market route — one implementation, two
 // homes, so neither surface can silently drift out of sync with the other.
-export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashboardPath(`/trader/${w}`) }: {
+export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220 }: {
   opportunity: Opportunity
   // Overridable so the Terminal keeps trader navigation inside its own
   // route tree instead of bouncing out to the main app — see
   // TraderDetailPage.tsx's identical linkToTrader prop for the same reason.
   linkToTrader?: (wallet: string) => string
+  // The Terminal has a full page to work with vs. the modal's fixed
+  // 600px-tall popup, so it passes a taller value here.
+  chartHeight?: number
 }) {
   const [wallets, setWallets] = useState<WalletContribution[]>([])
   const [walletsLoading, setWalletsLoading] = useState(true)
@@ -228,13 +231,13 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
       </div>
 
       <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
-      <div style={{ minHeight: 220, marginBottom: 16 }}>
-        {chartLoading && <SkelBlock height={220} />}
+      <div style={{ minHeight: chartHeight, marginBottom: 16 }}>
+        {chartLoading && <SkelBlock height={chartHeight} />}
         {!chartLoading && chartHistory.length < 2 && (
           <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No price history available for this market.</div>
         )}
         {!chartLoading && chartHistory.length >= 2 && (
-          <PriceChart history={chartHistory} wallets={wallets} />
+          <PriceChart history={chartHistory} wallets={wallets} height={chartHeight} />
         )}
       </div>
 

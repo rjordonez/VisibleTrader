@@ -51,7 +51,7 @@ function LeaderboardPage() {
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      Promise.resolve(supabase.from('leaderboard').select('*').order('net_profit', { ascending: false }))
+      Promise.resolve(supabase.from('leaderboard').select('*').order('net_profit', { ascending: false }).limit(100))
         .then(({ data, error }) => {
           if (cancelled) return
           if (error) throw error

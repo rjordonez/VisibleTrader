@@ -9,13 +9,13 @@ import { CumulativeChart } from './PriceChart'
 // The single highest-leverage "summarize this trader at a glance" element —
 // a trend line reads in one look, where a table of 50 rows doesn't. Guards
 // its own length>1 case so callers can render it unconditionally.
-export function CumulativeChartSection({ data, label }: { data: { d: string; cum: number }[]; label: string }) {
+export function CumulativeChartSection({ data, label, height = 220 }: { data: { d: string; cum: number }[]; label: string; height?: number }) {
   if (data.length < 2) return null
   return (
     <>
       <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>{label}</div>
       <div style={{ marginBottom: 24 }}>
-        <CumulativeChart data={data} />
+        <CumulativeChart data={data} height={height} />
       </div>
     </>
   )

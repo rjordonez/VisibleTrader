@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import TraderDetailPage from '../TraderDetailPage'
 import { terminalPath } from '../../lib/domains'
 
@@ -9,14 +9,13 @@ import { terminalPath } from '../../lib/domains'
 // own route tree instead of bouncing out to the main app's /trader/:wallet.
 export default function TerminalTraderView() {
   const { wallet } = useParams<{ wallet: string }>()
-  const navigate = useNavigate()
   if (!wallet) return null
   return (
     <TraderDetailPage
       key={wallet}
       wallet={wallet}
-      onBack={() => navigate(-1)}
       linkToTrader={w => terminalPath(`/trader/${w}`)}
+      chartHeight={400}
     />
   )
 }

@@ -40,9 +40,8 @@ const navItems = [
 // this URL is now directly linkable/shareable, which it wasn't before.
 function TraderDetailRoute() {
   const { wallet } = useParams<{ wallet: string }>()
-  const navigate = useNavigate()
   if (!wallet) return <Navigate to={dashboardPath('/')} replace />
-  return <TraderDetailPage key={wallet} wallet={wallet} onBack={() => navigate(-1)} />
+  return <TraderDetailPage key={wallet} wallet={wallet} />
 }
 
 /* ── App Shell ──

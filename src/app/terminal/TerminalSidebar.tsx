@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Link } from 'react-router-dom'
-import { Zap, Trophy, Bell } from 'lucide-react'
+import { Zap, Trophy, Bell, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { Opportunity } from '../types'
 import {
@@ -106,13 +106,25 @@ function AlertsTab() {
 // wallets, reusing the same localStorage list the main Alerts page reads/
 // writes — read-only here, actual notification-firing/config stays on that
 // one page so there's only ever one polling loop live at a time).
-export default function TerminalSidebar({ opportunities, loading, category, onCategoryChange }: {
+export default function TerminalSidebar({ opportunities, loading, category, onCategoryChange, collapsed, onToggleCollapsed }: {
   opportunities: Opportunity[]
   loading: boolean
   category: string
   onCategoryChange: (category: string) => void
+  collapsed: boolean
+  onToggleCollapsed: () => void
 }) {
   const [tab, setTab] = useState<SidebarTab>('markets')
+
+  if (collapsed) {
+    return (
+      <aside className="terminal-sidebar terminal-sidebar-collapsed terminal-card">
+        <button type="button" className="terminal-sidebar-collapse-btn" onClick={onToggleCollapsed} title="Expand sidebar">
+          <ChevronsRight size={16} />
+        </button>
+      </aside>
+    )
+  }
 
   return (
     <aside className="terminal-sidebar terminal-card">
@@ -125,6 +137,9 @@ export default function TerminalSidebar({ opportunities, loading, category, onCa
         </button>
         <button type="button" className={tab === 'alerts' ? 'active' : ''} onClick={() => setTab('alerts')}>
           <Bell size={13} /> Alerts
+        </button>
+        <button type="button" className="terminal-sidebar-collapse-btn" onClick={onToggleCollapsed} title="Collapse sidebar">
+          <ChevronsLeft size={16} />
         </button>
       </div>
 
