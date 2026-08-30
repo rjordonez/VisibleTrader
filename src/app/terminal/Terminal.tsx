@@ -8,6 +8,7 @@ import type { Opportunity } from '../types'
 import { onTabVisible, byCategory, PAGE_SIZE } from '../helpers'
 import TerminalSidebar from './TerminalSidebar'
 import TerminalMarketView from './TerminalMarketView'
+import TerminalTraderView from './TerminalTraderView'
 import '../app.css'
 import './terminal.css'
 
@@ -160,6 +161,7 @@ export default function Terminal() {
             <Routes>
               <Route index element={<TerminalEmptyState />} />
               <Route path="market/:conditionId/:outcome" element={<TerminalMarketView opportunities={opportunities} />} />
+              <Route path="trader/:wallet" element={<TerminalTraderView />} />
             </Routes>
           </div>
         </div>

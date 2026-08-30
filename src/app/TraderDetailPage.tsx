@@ -113,7 +113,15 @@ async function findSimilarTraders(
     .slice(0, 5)
 }
 
-function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => void }) {
+function TraderDetailPage({ wallet, onBack, linkToTrader = w => dashboardPath(`/trader/${w}`) }: {
+  wallet: string
+  onBack: () => void
+  // Overridable so the Terminal (its own self-contained route tree, see
+  // src/app/terminal/) can keep "jump to another wallet"/similar-traders
+  // navigation inside itself instead of bouncing out to the main app's
+  // /trader/:wallet route, which is what dashboardPath always points to.
+  linkToTrader?: (wallet: string) => string
+}) {
   const navigate = useNavigate()
   const [jumpInput, setJumpInput] = useState('')
   const [summary, setSummary] = useState<TraderSummary | null>(null)
@@ -178,7 +186,7 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
     e.preventDefault()
     const trimmed = jumpInput.trim()
     if (!trimmed) return
-    navigate(dashboardPath(`/trader/${trimmed}`))
+    navigate(linkToTrader(trimmed))
   }
 
   useEffect(() => {
@@ -390,7 +398,7 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
                 <div>
                   <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Similar top traders</div>
                   <SimilarTradersTable
-                    similarTraders={similarTraders} linkFor={w => dashboardPath(`/trader/${w}`)}
+                    similarTraders={similarTraders} linkFor={linkToTrader}
                     trackedWallets={trackedWallets} busyWallet={busyWallet} onTrack={trackWallet} onUntrack={untrackWallet}
                     loggedIn={true}
                   />
@@ -528,7 +536,7 @@ function TraderDetailPage({ wallet, onBack }: { wallet: string; onBack: () => vo
                     <div>
                       <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Similar top traders</div>
                       <SimilarTradersTable
-                        similarTraders={similarTraders} linkFor={w => dashboardPath(`/trader/${w}`)}
+                        similarTraders={similarTraders} linkFor={linkToTrader}
                         trackedWallets={trackedWallets} busyWallet={busyWallet} onTrack={trackWallet} onUntrack={untrackWallet}
                         loggedIn={true}
                       />

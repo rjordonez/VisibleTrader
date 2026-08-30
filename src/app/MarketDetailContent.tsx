@@ -35,12 +35,12 @@ function groupByWallet(wallets: WalletContribution[]): TraderGroup[] {
   )
 }
 
-function SingleEntryRow({ w, latestPrice }: { w: WalletContribution; latestPrice: number }) {
+function SingleEntryRow({ w, latestPrice, linkToTrader }: { w: WalletContribution; latestPrice: number; linkToTrader: (wallet: string) => string }) {
   const st = signalsTraderStatus(w)
   const ret = walletReturn(w, latestPrice)
   return (
     <div className="sig-drill-row">
-      <Link to={dashboardPath(`/trader/${w.wallet}`)} className="sig-drill-name">
+      <Link to={linkToTrader(w.wallet)} className="sig-drill-name">
         {traderLabel(w.wallet, w.wallet_name)}
       </Link>
       <div className="sig-drill-body">
@@ -56,11 +56,11 @@ function SingleEntryRow({ w, latestPrice }: { w: WalletContribution; latestPrice
   )
 }
 
-function TraderGroupRow({ group, latestPrice }: { group: TraderGroup; latestPrice: number }) {
+function TraderGroupRow({ group, latestPrice, linkToTrader }: { group: TraderGroup; latestPrice: number; linkToTrader: (wallet: string) => string }) {
   const [expanded, setExpanded] = useState(false)
   const { wallet, wallet_name, entries } = group
 
-  if (entries.length === 1) return <SingleEntryRow w={entries[0]} latestPrice={latestPrice} />
+  if (entries.length === 1) return <SingleEntryRow w={entries[0]} latestPrice={latestPrice} linkToTrader={linkToTrader} />
 
   const totalUsd = entries.reduce((s, e) => s + e.usd, 0)
   const avgPrice = entries.reduce((s, e) => s + e.usd * e.price, 0) / totalUsd
@@ -71,7 +71,7 @@ function TraderGroupRow({ group, latestPrice }: { group: TraderGroup; latestPric
     <div className="sig-trader-group">
       <div className="sig-drill-row sig-trader-group-header" onClick={() => setExpanded(e => !e)}>
         <Link
-          to={dashboardPath(`/trader/${wallet}`)} className="sig-drill-name"
+          to={linkToTrader(wallet)} className="sig-drill-name"
           onClick={e => e.stopPropagation()}
         >
           {traderLabel(wallet, wallet_name)}
@@ -169,7 +169,13 @@ function ActivitySummary({ wallets }: { wallets: WalletContribution[] }) {
 // full contributing-traders list. Used both inside SignalModal (a popup)
 // and full-width on the Terminal's market route — one implementation, two
 // homes, so neither surface can silently drift out of sync with the other.
-export function MarketDetailContent({ opportunity: o }: { opportunity: Opportunity }) {
+export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashboardPath(`/trader/${w}`) }: {
+  opportunity: Opportunity
+  // Overridable so the Terminal keeps trader navigation inside its own
+  // route tree instead of bouncing out to the main app — see
+  // TraderDetailPage.tsx's identical linkToTrader prop for the same reason.
+  linkToTrader?: (wallet: string) => string
+}) {
   const [wallets, setWallets] = useState<WalletContribution[]>([])
   const [walletsLoading, setWalletsLoading] = useState(true)
   const [chartHistory, setChartHistory] = useState<ChartPoint[]>([])
@@ -251,7 +257,7 @@ export function MarketDetailContent({ opportunity: o }: { opportunity: Opportuni
             <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
           )}
           {!walletsLoading && groups.map(g => (
-            <TraderGroupRow key={g.wallet} group={g} latestPrice={o.latest_price} />
+            <TraderGroupRow key={g.wallet} group={g} latestPrice={o.latest_price} linkToTrader={linkToTrader} />
           ))}
         </div>
       </div>

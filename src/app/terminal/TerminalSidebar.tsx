@@ -47,7 +47,7 @@ function LeaderboardTab() {
       {!loading && rows.map((r, i) => (
         <Link
           key={r.wallet}
-          to={dashboardPath(`/trader/${r.wallet}`)}
+          to={terminalPath(`/trader/${r.wallet}`)}
           className="terminal-sidebar-row"
         >
           <div className="terminal-sidebar-rank">{i + 1}</div>

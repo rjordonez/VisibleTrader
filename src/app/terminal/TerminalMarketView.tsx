@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import type { Opportunity, ChartPoint } from '../types'
 import { marketUrl, fetchChart } from '../helpers'
+import { terminalPath } from '../../lib/domains'
 import { MarketDetailContent } from '../MarketDetailContent'
 
 function fmtSignedPct(n: number) {
@@ -131,7 +132,11 @@ export default function TerminalMarketView({ opportunities }: { opportunities: O
   return (
     <div className="terminal-market">
       <div className="terminal-market-main">
-        <MarketDetailContent key={`${opportunity.condition_id}::${opportunity.outcome}`} opportunity={opportunity} />
+        <MarketDetailContent
+          key={`${opportunity.condition_id}::${opportunity.outcome}`}
+          opportunity={opportunity}
+          linkToTrader={w => terminalPath(`/trader/${w}`)}
+        />
       </div>
       <div className="terminal-market-side">
         <AboutMarketPanel opportunity={opportunity} />
