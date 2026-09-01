@@ -21,6 +21,13 @@ create policy "public read" on wallet_category_breakdown_cache for select using 
   exists (select 1 from subscriptions where user_id = auth.uid() and status in ('trialing', 'active'))
 );
 
+-- Groups by the *coalesced* category, not the raw o.category -- a market
+-- with a genuinely NULL category and a market whose category is literally
+-- the string 'other' both display as 'other' but are different GROUP BY
+-- keys if grouped on the raw column (the original live view had exactly
+-- this bug, harmless there since a view has no uniqueness constraint to
+-- violate -- confirmed live: wallet 0x204f72...95e14 produced two separate
+-- 'other' rows, 8 and 80, which collided on this table's primary key).
 insert into wallet_category_breakdown_cache (wallet, category, n, won, lost, profit)
 select ow.wallet, coalesce(o.category, 'other') as category,
   count(*) as n,
@@ -31,7 +38,7 @@ from opportunity_wallets ow
 join (select condition_id, outcome, max(category) as category from opportunities group by condition_id, outcome) o
   on o.condition_id = ow.condition_id and o.outcome = ow.outcome
 where ow.market_closed = true
-group by ow.wallet, o.category;
+group by ow.wallet, coalesce(o.category, 'other');
 
 -- wallet_category_breakdown keeps its name/shape so TraderDetailPage.tsx and
 -- the wallet-search Edge Function keep working unchanged; it's now a plain

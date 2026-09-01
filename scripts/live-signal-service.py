@@ -937,7 +937,7 @@ def refresh_wallet_category_breakdown(db):
         JOIN (SELECT condition_id, outcome, MAX(category) AS category FROM opportunities GROUP BY condition_id, outcome) o
           ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
         WHERE ow.market_closed = true
-        GROUP BY ow.wallet, o.category
+        GROUP BY ow.wallet, COALESCE(o.category, 'other')
         ON CONFLICT (wallet, category) DO UPDATE SET
           n = EXCLUDED.n, won = EXCLUDED.won, lost = EXCLUDED.lost, profit = EXCLUDED.profit,
           updated_at = EXCLUDED.updated_at

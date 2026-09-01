@@ -277,9 +277,14 @@ function SignalsDemo({ category }: { category: string }) {
   const buildWinsQueryRef = useRef<() => any>(() => supabase.from('wallet_positions').select('*'))
   useEffect(() => {
     buildWinsQueryRef.current = () => {
+      // Filters on closed_profit (a real generated/indexed column), not the
+      // general-purpose profit column — profit falls back to a live
+      // opportunities.latest_price join for still-open positions, which a
+      // partial index on closed_profit can't see through. Equivalent for
+      // this feed since it only ever shows closed positions anyway.
       let q = supabase.from('wallet_positions').select('*')
         .not('closed_at', 'is', null)
-        .gt('profit', 0)
+        .gt('closed_profit', 0)
         // 100 = TICKER_MIN_USD's dust floor (filters sub-$100 multi-leg
         // remainders) — Math.max so a lower minTotal never re-opens that gap.
         .gte('usd', Math.max(100, minTotal))
