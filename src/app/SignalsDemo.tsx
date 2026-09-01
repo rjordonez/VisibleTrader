@@ -227,10 +227,22 @@ function SignalsDemo({ category }: { category: string }) {
     load()
     const channel = supabase
       .channel('ticker-changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticker' }, load)
+      // Prepends the inserted row straight from the realtime payload
+      // instead of refetching all 200 rows on every single insert — ticker
+      // is a high-frequency table (many trades/minute), so that refetch-
+      // per-row pattern (fine for the lower-frequency opportunities/
+      // opportunity_wallets tables elsewhere on this page) meant firing a
+      // fresh 200-row query almost continuously. Worse, any one of those
+      // racing fetches coming back empty (a momentary auth-token refresh,
+      // a network hiccup) would wipe the whole visible list and flash
+      // "Waiting for trades" even though nothing was actually wrong —
+      // reported live as "sometimes it just reloads... waiting for trades."
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticker' }, payload => {
+        if (cancelled) return
+        setTicker(prev => [payload.new as TickerTrade, ...prev].slice(0, 200))
+      })
       .subscribe()
-    // Realtime is the primary delivery path here (same as the
-    // opportunities-live-changes effect above) — this interval is only a
+    // Realtime is the primary delivery path — this interval is only a
     // fallback in case a realtime event is ever missed, not the main way
     // updates land, so it doesn't need to be aggressive. It used to be
     // 3000ms, re-fetching all 200 rows every 3s regardless of whether
