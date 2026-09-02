@@ -63,14 +63,31 @@ function SignalGraphic() {
   )
 }
 
+// Matches the real in-app chart's visual language (gradient fill, smooth
+// curve, dashed grid, solid endpoint dot — see PriceChart.tsx) instead of a
+// bare polyline, so this reads as an authentic product preview rather than
+// a generic placeholder squiggle.
 function ChartGraphic() {
   return (
     <div className="onboarding-mini-card onboarding-mini-card-chart">
-      <svg width="100%" height="64" viewBox="0 0 180 64" fill="none" preserveAspectRatio="none">
-        <polyline
-          points="0,50 30,42 60,46 90,26 120,32 150,12 180,8"
-          stroke="#00d17a" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"
+      <svg width="100%" height="72" viewBox="0 0 180 72" fill="none" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="onboardingChartFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#00d17a" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#00d17a" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <line x1="0" y1="20" x2="180" y2="20" stroke="var(--border)" strokeWidth="1" strokeDasharray="2 4" />
+        <line x1="0" y1="44" x2="180" y2="44" stroke="var(--border)" strokeWidth="1" strokeDasharray="2 4" />
+        <path
+          d="M0,58 C15,54 15,52 30,50 C45,48 45,52 60,54 C75,56 75,38 90,32 C105,26 105,36 120,38 C135,40 135,20 150,16 C165,12 165,13 180,12 L180,72 L0,72 Z"
+          fill="url(#onboardingChartFill)"
         />
+        <path
+          d="M0,58 C15,54 15,52 30,50 C45,48 45,52 60,54 C75,56 75,38 90,32 C105,26 105,36 120,38 C135,40 135,20 150,16 C165,12 165,13 180,12"
+          stroke="#00d17a" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"
+        />
+        <circle cx="180" cy="12" r="4.5" fill="#00d17a" />
       </svg>
       <div className="onboarding-mini-stat">
         <span className="onboarding-mini-stat-value">57.4%</span>
