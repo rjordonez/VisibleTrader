@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import posthog from './lib/posthog'
+import { useLiveTradeCounter, RollingNumber } from './lib/RollingCounter'
 import './app/app.css'
 
 // Shown by ProtectedRoute for a signed-in user who hasn't been through
@@ -33,66 +34,39 @@ const questions = [
 ]
 
 // Two value-prop slides shown after the questions, before the paywall —
-// each graphic is a small inline mockup (no image assets), same approach
-// already used for the landing page's WinnersPreview.
+// each pairs with a StatRows graphic below (see that component's comment).
 const slides = [
   {
     title: 'Copy trade the winners',
-    body: 'The best traders on Polymarket have a real edge — information, timing, conviction. We track every position they take, the moment they take it, so their edge becomes yours too.',
+    body: 'The best traders on Polymarket have a real edge: information, timing, conviction. We track every position they take, the moment they take it, so their edge becomes yours too.',
     cta: 'Continue',
   },
   {
     title: 'When experts agree, that’s a signal',
-    body: 'When several independently-vetted top traders land on the same side of a market at once, that’s not coincidence — that’s conviction. We surface consensus the instant it forms.',
+    body: 'When several independently-vetted top traders land on the same side of a market at once, that’s not coincidence. That’s conviction. We surface consensus the instant it forms.',
     cta: 'Get started',
   },
 ]
 
-function SignalGraphic() {
+// Same stat rows shown on the landing page's ProfitCard (see
+// landing/components/ProfitCard.tsx's profit-bg-row content) — reused here
+// rather than the earlier hand-drawn mockup cards, split across the two
+// slides to match each one's theme. Split into an .onboarding-stat-* class
+// set (not landing.css's .profit-bg-*) since this file and landing.css
+// load in separate bundles and neither should import the other's
+// stylesheet just for this.
+function StatRows({ rows }: { rows: { label: string; value: string; toneClass?: string }[] }) {
   return (
     <div className="onboarding-mini-card">
-      <div className="onboarding-mini-card-top">
-        <span className="onboarding-mini-icon">⚡</span>
-        <div>
-          <div className="onboarding-mini-title">3 top traders just bought in</div>
-          <div className="onboarding-mini-sub">Fed rate decision — Yes</div>
+      {rows.map((r, i) => (
+        <div key={r.label}>
+          {i === 2 && <div className="onboarding-stat-divider" />}
+          <div className="onboarding-stat-row">
+            <span className="onboarding-stat-label">{r.label}</span>
+            <span className={`onboarding-stat-value${r.toneClass ? ` ${r.toneClass}` : ''}`}>{r.value}</span>
+          </div>
         </div>
-      </div>
-      <div className="onboarding-mini-badge">Live · 12s ago</div>
-    </div>
-  )
-}
-
-// Matches the real in-app chart's visual language (gradient fill, smooth
-// curve, dashed grid, solid endpoint dot — see PriceChart.tsx) instead of a
-// bare polyline, so this reads as an authentic product preview rather than
-// a generic placeholder squiggle.
-function ChartGraphic() {
-  return (
-    <div className="onboarding-mini-card onboarding-mini-card-chart">
-      <svg width="100%" height="72" viewBox="0 0 180 72" fill="none" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="onboardingChartFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#00d17a" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="#00d17a" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <line x1="0" y1="20" x2="180" y2="20" stroke="var(--border)" strokeWidth="1" strokeDasharray="2 4" />
-        <line x1="0" y1="44" x2="180" y2="44" stroke="var(--border)" strokeWidth="1" strokeDasharray="2 4" />
-        <path
-          d="M0,58 C15,54 15,52 30,50 C45,48 45,52 60,54 C75,56 75,38 90,32 C105,26 105,36 120,38 C135,40 135,20 150,16 C165,12 165,13 180,12 L180,72 L0,72 Z"
-          fill="url(#onboardingChartFill)"
-        />
-        <path
-          d="M0,58 C15,54 15,52 30,50 C45,48 45,52 60,54 C75,56 75,38 90,32 C105,26 105,36 120,38 C135,40 135,20 150,16 C165,12 165,13 180,12"
-          stroke="#00d17a" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"
-        />
-        <circle cx="180" cy="12" r="4.5" fill="#00d17a" />
-      </svg>
-      <div className="onboarding-mini-stat">
-        <span className="onboarding-mini-stat-value">57.4%</span>
-        <span className="onboarding-mini-stat-label">real win rate, fully tracked</span>
-      </div>
+      ))}
     </div>
   )
 }
@@ -108,6 +82,11 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
   // click instead of already being lit before you get there.
   const [completedSteps, setCompletedSteps] = useState(0)
   const [saving, setSaving] = useState(false)
+  // Same live, real, ever-growing counter as the landing page's Hero (see
+  // lib/RollingCounter.tsx) — reused rather than reinvented, and doubly
+  // relevant here since onboarding, like the landing page, runs before a
+  // user has subscribed.
+  const tradesAnalyzed = useLiveTradeCounter()
 
   const totalSteps = questions.length + slides.length
   const isQuestion = step < questions.length
@@ -189,6 +168,10 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
           <span className="onboarding-progress-label">{step + 1} of {totalSteps}</span>
         </div>
 
+        <div className="sig-live" style={{ marginBottom: 20 }}>
+          <RollingNumber value={tradesAnalyzed} /> trades analyzed and counting
+        </div>
+
         {isQuestion && current && (
           <>
             <h1 className="onboarding-q">{current.q}</h1>
@@ -207,7 +190,21 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
 
         {slide && (
           <>
-            {step === questions.length ? <ChartGraphic /> : <SignalGraphic />}
+            {step === questions.length ? (
+              <StatRows rows={[
+                { label: 'Top trader win rate ($)', value: '64%', toneClass: 'green' },
+                { label: 'Wallets tracked', value: '500', toneClass: 'green large' },
+                { label: 'Live opportunities now', value: '286' },
+                { label: 'Signal latency', value: '<1s' },
+              ]} />
+            ) : (
+              <StatRows rows={[
+                { label: 'Live opportunities now', value: '286' },
+                { label: 'Signal latency', value: '<1s' },
+                { label: 'Top trader win rate ($)', value: '64%', toneClass: 'green' },
+                { label: 'Wallets tracked', value: '500', toneClass: 'green large' },
+              ]} />
+            )}
             <h1 className="onboarding-q onboarding-slide-title">{slide.title}</h1>
             <p className="onboarding-slide-body">{slide.body}</p>
             <button className="onboarding-option onboarding-slide-cta" disabled={saving} onClick={advanceSlide}>

@@ -674,7 +674,10 @@
    its own 1em-tall window (overflow:hidden) onto a vertical strip of 0-9;
    moving the strip with a CSS transition gives the classic "old digit
    scrolls up and out, new digit scrolls in" ticker look instead of the
-   text just swapping. */
+   text just swapping. Duplicated in app.css (identical block) rather than
+   shared, since this file and app.css load in separate bundles (landing
+   vs the authenticated app, which now also uses this for OnboardingPage)
+   and neither should import the other's stylesheet just for this. */
 .tick-num {
   display: inline-flex;
   font-variant-numeric: tabular-nums;

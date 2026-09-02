@@ -386,6 +386,15 @@
 }
 .sig-live::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: sig-pulse 1.6s infinite; }
 @keyframes sig-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+
+/* Odometer-style rolling counter (see lib/RollingCounter.tsx) — shared
+   with landing.css's identical block since Hero.tsx and OnboardingPage.tsx
+   are in separate bundles and neither should import the other's stylesheet. */
+.tick-num { display: inline-flex; font-variant-numeric: tabular-nums; }
+.tick-digit { display: inline-block; width: 1ch; height: 1em; overflow: hidden; position: relative; }
+.tick-digit-strip { display: flex; flex-direction: column; transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+.tick-digit-strip span { height: 1em; line-height: 1em; text-align: center; }
+.tick-comma { display: inline-block; }
 .sig-seg { display: flex; gap: 24px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; scrollbar-width: none; }
 .sig-seg::-webkit-scrollbar { display: none; }
 .sig-seg-btn {
@@ -1005,71 +1014,42 @@
 .onboarding-slide-cta:hover:not(:disabled) { background: #2860d1; border-color: #2860d1; }
 
 .onboarding-mini-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
   padding: 16px;
 }
 
-.onboarding-mini-card-top {
+/* Same stat-row spec as the landing page's ProfitCard (.profit-bg-row and
+   friends) — duplicated rather than shared since this file and
+   landing.css load in separate bundles. */
+.onboarding-stat-row {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
 }
 
-.onboarding-mini-icon {
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9px;
-  background: rgba(47,111,237,0.15);
-  font-size: 16px;
+.onboarding-stat-label {
+  font-size: 0.8125rem;
+  color: var(--text-faint);
 }
 
-.onboarding-mini-title {
-  font-size: 0.875rem;
+.onboarding-stat-value {
+  font-size: 1rem;
   font-weight: 700;
   color: var(--text);
 }
 
-.onboarding-mini-sub {
-  font-size: 0.78rem;
-  color: var(--text-faint);
-  margin-top: 2px;
-}
+.onboarding-stat-value.green { color: var(--green); }
+.onboarding-stat-value.large { font-size: 1.5rem; }
 
-.onboarding-mini-badge {
-  display: inline-block;
-  margin-top: 12px;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  color: var(--green);
-  background: rgba(0,209,122,0.15);
-  border-radius: 100px;
-  padding: 3px 9px;
-}
-
-.onboarding-mini-card-chart { padding: 16px 16px 12px; }
-
-.onboarding-mini-stat {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.onboarding-mini-stat-value {
-  font-size: 1.125rem;
-  font-weight: 800;
-  color: var(--green);
-}
-
-.onboarding-mini-stat-label {
-  font-size: 0.78rem;
-  color: var(--text-faint);
+.onboarding-stat-divider {
+  height: 1px;
+  background: var(--border);
+  margin-bottom: 0.9rem;
 }
 
 /* ── Public trader search page (SearchPage.tsx) ──
