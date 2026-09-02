@@ -37,13 +37,13 @@ const questions = [
 // already used for the landing page's WinnersPreview.
 const slides = [
   {
-    title: 'Never miss a signal',
-    body: "The moment multiple top-performing wallets buy into the same market, you get the alert — real-time, not end-of-day.",
+    title: 'Copy trade the winners',
+    body: 'The best traders on Polymarket have a real edge — information, timing, conviction. We track every position they take, the moment they take it, so their edge becomes yours too.',
     cta: 'Continue',
   },
   {
-    title: 'Real, verified track record',
-    body: 'Every trader’s resolved P&L is tracked and shown — wins and losses both, not cherry-picked screenshots.',
+    title: 'When experts agree, that’s a signal',
+    body: 'When several independently-vetted top traders land on the same side of a market at once, that’s not coincidence — that’s conviction. We surface consensus the instant it forms.',
     cta: 'Get started',
   },
 ]
@@ -190,7 +190,7 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
 
         {slide && (
           <>
-            {step === questions.length ? <SignalGraphic /> : <ChartGraphic />}
+            {step === questions.length ? <ChartGraphic /> : <SignalGraphic />}
             <h1 className="onboarding-q onboarding-slide-title">{slide.title}</h1>
             <p className="onboarding-slide-body">{slide.body}</p>
             <button className="onboarding-option onboarding-slide-cta" disabled={saving} onClick={advanceSlide}>
