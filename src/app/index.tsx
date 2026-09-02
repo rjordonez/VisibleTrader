@@ -162,7 +162,7 @@ export default function AppShell() {
           <Suspense fallback={<TabLoading />}>
             <Routes>
               <Route index element={<HomePage onOpenSignals={() => navigate(dashboardPath('/signals'))} category={category} onCategoryChange={setCategory} />} />
-              <Route path="signals" element={<SignalsDemo category={category} />} />
+              <Route path="signals" element={<SignalsDemo category={category} onCategoryChange={setCategory} />} />
               <Route path="profits" element={<ProfitsPage />} />
               <Route path="leaderboard" element={<LeaderboardPage />} />
               <Route path="alerts" element={<AlertsPage />} />

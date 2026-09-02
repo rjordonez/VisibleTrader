@@ -3,14 +3,14 @@ import { ExternalLink } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Opportunity, TickerTrade, WalletPosition } from './types'
 import {
-  onTabVisible, byCategory, opportunityCursor, PAGE_SIZE,
+  onTabVisible, byCategory, opportunityCursor, PAGE_SIZE, NAV_CATEGORIES,
   categoryIcon, categoryLabel, gaugePct, gaugeColor, signalsTag, fmtFull, fmtSigned, isToday,
   profileUrl, traderLabel, timeAgo, marketUrl, avatarGradient, avatarInitial,
 } from './helpers'
 import { SignalModal } from './SignalModal'
 import { SkelCard, SkelLbRow } from './Skeleton'
 
-function SignalsDemo({ category }: { category: string }) {
+function SignalsDemo({ category, onCategoryChange }: { category: string; onCategoryChange: (category: string) => void }) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [loading, setLoading]             = useState(true)
   const [error, setError]                 = useState<string | null>(null)
@@ -537,6 +537,22 @@ function SignalsDemo({ category }: { category: string }) {
           </div>
 
           <div className="sig-filters">
+            {(tab === 'wins' || tab === 'vetted') && (
+              <div className="sig-filter-group">
+                <span className="sig-filter-label">Category</span>
+                <div className="sig-chips">
+                  <div className={category === 'all' ? 'sig-chip active' : 'sig-chip'} onClick={() => onCategoryChange('all')}>
+                    All
+                  </div>
+                  {NAV_CATEGORIES.map(c => (
+                    <div key={c} className={category === c ? 'sig-chip active' : 'sig-chip'} onClick={() => onCategoryChange(c)}>
+                      {categoryLabel(c)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="sig-filter-group">
               <div
                 className={todayOnly ? 'sig-chip active' : 'sig-chip'}
