@@ -34,7 +34,8 @@ const questions = [
 ]
 
 // Two value-prop slides shown after the questions, before the paywall —
-// each pairs with a StatRows graphic below (see that component's comment).
+// each pairs with a real FeatureShowcase mock below (see those components'
+// comments) instead of an invented graphic.
 const slides = [
   {
     title: 'Copy trade the winners',
@@ -48,25 +49,50 @@ const slides = [
   },
 ]
 
-// Same stat rows shown on the landing page's ProfitCard (see
-// landing/components/ProfitCard.tsx's profit-bg-row content) — reused here
-// rather than the earlier hand-drawn mockup cards, split across the two
-// slides to match each one's theme. Split into an .onboarding-stat-* class
-// set (not landing.css's .profit-bg-*) since this file and landing.css
-// load in separate bundles and neither should import the other's
-// stylesheet just for this.
-function StatRows({ rows }: { rows: { label: string; value: string; toneClass?: string }[] }) {
+// Same markup/classes as the landing page's FeatureShowcase "Alerts" card
+// (see landing/components/FeatureShowcase.tsx's .ios-notif mock) — the
+// exact real design, not an invented one. CSS duplicated (not imported)
+// into app.css since this file and landing.css load in separate bundles.
+function AlertGraphic() {
   return (
     <div className="onboarding-mini-card">
-      {rows.map((r, i) => (
-        <div key={r.label}>
-          {i === 2 && <div className="onboarding-stat-divider" />}
-          <div className="onboarding-stat-row">
-            <span className="onboarding-stat-label">{r.label}</span>
-            <span className={`onboarding-stat-value${r.toneClass ? ` ${r.toneClass}` : ''}`}>{r.value}</span>
+      <div className="ios-notif-stack">
+        <div className="ios-notif-behind ios-notif-behind-2" />
+        <div className="ios-notif-behind ios-notif-behind-1" />
+        <div className="ios-notif">
+          <img src="/favicon.svg" alt="" className="ios-notif-icon" />
+          <div className="ios-notif-body">
+            <div className="ios-notif-top">
+              <span className="ios-notif-title">Whale Alert</span>
+              <span className="ios-notif-time">9:41 AM</span>
+            </div>
+            <div className="ios-notif-sub">
+              <span className="ios-notif-dot" />
+              50 top traders bought $88,203.12
+            </div>
           </div>
         </div>
-      ))}
+      </div>
+    </div>
+  )
+}
+
+// Same markup/classes as FeatureShowcase's "Vetted Picks" card.
+function VettedGraphic() {
+  return (
+    <div className="onboarding-mini-card">
+      <div className="showcase-vp-row">
+        <span className="showcase-vp-market">Diamondbacks vs. Nationals</span>
+        <span className="showcase-vp-badge">9 wallets · $91.9k</span>
+      </div>
+      <div className="showcase-vp-row">
+        <span className="showcase-vp-market">CF América win market</span>
+        <span className="showcase-vp-badge">6 wallets · $21.2k</span>
+      </div>
+      <div className="showcase-vp-row">
+        <span className="showcase-vp-market">US x Iran ceasefire</span>
+        <span className="showcase-vp-badge">5 wallets · $2.2k</span>
+      </div>
     </div>
   )
 }
@@ -168,10 +194,6 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
           <span className="onboarding-progress-label">{step + 1} of {totalSteps}</span>
         </div>
 
-        <div className="sig-live" style={{ marginBottom: 20 }}>
-          <RollingNumber value={tradesAnalyzed} /> trades analyzed and counting
-        </div>
-
         {isQuestion && current && (
           <>
             <h1 className="onboarding-q">{current.q}</h1>
@@ -190,23 +212,12 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
 
         {slide && (
           <>
-            {step === questions.length ? (
-              <StatRows rows={[
-                { label: 'Top trader win rate ($)', value: '64%', toneClass: 'green' },
-                { label: 'Wallets tracked', value: '500', toneClass: 'green large' },
-                { label: 'Live opportunities now', value: '286' },
-                { label: 'Signal latency', value: '<1s' },
-              ]} />
-            ) : (
-              <StatRows rows={[
-                { label: 'Live opportunities now', value: '286' },
-                { label: 'Signal latency', value: '<1s' },
-                { label: 'Top trader win rate ($)', value: '64%', toneClass: 'green' },
-                { label: 'Wallets tracked', value: '500', toneClass: 'green large' },
-              ]} />
-            )}
+            {step === questions.length ? <AlertGraphic /> : <VettedGraphic />}
             <h1 className="onboarding-q onboarding-slide-title">{slide.title}</h1>
             <p className="onboarding-slide-body">{slide.body}</p>
+            <div className="sig-live" style={{ marginBottom: 16 }}>
+              <RollingNumber value={tradesAnalyzed} /> trades analyzed and counting
+            </div>
             <button className="onboarding-option onboarding-slide-cta" disabled={saving} onClick={advanceSlide}>
               {slide.cta}
             </button>

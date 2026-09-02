@@ -1023,33 +1023,59 @@
   padding: 16px;
 }
 
-/* Same stat-row spec as the landing page's ProfitCard (.profit-bg-row and
-   friends) — duplicated rather than shared since this file and
-   landing.css load in separate bundles. */
-.onboarding-stat-row {
+/* Same markup/classes as the landing page's FeatureShowcase "Alerts" and
+   "Vetted Picks" cards (see OnboardingPage.tsx's AlertGraphic/VettedGraphic)
+   — duplicated CSS rather than shared, since this file and landing.css
+   load in separate bundles and neither should import the other's
+   stylesheet just for this. */
+.ios-notif-stack {
+  position: relative;
+  padding-bottom: 0.75rem;
+  margin-left: -1rem;
+  margin-right: -1rem;
+}
+.ios-notif-behind {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 0;
+  height: 16px;
+  background: #232529;
+  border-radius: 0 0 16px 16px;
+}
+.ios-notif-behind-1 { bottom: 6px; opacity: 0.7; }
+.ios-notif-behind-2 { left: 10%; right: 10%; bottom: 0; opacity: 0.4; }
+.ios-notif {
+  position: relative;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 0.7rem;
+  background: #2c2e33;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  padding: 0.8rem 1rem;
 }
-
-.onboarding-stat-label {
-  font-size: 0.8125rem;
-  color: var(--text-faint);
+.ios-notif-icon { width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0; }
+.ios-notif-body { flex: 1; min-width: 0; }
+.ios-notif-top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.ios-notif-title { font-size: 0.9375rem; font-weight: 800; color: #fff; }
+.ios-notif-time { font-size: 0.75rem; color: rgba(255,255,255,0.4); flex-shrink: 0; }
+.ios-notif-sub {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.8125rem; color: rgba(255,255,255,0.85); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.ios-notif-dot { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
 
-.onboarding-stat-value {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text);
+.showcase-vp-row { display: flex; flex-direction: column; gap: 5px; }
+.showcase-vp-market {
+  font-size: 0.9375rem; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-
-.onboarding-stat-value.green { color: var(--green); }
-.onboarding-stat-value.large { font-size: 1.5rem; }
-
-.onboarding-stat-divider {
-  height: 1px;
-  background: var(--border);
-  margin-bottom: 0.9rem;
+.showcase-vp-badge {
+  align-self: flex-start;
+  font-size: 0.75rem; font-weight: 700; color: var(--green);
+  background: rgba(16,185,129,0.12); padding: 2px 8px; border-radius: 6px;
 }
 
 /* ── Public trader search page (SearchPage.tsx) ──
