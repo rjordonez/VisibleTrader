@@ -4,6 +4,8 @@ import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell, Search } from 'lucide-
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
+import { useAlerts } from './useAlerts'
+import { timeAgo } from './helpers'
 import type { User } from '@supabase/supabase-js'
 import './app.css'
 
@@ -24,12 +26,15 @@ function TabLoading() {
   return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3, #6b7280)', fontSize: '0.875rem' }}>Loading…</div>
 }
 
+// Alerts intentionally isn't in here — it's reachable via the header bell
+// (see AlertsBell below) instead of a plain nav link, same reasoning as
+// the Terminal's own read-only Alerts tab: it's a notification surface,
+// not a page you navigate to browse.
 const navItems = [
   { id: 'home',        label: 'Home',        path: '/',            Icon: HomeIcon },
   { id: 'signals',     label: 'Signals',     path: '/signals',     Icon: Zap },
   { id: 'profits',     label: 'Profits',     path: '/profits',     Icon: TrendingUp },
   { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
-  { id: 'alerts',      label: 'Alerts',      path: '/alerts',      Icon: Bell },
   { id: 'lookup',      label: 'Lookup',      path: '/lookup',      Icon: Search },
 ]
 
@@ -63,6 +68,12 @@ export default function AppShell() {
   const [category, setCategory] = useState('all')
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  const [alertsOpen, setAlertsOpen] = useState(false)
+  const alertsRef = useRef<HTMLDivElement>(null)
+  // Owned here (not by AlertsPage) so it keeps running regardless of which
+  // tab is active — see useAlerts.ts. Both the bell's preview dropdown and
+  // the full /alerts page read from this one instance.
+  const alerts = useAlerts()
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null))
@@ -73,13 +84,14 @@ export default function AppShell() {
   }, [])
 
   useEffect(() => {
-    if (!userMenuOpen) return
+    if (!userMenuOpen && !alertsOpen) return
     const onClickOutside = (e: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setUserMenuOpen(false)
+      if (alertsRef.current && !alertsRef.current.contains(e.target as Node)) setAlertsOpen(false)
     }
     document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [userMenuOpen])
+  }, [userMenuOpen, alertsOpen])
 
   const signOut = async () => {
     await supabase.auth.signOut()
@@ -109,28 +121,66 @@ export default function AppShell() {
           </nav>
 
           {user && (
-            <div className="app-user-menu" ref={userMenuRef}>
-              <button
-                type="button"
-                className="app-avatar-btn"
-                onClick={() => setUserMenuOpen(o => !o)}
-                aria-label="Account menu"
-              >
-                <span className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</span>
-                {isProdDb && <span className="app-prod-dot" title="Connected to production data" />}
-              </button>
-              {userMenuOpen && (
-                <div className="app-user-dropdown">
-                  <Link
-                    to={settingsPath}
-                    className="app-user-dropdown-item"
-                    onClick={() => setUserMenuOpen(false)}
-                  >
-                    Settings
-                  </Link>
-                  <button className="app-user-dropdown-item danger" onClick={signOut}>Sign out</button>
-                </div>
-              )}
+            <div className="app-header-actions">
+              <div className="app-alerts-menu" ref={alertsRef}>
+                <button
+                  type="button"
+                  className="app-bell-btn"
+                  onClick={() => setAlertsOpen(o => !o)}
+                  aria-label="Alerts"
+                >
+                  <Bell size={18} />
+                  {alerts.history.length > 0 && (
+                    <span className="app-bell-badge">{alerts.history.length > 9 ? '9+' : alerts.history.length}</span>
+                  )}
+                </button>
+                {alertsOpen && (
+                  <div className="app-alerts-dropdown">
+                    <div className="app-alerts-dropdown-title">Alerts</div>
+                    {alerts.history.length === 0 ? (
+                      <div className="app-alerts-dropdown-empty">No alerts yet.</div>
+                    ) : (
+                      alerts.history.slice(0, 5).map(h => (
+                        <div key={h.id} className="app-alerts-dropdown-item">
+                          <div className="app-alerts-dropdown-text">{h.text}</div>
+                          <div className="app-alerts-dropdown-time">{timeAgo(new Date(h.ts).toISOString())}</div>
+                        </div>
+                      ))
+                    )}
+                    <Link
+                      to={dashboardPath('/alerts')}
+                      className="app-alerts-dropdown-showall"
+                      onClick={() => setAlertsOpen(false)}
+                    >
+                      Show all
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              <div className="app-user-menu" ref={userMenuRef}>
+                <button
+                  type="button"
+                  className="app-avatar-btn"
+                  onClick={() => setUserMenuOpen(o => !o)}
+                  aria-label="Account menu"
+                >
+                  <span className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</span>
+                  {isProdDb && <span className="app-prod-dot" title="Connected to production data" />}
+                </button>
+                {userMenuOpen && (
+                  <div className="app-user-dropdown">
+                    <Link
+                      to={settingsPath}
+                      className="app-user-dropdown-item"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      Settings
+                    </Link>
+                    <button className="app-user-dropdown-item danger" onClick={signOut}>Sign out</button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -138,11 +188,12 @@ export default function AppShell() {
 
       {/* Mobile-only fixed bottom tab bar — replaces the old hamburger +
           slide-in drawer. Settings/sign-out stay in the avatar dropdown
-          above, not duplicated down here. Alerts/Profits dropped from
-          this row (still reachable from the desktop nav) to keep it to
-          4 items on the narrower mobile width. */}
+          above, not duplicated down here. Profits dropped from this row
+          (still reachable from the desktop nav) to keep it to 4 items on
+          the narrower mobile width; Alerts is the header bell instead,
+          same as desktop. */}
       <nav className="app-mobile-nav-bottom">
-        {navItems.filter(({ id }) => id !== 'alerts' && id !== 'profits').map(({ id, label, path, Icon }) => {
+        {navItems.filter(({ id }) => id !== 'profits').map(({ id, label, path, Icon }) => {
           const target = dashboardPath(path)
           return (
             <Link
@@ -165,7 +216,7 @@ export default function AppShell() {
               <Route path="signals" element={<SignalsDemo category={category} onCategoryChange={setCategory} />} />
               <Route path="profits" element={<ProfitsPage />} />
               <Route path="leaderboard" element={<LeaderboardPage />} />
-              <Route path="alerts" element={<AlertsPage />} />
+              <Route path="alerts" element={<AlertsPage {...alerts} />} />
               <Route path="lookup" element={<LookupPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="trader/:wallet" element={<TraderDetailRoute />} />
