@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
-import { onTabVisible, traderLabel, profileUrl, fmtFull, fmtSigned, avatarGradient, avatarInitial } from './helpers'
+import { onTabVisible, traderLabel, fmtSigned, avatarGradient, avatarInitial } from './helpers'
 import { SkelBlock } from './Skeleton'
 
 /* ── Leaderboard ── */
@@ -19,7 +19,7 @@ interface LeaderboardRow {
 
 function SkelLeaderboardRow() {
   return (
-    <div className="lb-row">
+    <div className="lb-row lb-2col">
       <div className="lb-trader">
         <SkelBlock width={18} height={12} />
         <div className="sig-skel" style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0 }} />
@@ -29,7 +29,7 @@ function SkelLeaderboardRow() {
         </div>
       </div>
       <div className="lb-stats">
-        {[0, 1, 2].map(i => (
+        {[0, 1].map(i => (
           <div className="lb-col" key={i}>
             <div className="lb-col-stack">
               <SkelBlock height={14} width={70} style={{ marginLeft: 'auto', marginBottom: 6 }} />
@@ -95,9 +95,8 @@ function LeaderboardPage() {
 
         {(loading || (!error && rows.length > 0)) && (
           <div className="lb-table">
-            <div className="lb-head">
+            <div className="lb-head lb-2col">
               <div>Trader</div>
-              <div className="lb-col">Deployed</div>
               <div className="lb-col">PnL</div>
               <div className="lb-col">Win rate</div>
             </div>
@@ -106,12 +105,11 @@ function LeaderboardPage() {
 
             {!loading && rows.map((r, i) => {
               const winRate = r.won + r.lost > 0 ? (r.won / (r.won + r.lost)) * 100 : 0
-              const usdWinRate = r.deployed > 0 ? (r.won_usd / r.deployed) * 100 : 0
               const roi = r.deployed > 0 ? (r.net_profit / r.deployed) * 100 : 0
               const profitable = r.net_profit >= 0
               const initial = avatarInitial(r.wallet, r.wallet_name)
               return (
-                <div className="lb-row" key={r.wallet}>
+                <div className="lb-row lb-2col" key={r.wallet}>
                   <div className="lb-trader">
                     <span className="lb-rank">{i + 1}</span>
                     <div className="lb-avatar" style={{ background: avatarGradient(r.wallet) }}>{initial}</div>
@@ -122,23 +120,11 @@ function LeaderboardPage() {
                       >
                         {traderLabel(r.wallet, r.wallet_name)}
                       </a>
-                      <div className="lb-sub">
-                        {r.n} trades ·{' '}
-                        <a href={profileUrl(r.wallet)!} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>
-                          view ↗
-                        </a>
-                      </div>
+                      <div className="lb-sub">{r.n} trades</div>
                     </div>
                   </div>
 
                   <div className="lb-stats">
-                    <div className="lb-col" data-label="Deployed">
-                      <div className="lb-col-stack">
-                        <div className="lb-val">{fmtFull(r.deployed)}</div>
-                        <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{winRate.toFixed(0)}% win rate</div>
-                      </div>
-                    </div>
-
                     <div className="lb-col" data-label="PnL">
                       <div className="lb-col-stack">
                         <div className={`lb-val ${profitable ? 'g' : 'r'}`}>{fmtSigned(r.net_profit)}</div>
@@ -150,7 +136,7 @@ function LeaderboardPage() {
 
                     <div className="lb-col" data-label="Win rate">
                       <div className="lb-col-stack">
-                        <div className="lb-val">{usdWinRate.toFixed(0)}<span className="lb-val-suffix">% $-wtd</span></div>
+                        <div className="lb-val">{winRate.toFixed(0)}%</div>
                         <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{r.won}/{r.won + r.lost} resolved</div>
                       </div>
                     </div>

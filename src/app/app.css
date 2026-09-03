@@ -830,7 +830,9 @@
    a plain <table>, so PnL/win-rate can carry a colored secondary line the
    way the ticker/wins rows already do. Also reused (with the .lb-4col
    modifier) by the Live Ticker and Winners tabs, which need a 4th text
-   column for the market title instead of Leaderboard's 3 stat columns. */
+   column for the market title. Leaderboard itself uses .lb-2col — trimmed
+   from an earlier 3-stat-column version (Deployed/PnL/$-weighted win rate)
+   that was too much to scan at once down to just PnL + win rate. */
 .lb-table { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .lb-head, .lb-row {
   display: grid;
@@ -839,6 +841,7 @@
   align-items: center;
 }
 .lb-head.lb-4col, .lb-row.lb-4col { grid-template-columns: 1.5fr 1.9fr 1fr 1fr; }
+.lb-head.lb-2col, .lb-row.lb-2col { grid-template-columns: 2.4fr 1fr 1fr; }
 .lb-market { min-width: 0; text-align: left; }
 .lb-head {
   padding: 12px 14px;
@@ -901,10 +904,9 @@
   }
   .lb-stats {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 10px;
   }
-  .lb-row.lb-4col .lb-stats { grid-template-columns: repeat(2, 1fr); }
   .lb-row .lb-col {
     text-align: left;
     background: var(--bg);
