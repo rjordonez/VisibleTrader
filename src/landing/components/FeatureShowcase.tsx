@@ -88,7 +88,7 @@ export default function FeatureShowcase() {
 
           {/* Vetted picks */}
           <div className="showcase-card">
-            <span className="showcase-eyebrow">Vetted Picks</span>
+            <span className="showcase-eyebrow">Expert Picks</span>
             <h3 className="showcase-card-title">See group conviction</h3>
             <div className="showcase-mock showcase-mock-vetted">
               <div className="showcase-vp-row">

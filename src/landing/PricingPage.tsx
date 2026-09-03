@@ -19,7 +19,7 @@ const plans = [
     desc: 'Everything you need to follow real trading activity, live.',
     features: [
       { bold: 'Unlimited Live Ticker', rest: '' },
-      { bold: 'Vetted Picks', rest: 'with full price charts' },
+      { bold: 'Expert Picks', rest: 'with full price charts' },
       { bold: 'Leaderboard', rest: '+ trader detail pages' },
       { bold: 'Profits page', rest: 'with real, payout-adjusted P&L' },
       { bold: 'Browser Alerts', rest: 'on your watchlist' },

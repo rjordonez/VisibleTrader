@@ -441,6 +441,25 @@
   text-transform: uppercase; letter-spacing: 0.04em;
 }
 
+/* Filters stay collapsed by default (see filtersOpen in SignalsDemo.tsx) —
+   this toggle + badge is what's visible instead until someone actually
+   asks to see them, instead of every chip/slider always being in view. */
+.sig-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.sig-filters-toggle {
+  display: flex; align-items: center; gap: 7px;
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  padding: 7px 12px; font-size: 12.5px; font-weight: 600; color: var(--text-dim);
+  cursor: pointer; font-family: inherit;
+}
+.sig-filters-toggle:hover { border-color: rgba(255,255,255,0.2); color: var(--text); }
+.sig-filters-toggle.active { border-color: var(--blue); color: var(--text); }
+.sig-filters-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  background: var(--blue); color: #fff; font-size: 10px; font-weight: 700;
+  border-radius: 8px;
+}
+
 /* ── Featured hero + top movers sidebar ── */
 .sig-hero-row { display: grid; grid-template-columns: 1.8fr 1fr; gap: 16px; margin-bottom: 24px; }
 @media (max-width: 860px) { .sig-hero-row { grid-template-columns: 1fr; } }
