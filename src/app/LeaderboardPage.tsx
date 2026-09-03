@@ -137,7 +137,6 @@ function LeaderboardPage() {
                     <div className="lb-col" data-label="Win rate">
                       <div className="lb-col-stack">
                         <div className="lb-val">{winRate.toFixed(0)}%</div>
-                        <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{r.won}/{r.won + r.lost} resolved</div>
                       </div>
                     </div>
                   </div>
