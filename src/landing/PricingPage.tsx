@@ -4,7 +4,7 @@ import { Star, BadgeCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import posthog from '../lib/posthog'
 import { appUrl, marketingUrl } from '../lib/domains'
-import { hasGiftOffer } from '../lib/giftOffer'
+import { hasGiftOffer, clearGiftOffer } from '../lib/giftOffer'
 
 // const platformLogos = [
 //   { name: 'Polymarket', src: '/polymarket.png' },
@@ -92,6 +92,11 @@ export default function PricingPage() {
       return
     }
     posthog.capture('checkout_started', { billing_interval: 'weekly' })
+    // Only cleared here, not before — the not-signed-in branch above needs
+    // the flag to survive the signup round trip. This session already has
+    // the gift coupon baked in regardless of whether it's cleared, so
+    // clearing now just stops it from silently reapplying on a later visit.
+    if (isGift) clearGiftOffer()
     setCheckoutUrl(data.url)
   }
 

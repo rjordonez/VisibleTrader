@@ -20,3 +20,11 @@ export function captureGiftOffer() {
 export function hasGiftOffer(): boolean {
   return localStorage.getItem(GIFT_KEY) === '1'
 }
+
+// Called once a checkout session actually gets created with the gift
+// coupon applied — without this the flag stuck around forever, so every
+// later visit to /pricing on that same browser kept showing $0, not just
+// the one signup the link was meant for.
+export function clearGiftOffer() {
+  localStorage.removeItem(GIFT_KEY)
+}
