@@ -4,7 +4,6 @@ import { Star, BadgeCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import posthog from '../lib/posthog'
 import { appUrl, marketingUrl } from '../lib/domains'
-import { hasGiftOffer, clearGiftOffer } from '../lib/giftOffer'
 
 // const platformLogos = [
 //   { name: 'Polymarket', src: '/polymarket.png' },
@@ -38,11 +37,6 @@ export default function PricingPage() {
   const [checkingOut, setCheckingOut] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
-  // Set once on mount, not re-derived per render — a visitor who arrived via
-  // a ?gift=1 link keeps the offer for this visit even if the param itself
-  // isn't in the current URL (e.g. after returning from signup on the app
-  // subdomain). See giftOffer.ts.
-  const [isGift] = useState(() => hasGiftOffer())
 
   // The actual redirect is an effect, not inline in the handler below — a
   // full-page navigation is exactly the kind of external-system side effect
@@ -84,7 +78,7 @@ export default function PricingPage() {
       return
     }
     const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-      body: { price_id: priceId, gift: isGift },
+      body: { price_id: priceId },
     })
     if (error || !data?.url) {
       setCheckingOut(false)
@@ -92,11 +86,6 @@ export default function PricingPage() {
       return
     }
     posthog.capture('checkout_started', { billing_interval: 'weekly' })
-    // Only cleared here, not before — the not-signed-in branch above needs
-    // the flag to survive the signup round trip. This session already has
-    // the gift coupon baked in regardless of whether it's cleared, so
-    // clearing now just stops it from silently reapplying on a later visit.
-    if (isGift) clearGiftOffer()
     setCheckoutUrl(data.url)
   }
 
@@ -109,13 +98,9 @@ export default function PricingPage() {
 
       <div className="pricing-grid">
         {plans.map(plan => {
-          // Only Pro has a gift variant — Elite has no self-serve checkout
-          // (see plan.priceId below) and isGift never applies to it.
-          const introPrice = plan.name === 'Pro' && isGift ? '0' : plan.introPrice
-          const pct = introPrice && plan.recurringPrice
-            ? Math.round((1 - Number(introPrice) / Number(plan.recurringPrice)) * 100)
+          const pct = plan.introPrice && plan.recurringPrice
+            ? Math.round((1 - Number(plan.introPrice) / Number(plan.recurringPrice)) * 100)
             : null
-          const cta = plan.name === 'Pro' && isGift ? 'Start for free' : plan.cta
           return (
           <div key={plan.name} className="pricing-plan-stack">
             <div className={`pricing-card pricing-card-glow ${plan.highlighted ? 'pricing-card-pro' : ''}`}>
@@ -128,12 +113,12 @@ export default function PricingPage() {
 
               <p className="pricing-desc">{plan.desc}</p>
 
-              {introPrice ? (
+              {plan.introPrice ? (
                 <div className="pricing-price-block">
                   <div className="pricing-price-row">
                     <span className="pricing-just">Just</span>
                     <span className="pricing-price-strike">${plan.recurringPrice}</span>
-                    <span className="pricing-day-price">${introPrice}</span>
+                    <span className="pricing-day-price">${plan.introPrice}</span>
                     {pct !== null && <span className="pricing-discount-pill">-{pct}%</span>}
                   </div>
                   <div className="pricing-day-label">
@@ -156,11 +141,11 @@ export default function PricingPage() {
                   onClick={() => startCheckout(plan.priceId!)}
                   disabled={checkingOut}
                 >
-                  {checkingOut ? 'Starting checkout…' : cta}
+                  {checkingOut ? 'Starting checkout…' : plan.cta}
                 </button>
               ) : (
                 <a href={plan.href} className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}>
-                  {cta}
+                  {plan.cta}
                 </a>
               )}
               {plan.highlighted && checkoutError && (
