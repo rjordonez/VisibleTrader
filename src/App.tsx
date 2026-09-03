@@ -100,6 +100,12 @@ function MarketingRoutes() {
 }
 
 function AppRoutes() {
+  // Same reasoning as MarketingRoutes above — a ?gift=1 link pointing
+  // straight at app.visibletrader.com/pricing (the real same-origin
+  // checkout path signed-in users actually use, see the /pricing route's
+  // own comment below) needs this captured here too, not just on the
+  // marketing domain.
+  useEffect(() => { captureGiftOffer() }, [])
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
