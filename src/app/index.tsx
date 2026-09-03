@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell, Search } from 'lucide-react'
+import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
 import { useAlerts } from './useAlerts'
+import GlobalSearch from './GlobalSearch'
 import { timeAgo } from './helpers'
 import type { User } from '@supabase/supabase-js'
 import './app.css'
@@ -20,7 +21,6 @@ const LeaderboardPage = lazy(() => import('./LeaderboardPage'))
 const TraderDetailPage = lazy(() => import('./TraderDetailPage'))
 const AlertsPage = lazy(() => import('./AlertsPage'))
 const SettingsPage = lazy(() => import('./SettingsPage'))
-const LookupPage = lazy(() => import('./LookupPage'))
 
 function TabLoading() {
   return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3, #6b7280)', fontSize: '0.875rem' }}>Loading…</div>
@@ -35,7 +35,6 @@ const navItems = [
   { id: 'signals',     label: 'Signals',     path: '/signals',     Icon: Zap },
   { id: 'profits',     label: 'Profits',     path: '/profits',     Icon: TrendingUp },
   { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
-  { id: 'lookup',      label: 'Lookup',      path: '/lookup',      Icon: Search },
 ]
 
 // Wraps TraderDetailPage so it can live at a real /trader/:wallet URL —
@@ -122,6 +121,8 @@ export default function AppShell() {
 
           {user && (
             <div className="app-header-actions">
+              <GlobalSearch />
+
               <div className="app-alerts-menu" ref={alertsRef}>
                 <button
                   type="button"
@@ -217,7 +218,6 @@ export default function AppShell() {
               <Route path="profits" element={<ProfitsPage />} />
               <Route path="leaderboard" element={<LeaderboardPage />} />
               <Route path="alerts" element={<AlertsPage {...alerts} />} />
-              <Route path="lookup" element={<LookupPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="trader/:wallet" element={<TraderDetailRoute />} />
               <Route path="*" element={<Navigate to={dashboardPath('/')} replace />} />

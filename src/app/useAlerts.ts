@@ -62,7 +62,12 @@ export function useAlerts() {
         .catch(() => {})
     }
     load()
-    const interval = setInterval(load, 15000)
+    // 60s, not 15s — this now runs continuously app-wide (moved up from
+    // AlertsPage, see the file header comment) instead of only while that
+    // one page was open, so the old cadence meant far more frequent checks
+    // than before, not fewer — reported live as alerts feeling like they
+    // fire constantly.
+    const interval = setInterval(load, 60000)
     const unsubVisible = onTabVisible(load)
     return () => { cancelled = true; clearInterval(interval); unsubVisible() }
   }, [watchedWallets, permission, fire])
@@ -86,7 +91,8 @@ export function useAlerts() {
         .catch(() => {})
     }
     load()
-    const interval = setInterval(load, 15000)
+    // Same 60s reasoning as the ticker-alert effect above.
+    const interval = setInterval(load, 60000)
     const unsubVisible = onTabVisible(load)
     return () => { cancelled = true; clearInterval(interval); unsubVisible() }
   }, [minTier, permission, fire])

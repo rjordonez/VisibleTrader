@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Bell } from 'lucide-react'
 import { traderLabel, fmtFull, timeAgo } from './helpers'
 import type { AlertEvent, WalletWatch } from './useAlerts'
 
@@ -75,17 +76,24 @@ function AlertsPage({ watchedWallets, minTier, setMinTier, permission, requestPe
         {history.length === 0 ? (
           <div className="sig-empty">No alerts yet.</div>
         ) : (
-          <div className="sig-table-wrap">
-            <table className="sig-table">
-              <tbody>
-                {history.map(h => (
-                  <tr key={h.id}>
-                    <td>{h.text}</td>
-                    <td className="num" style={{ color: 'var(--text-dim)', width: 90 }}>{timeAgo(new Date(h.ts).toISOString())}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="lb-table">
+            {history.map(h => (
+              <div className="lb-row lb-1col" key={h.id}>
+                <div className="lb-trader">
+                  <div className="lb-avatar" style={{ background: 'var(--surface-2)', color: 'var(--blue)' }}>
+                    <Bell size={16} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="sig-q">{h.text}</div>
+                  </div>
+                </div>
+                <div className="lb-stats">
+                  <div className="lb-col">
+                    <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{timeAgo(new Date(h.ts).toISOString())}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
