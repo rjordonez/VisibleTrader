@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import LandingLayout from './landing/LandingLayout'
+import { captureGiftOffer } from './lib/giftOffer'
 
 // Route-level code splitting — every one of these used to be a static
 // top-level import, which meant the single JS bundle (1.2MB / 368KB gzipped,
@@ -68,6 +69,13 @@ function CrossDomainRedirect() {
 }
 
 function MarketingRoutes() {
+  // Captured here (not inside PricingPage) so a ?gift=1 link works no
+  // matter which marketing page it points to — including /signup, which
+  // immediately redirects cross-domain via CrossDomainRedirect below, so
+  // this has to run and persist to localStorage before that navigation
+  // fires. See giftOffer.ts for why localStorage instead of just reading
+  // the URL at checkout time.
+  useEffect(() => { captureGiftOffer() }, [])
   return (
     <Routes>
       <Route element={<LandingLayout />}>

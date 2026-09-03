@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { price_id } = await req.json()
+    const { price_id, gift } = await req.json()
     if (!price_id || !ALLOWED_PRICE_IDS.has(price_id)) {
       return new Response(JSON.stringify({ error: 'invalid price_id' }), {
         status: 400,
@@ -101,8 +101,19 @@ Deno.serve(async (req) => {
     // free-trial model with "$1 for week one, $40/week after." Any other
     // price (e.g. Elite, if it ever gets real self-serve checkout) keeps
     // the standard 7-day free trial instead.
+    //
+    // gift=true (set only when checkout was started via a ?gift=1 link, see
+    // giftOffer.ts) swaps in the 100%-off version of that same coupon
+    // instead — first week free rather than $1, same $40/week after.
+    // Stripe's Checkout API doesn't support both a pre-applied `discounts`
+    // entry and customer-facing promo-code entry (allow_promotion_codes) on
+    // the same session, so this is a server-decided swap, not something the
+    // customer types in themselves.
     if (price_id === Deno.env.get('STRIPE_PRICE_PRO_WEEKLY')) {
-      params.set('discounts[0][coupon]', Deno.env.get('STRIPE_COUPON_FIRST_WEEK')!)
+      const coupon = gift === true
+        ? Deno.env.get('STRIPE_COUPON_GIFT_FIRST_WEEK')!
+        : Deno.env.get('STRIPE_COUPON_FIRST_WEEK')!
+      params.set('discounts[0][coupon]', coupon)
     } else {
       params.set('subscription_data[trial_period_days]', '7')
     }
