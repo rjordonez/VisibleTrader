@@ -1618,17 +1618,17 @@ def main():
         raise SystemExit('DATABASE_URL not set — export it or pass --database-url '
                           '(Supabase Settings > Database > Connection string, session pooler, port 5432)')
 
-    # 14 — confirmed live AGAIN (2026-09-04) that the session-mode pooler's
-    # 15-connection ceiling (EMAXCONNSESSION) is still exactly 15: pool_size=18
-    # got every connection attempt refused outright ("max clients are limited
-    # to pool_size: 15") within seconds of restarting, taking the service
-    # completely offline (worse than the backlog it was meant to fix).
-    # Reverted immediately. 14 leaves 1 slot of headroom under the ceiling —
-    # confirmed NOT stale from 2026-08-26 despite a week of unrelated code
-    # changes; the ceiling is an account/plan-level Supabase setting, not
-    # something app code changes can move. Do not raise this again without
-    # first confirming a Supabase plan/pooler tier change on their end.
-    db = Database(args.database_url, pool_size=14)
+    # 32 (2026-09-04) — matches --workers exactly, so every worker can always
+    # get a connection without contention. The earlier 15-connection ceiling
+    # (EMAXCONNSESSION, pool_size=18 got refused outright) turned out to be
+    # Supavisor's own dashboard "Pool Size" setting for this project (Project
+    # Settings > Database > Connection Pooling), not a hard plan-tier limit —
+    # the Pro/Micro compute tier actually supports up to 60 direct database
+    # connections. Raised that dashboard setting to 40 first, leaving 8
+    # connections of headroom under it for everything else sharing this
+    # pooler (PostgREST, Auth, migrations, ad-hoc scripts). Do not raise
+    # pool_size here past whatever the dashboard setting currently is.
+    db = Database(args.database_url, pool_size=32)
 
     all_users = load_all_users(db)
     config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page
