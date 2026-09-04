@@ -72,6 +72,15 @@ stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trade
          # all" from the heartbeat alone. These make that distinction
          # visible without needing an external probe script.
          'price_change_seen': 0, 'book_seen': 0, 'other_events_seen': 0,
+         # Realtime-quota diagnostic (2026-09) — old_message_estimate counts
+         # what postgres_changes would have sent under the pre-broadcast
+         # design (one message per dirty-mark per old subscriber: 3 for
+         # opportunities, HomePage+Terminal+SignalsDemo; 1 for ticker,
+         # which only ever had one subscriber). broadcast_sends counts what
+         # actually goes out now. The ratio between them, measured against
+         # this same run's real traffic, is the real reduction — no need
+         # to wait on production quota numbers to see it.
+         'old_message_estimate': 0, 'broadcast_sends': 0,
          # Timing diagnostics (2026-08-26) — added to find where a
          # process_trade call actually spends its time under real on-chain
          # volume, instead of guessing at pool/worker sizes again. All in
@@ -1170,11 +1179,15 @@ _dirty_ticker_tx_hashes = set()  # tx_hash values touched since the last flush
 def mark_opportunity_dirty(condition_id, outcome):
     with _dirty_lock:
         _dirty_opportunities.add((condition_id, outcome))
+    with state_lock:
+        stats['old_message_estimate'] += 3  # HomePage + Terminal + SignalsDemo each had their own postgres_changes subscription
 
 
 def mark_ticker_dirty(tx_hash):
     with _dirty_lock:
         _dirty_ticker_tx_hashes.add(tx_hash)
+    with state_lock:
+        stats['old_message_estimate'] += 1  # ticker only ever had one subscriber, no duplication
 
 
 def broadcast_send(topic, event, payload):
@@ -1192,6 +1205,8 @@ def broadcast_send(topic, event, payload):
     })
     try:
         urllib.request.urlopen(req, timeout=10).read()
+        with state_lock:
+            stats['broadcast_sends'] += 1
     except urllib.error.URLError as e:
         print(f'  [broadcast] failed to send {topic}/{event}: {e}')
 
@@ -1714,6 +1729,8 @@ def main():
                         avg_trade_ms = stats['process_trade_ms'] / stats['process_trade_count'] if stats['process_trade_count'] else 0
                         avg_profile_ms = stats['profile_fetch_ms'] / stats['profile_fetch_count'] if stats['profile_fetch_count'] else 0
                         in_flight = stats['process_trade_submitted'] - stats['process_trade_count']
+                        old_est, sends = stats['old_message_estimate'], stats['broadcast_sends']
+                        reduction = f'{(1 - sends / old_est) * 100:.1f}%' if old_est else 'n/a'
                         print(f'[heartbeat] trades_seen={stats["trades_seen"]} '
                               f'roster_matches={stats["roster_matches"]} '
                               f'tier_crossings={n_opps} rpc_failures={stats["rpc_failures"]} '
@@ -1724,7 +1741,8 @@ def main():
                               f'avg_process_trade_ms={avg_trade_ms:.1f} (n={stats["process_trade_count"]}) '
                               f'avg_profile_fetch_ms={avg_profile_ms:.1f} '
                               f'(n={stats["profile_fetch_count"]}, cache_hits={stats["profile_fetch_cache_hits"]}) '
-                              f'executor_in_flight={in_flight}')
+                              f'executor_in_flight={in_flight} '
+                              f'old_message_estimate={old_est} broadcast_sends={sends} reduction={reduction}')
                     last_heartbeat = now
 
                 if now - last_prune > 600:  # every 10 min, keep the high-volume ticker table bounded
