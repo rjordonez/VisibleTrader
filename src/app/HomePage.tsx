@@ -6,6 +6,7 @@ import {
   categoryIcon, categoryLabel, signalsTag, fmtFull, fmtSigned, signalsTraderStatus, walletReturn,
   profileUrl, traderLabel, timeAgo, NAV_CATEGORIES,
 } from './helpers'
+import { onOpportunitiesBatch, mergeOpportunities } from './realtimeBroadcast'
 import { PriceChart } from './PriceChart'
 import { SkelHeroRow, SkelCardGrid } from './Skeleton'
 import { SignalModal } from './SignalModal'
@@ -51,28 +52,21 @@ function HomePage({ onOpenSignals, category, onCategoryChange }: {
         })
     }
     load()
-    // See SignalsDemo's identical pattern — opportunities_live is a view,
-    // so Realtime subscribes to `opportunities` (the only base table that
-    // needs watching, see SignalsDemo's fuller comment) instead and
-    // re-fetches on any change, debounced (trailing-edge) since
-    // mark-to-market ticks land on `opportunities` continuously across
-    // ~1,400 tracked markets; the interval stays as a fallback.
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null
-    const debouncedLoad = () => {
-      if (debounceTimer) clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(load, 1000)
-    }
-    const channel = supabase
-      .channel('home-opportunities-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedLoad)
-      .subscribe()
+    // live-signal-service.py already batches opportunities changes into one
+    // broadcast every ~5s (see BROADCAST_INTERVAL_SECONDS) — this merges
+    // that batch into already-loaded rows in place instead of refetching.
+    // A brand-new opportunity not yet in this page's list isn't picked up
+    // here; the 60s interval / tab-visibility refetch below still catches it.
+    const unsubBroadcast = onOpportunitiesBatch(rows => {
+      if (cancelled) return
+      setOpportunities(prev => mergeOpportunities(prev, rows))
+    })
     const interval = setInterval(load, 60000)
     const unsubVisible = onTabVisible(load)
     return () => {
       cancelled = true
       clearInterval(interval)
-      if (debounceTimer) clearTimeout(debounceTimer)
-      supabase.removeChannel(channel)
+      unsubBroadcast()
       unsubVisible()
     }
   }, [])

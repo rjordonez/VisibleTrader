@@ -7,6 +7,7 @@ import {
   categoryIcon, categoryLabel, gaugePct, gaugeColor, signalsTag, fmtFull, fmtSigned, isToday,
   profileUrl, traderLabel, timeAgo, marketUrl, avatarGradient, avatarInitial,
 } from './helpers'
+import { onOpportunitiesBatch, onTickerBatch } from './realtimeBroadcast'
 import { SignalModal } from './SignalModal'
 import { SkelCard, SkelLbRow } from './Skeleton'
 
@@ -154,34 +155,23 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
     }
     loadFirstPageRef.current = loadFirstPage
     loadFirstPage()
-    // opportunities_live is a view, so Realtime (which taps Postgres's
-    // replication stream on real tables) can't subscribe to it directly —
-    // instead, listen for changes on `opportunities` and re-fetch once one
-    // fires. Only `opportunities` needs watching: live-signal-service.py
-    // now writes opportunity_stats under the same lock as every
-    // opportunity_wallets write, and every one of those paths also touches
-    // `opportunities` (latest_price, last_updated, or is_current), so a
-    // wallet-level change is never invisible here. Mark-to-market price
-    // ticks land on `opportunities` continuously across ~1,400 tracked
-    // markets, so this debounces (trailing-edge) rather than firing on
-    // every single event. The interval stays as a fallback in case a
-    // realtime event is ever missed (dropped connection etc.).
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null
-    const debouncedRefresh = () => {
-      if (debounceTimer) clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(refreshKeepingDepth, 1000)
-    }
-    const channel = supabase
-      .channel('opportunities-live-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedRefresh)
-      .subscribe()
+    // opportunities_live is a filtered/sorted/paginated view of this page's
+    // own query (see buildQueryRef above), so a batched change can't just be
+    // merged in place — it might now belong at a different position, or no
+    // longer match the active filters. live-signal-service.py already
+    // batches opportunities writes into one broadcast every ~5s (see
+    // BROADCAST_INTERVAL_SECONDS), so this only needs to trigger one bounded
+    // refetch per batch instead of debouncing itself. The interval stays as
+    // a fallback in case a broadcast is ever missed (dropped connection etc.).
+    const unsubBroadcast = onOpportunitiesBatch(() => {
+      if (!cancelled) refreshKeepingDepth()
+    })
     const interval = setInterval(refreshKeepingDepth, 60000)
     const unsubVisible = onTabVisible(refreshKeepingDepth)
     return () => {
       cancelled = true
       clearInterval(interval)
-      if (debounceTimer) clearTimeout(debounceTimer)
-      supabase.removeChannel(channel)
+      unsubBroadcast()
       unsubVisible()
     }
   }, [])
@@ -225,31 +215,27 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
         .catch(() => { if (!cancelled) setTickerLoading(false) })
     }
     load()
-    const channel = supabase
-      .channel('ticker-changes')
-      // Prepends the inserted row straight from the realtime payload
-      // instead of refetching all 200 rows on every single insert — ticker
-      // is a high-frequency table (many trades/minute), so that refetch-
-      // per-row pattern (fine for the lower-frequency opportunities/
-      // opportunity_wallets tables elsewhere on this page) meant firing a
-      // fresh 200-row query almost continuously. Worse, any one of those
-      // racing fetches coming back empty (a momentary auth-token refresh,
-      // a network hiccup) would wipe the whole visible list and flash
-      // "Waiting for trades" even though nothing was actually wrong —
-      // reported live as "sometimes it just reloads... waiting for trades."
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticker' }, payload => {
-        if (cancelled) return
-        setTicker(prev => [payload.new as TickerTrade, ...prev].slice(0, 200))
+    // Merges the batch straight from the broadcast payload instead of
+    // refetching all 200 rows — live-signal-service.py already batches
+    // ticker writes into one broadcast every ~5s (see
+    // BROADCAST_INTERVAL_SECONDS), each batch carrying full rows for
+    // whatever tx_hashes changed (a new trade, or the same trade a moment
+    // later once wallet resolution lands — see update_ticker_wallet), so
+    // this upserts by id rather than assuming every row is a fresh insert.
+    const unsubBroadcast = onTickerBatch(rows => {
+      if (cancelled || rows.length === 0) return
+      setTicker(prev => {
+        const byId = new Map(prev.map(t => [t.id, t]))
+        for (const row of rows) byId.set(row.id, row)
+        return Array.from(byId.values()).sort((a, b) => b.id - a.id).slice(0, 200)
       })
-      .subscribe()
-    // Realtime is the primary delivery path — this interval is only a
-    // fallback in case a realtime event is ever missed, not the main way
-    // updates land, so it doesn't need to be aggressive. It used to be
-    // 3000ms, re-fetching all 200 rows every 3s regardless of whether
-    // anything changed, which was most of this page's Supabase egress.
+    })
+    // Broadcast is the primary delivery path — this interval is only a
+    // fallback in case a broadcast is ever missed, not the main way
+    // updates land, so it doesn't need to be aggressive.
     const interval = setInterval(load, 60000)
     const unsubVisible = onTabVisible(load)
-    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel); unsubVisible() }
+    return () => { cancelled = true; clearInterval(interval); unsubBroadcast(); unsubVisible() }
   }, [])
 
   // Wins feed — closed, profitable positions from tracked wallets only
