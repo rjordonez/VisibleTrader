@@ -6,6 +6,7 @@ import { useSubscriptionGate } from '../../lib/subscriptionGate'
 import type { User } from '@supabase/supabase-js'
 import type { Opportunity } from '../types'
 import { onTabVisible, byCategory, PAGE_SIZE } from '../helpers'
+import { onOpportunitiesBatch, mergeOpportunities } from '../realtimeBroadcast'
 import TerminalSidebar from './TerminalSidebar'
 import TerminalMarketView from './TerminalMarketView'
 import TerminalTraderView from './TerminalTraderView'
@@ -76,25 +77,19 @@ export default function Terminal() {
       })
     }
     load()
-    // Same "subscribe to the base table, refetch the view" pattern as
-    // HomePage/SignalsDemo — opportunities_live is a view, Realtime only
-    // fires on real tables.
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null
-    const debouncedLoad = () => {
-      if (debounceTimer) clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(load, 1000)
-    }
-    const channel = supabase
-      .channel('terminal-opportunities-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunities' }, debouncedLoad)
-      .subscribe()
+    // See HomePage's identical pattern/comment — live-signal-service.py
+    // batches opportunities changes into one broadcast every ~5s, merged
+    // into already-loaded rows here instead of refetching.
+    const unsubBroadcast = onOpportunitiesBatch(rows => {
+      if (cancelled) return
+      setOpportunities(prev => mergeOpportunities(prev, rows))
+    })
     const interval = setInterval(load, 60000)
     const unsubVisible = onTabVisible(load)
     return () => {
       cancelled = true
       clearInterval(interval)
-      if (debounceTimer) clearTimeout(debounceTimer)
-      supabase.removeChannel(channel)
+      unsubBroadcast()
       unsubVisible()
     }
   }, [])
