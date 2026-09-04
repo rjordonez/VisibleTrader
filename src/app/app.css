@@ -35,7 +35,10 @@
   left: 0;
   bottom: 0;
   width: var(--sidebar-width);
-  background: var(--shell-bg);
+  /* A shade lighter than --shell-bg (#050505) on purpose — against the
+     dimmed backdrop on mobile (rgba(0,0,0,0.6) over the page), the exact
+     shell color was nearly indistinguishable from the backdrop itself. */
+  background: #17181c;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   z-index: 50;
   overflow-y: auto;
@@ -113,6 +116,11 @@
   transition: color 0.12s, background 0.12s;
 }
 .app-sidebar-search .gsearch-trigger:hover { color: var(--text-1); background: rgba(255,255,255,0.04); border-color: transparent; }
+/* Overrides the generic max-width:900px collapse-to-icon rule further
+   down — the sidebar (and, on mobile, the drawer built from the same
+   markup) should keep the "Search" label regardless of viewport width;
+   only .app-sidebar-collapsed hides it, via a more specific rule below. */
+.app-sidebar-search .gsearch-trigger span { display: inline; }
 
 .app-sidebar-nav {
   flex: 1;
@@ -201,91 +209,100 @@
 .app-sidebar-collapsed .app-header-logo { text-align: center; padding: 0; font-size: 0.9rem; }
 .app-sidebar-collapsed .app-sidebar-search .gsearch-trigger { justify-content: center; }
 .app-sidebar-collapsed .app-sidebar-search .gsearch-trigger span { display: none; }
+.app-logo-short { display: none; }
+.app-sidebar-collapsed .app-logo-full { display: none; }
+.app-sidebar-collapsed .app-logo-short { display: inline; }
 
-/* Fixed bottom tab bar — mobile only, replaces the old hamburger + slide-
-   down dropdown. Settings/sign-out live in the avatar dropdown only (see
-   .app-user-menu below), which is why that no longer hides on mobile the
-   way it did when the hamburger drawer duplicated that access. */
-.app-mobile-nav-bottom {
-  display: none;
-}
+/* ── Mobile: compact top bar (always visible) + off-canvas drawer ──
+   The sidebar no longer morphs into a horizontal bar on mobile — it stays
+   the same full vertical layout as desktop, just slid off-screen via
+   transform until opened, as a pure overlay (.app-main's own margins never
+   change when it opens, see the 768px override on .app-sidebar itself).
+   This separate bar is what's normally visible instead: hamburger, logo,
+   and its own Search/Bell/Avatar instances (independent state from the
+   sidebar's copies of the same, same reasoning as AlertsBell/UserMenu
+   being reusable components). */
+.app-mobile-topbar { display: none; }
+.app-mobile-drawer-backdrop { display: none; }
+.app-mobile-drawer-close { display: none; }
 
 @media (max-width: 768px) {
-  /* Sidebar collapses back into a slim top bar on mobile — full nav list
-     is redundant with the bottom tab bar below, but search/bell/avatar
-     still need to be reachable, so the bar itself doesn't disappear, just
-     the link list inside it. */
-  .app-sidebar {
+  .app-mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: auto;
-    width: auto;
+    top: 0; left: 0; right: 0;
     height: 60px;
-    border-right: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    overflow: visible;
-  }
-  .app-sidebar-inner {
-    position: relative;
-    flex-direction: row;
-    align-items: center;
-    height: 100%;
     padding: 0 1rem;
-  }
-  .app-sidebar-brand-row { height: auto; margin: 0; padding: 0; border-bottom: none; }
-  .app-header-logo { padding: 0; }
-  .app-sidebar-nav { display: none; }
-  .app-sidebar-collapse-btn { display: none; }
-  .app-sidebar-bottom-user { display: none; }
-  .app-main { margin-left: 0; margin-top: 60px; min-height: calc(100vh - 60px); }
-
-  /* Search sits dead-center in the mobile bar regardless of how wide the
-     logo or the bell/avatar group are — a flex/auto-margin approach only
-     centers it relative to the leftover space between those two, not the
-     true middle of the bar, since logo and bell+avatar aren't equal
-     widths. Absolute-centering against .app-sidebar-inner (position:
-     relative, set above) sidesteps that. Bell/avatar stay in normal flex
-     flow (margin-left:auto on .app-sidebar-actions), unaffected since the
-     search trigger is taken out of flow here. */
-  .gsearch-trigger {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: auto;
-  }
-  .app-sidebar-search { margin-bottom: 0; }
-  .app-sidebar-search .gsearch-trigger span { display: inline; }
-
-  .app-mobile-nav-bottom {
-    display: flex;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 49;
     background: var(--shell-bg);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
-    padding: 0.4rem 0.25rem calc(0.4rem + env(safe-area-inset-bottom, 0px));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 60;
   }
-  .app-mobile-nav-bottom-item {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 3px;
-    padding: 4px 2px;
-    color: var(--text-3);
-    text-decoration: none;
-    font-size: 0.625rem;
-    font-weight: 600;
-    transition: color 0.15s;
+  .app-mobile-menu-btn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px; flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.08); background: none; color: var(--text-2);
+    font-size: 0.85rem; font-weight: 600; font-family: inherit;
+    border-radius: 8px; cursor: pointer;
   }
-  .app-mobile-nav-bottom-item.active { color: var(--text-1); }
+  .app-mobile-menu-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-1); }
+  .app-mobile-topbar-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 
-  /* Room for the fixed bottom bar so page content (and anything else
-     pinned to the viewport bottom) doesn't sit underneath it. */
-  .app-main { padding-bottom: 68px; }
+  .app-mobile-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 150;
+  }
+
+  /* Flush top-to-bottom (no inset gap), but the right edge — the open
+     side, opposite the hinge — stays rounded. */
+  .app-sidebar {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 280px;
+    max-width: 82vw;
+    border-right: none;
+    border-radius: 0 18px 18px 0;
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.5);
+    transform: translateX(-100%);
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 200;
+  }
+  .app-mobile-nav-open .app-sidebar { transform: translateX(0); }
+  .app-mobile-drawer-close {
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; flex-shrink: 0;
+    border: none; background: none; color: var(--text-2);
+    border-radius: 8px; cursor: pointer;
+  }
+  .app-mobile-drawer-close:hover { background: rgba(255,255,255,0.06); color: var(--text-1); }
+  .app-sidebar-collapse-btn { display: none; }
+
+  /* The drawer reuses the exact same markup as the desktop rail, so if
+     the desktop sidebar happens to be collapsed (a separate, persisted
+     preference — see sidebarCollapsed), all of .app-sidebar-collapsed's
+     icon-only styling would otherwise apply here too, even though the
+     drawer always has plenty of width for full labels. Re-expand
+     everything that rule hides, scoped to mobile only. */
+  .app-sidebar-collapsed .app-header-logo { display: block; }
+  .app-sidebar-collapsed .app-logo-full { display: inline; }
+  .app-sidebar-collapsed .app-logo-short { display: none; }
+  .app-sidebar-collapsed .app-sidebar-brand-row { justify-content: space-between; }
+  .app-sidebar-collapsed .app-nav-label { display: inline; }
+  .app-sidebar-collapsed .app-nav-item { justify-content: flex-start; }
+  .app-sidebar-collapsed .app-sidebar-search .gsearch-trigger { justify-content: flex-start; }
+  .app-sidebar-collapsed .app-sidebar-search .gsearch-trigger span { display: inline; }
+  .app-sidebar-collapsed .app-nav-section-label {
+    height: auto; margin: 18px 0 6px; padding: 0 0.6rem;
+    background: none; color: var(--text-3, #6b7280); overflow: visible;
+  }
+  .app-sidebar-collapsed .app-sidebar-bottom-user { align-items: stretch; }
+  .app-sidebar-collapsed .app-avatar-name,
+  .app-sidebar-collapsed .app-avatar-chevron { display: inline; }
 }
 
 /* Bell + avatar's own top bar, running alongside the sidebar rather than
@@ -314,21 +331,11 @@
 }
 .app-sidebar-actions-row { display: flex; align-items: center; gap: 8px; }
 
+/* Must come after the base rule above — same source-order lesson as
+   .app-main's fix. The compact mobile top bar already has its own
+   Bell/Avatar instances, so this would otherwise duplicate them. */
 @media (max-width: 768px) {
-  .app-sidebar-actions {
-    position: static;
-    height: auto;
-    background: none;
-    border-bottom: none;
-    padding: 0;
-    flex-direction: row;
-    align-items: center;
-    gap: 6px;
-    margin-top: 0;
-    padding-top: 0;
-    border-top: none;
-    margin-left: auto;
-  }
+  .app-sidebar-actions { display: none; }
 }
 
 .app-user-menu {
@@ -549,6 +556,14 @@
   transition: margin-left 0.45s cubic-bezier(0.4, 0, 0.2, 1);
   background: var(--shell-bg);
   padding: clamp(1.25rem, 4vw, 2rem) clamp(1rem, 4vw, 2.5rem);
+}
+/* Must come after the base rule above, not before — equal specificity
+   means source order decides, and an earlier media-scoped override still
+   loses to a later unconditional rule that also matches. This bit the
+   sidebar-width margin specifically: it kept winning on mobile despite
+   this override existing, just because it was declared further down. */
+@media (max-width: 768px) {
+  .app-main { margin-left: 0; margin-top: 60px; min-height: calc(100vh - 60px); }
 }
 
 /* Full-page variant of the .search-locked blur-gate (see the .search-locked

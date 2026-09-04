@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays } from 'lucide-react'
+import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, Menu, X } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -81,6 +81,61 @@ function UserMenu({ user, settingsPath, signOut, expanded = false }: {
   )
 }
 
+// Same reasoning as UserMenu — own state so this can be mounted twice
+// (sidebar + the compact mobile top bar) without one instance's open/
+// closed state fighting the other's.
+function AlertsBell({ alerts }: { alerts: ReturnType<typeof useAlerts> }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [open])
+
+  return (
+    <div className="app-alerts-menu" ref={ref}>
+      <button
+        type="button"
+        className="app-bell-btn"
+        onClick={() => setOpen(o => !o)}
+        aria-label="Alerts"
+      >
+        <Bell size={18} />
+        {alerts.history.length > 0 && (
+          <span className="app-bell-badge">{alerts.history.length > 9 ? '9+' : alerts.history.length}</span>
+        )}
+      </button>
+      {open && (
+        <div className="app-alerts-dropdown">
+          <div className="app-alerts-dropdown-title">Alerts</div>
+          {alerts.history.length === 0 ? (
+            <div className="app-alerts-dropdown-empty">No alerts yet.</div>
+          ) : (
+            alerts.history.slice(0, 5).map(h => (
+              <div key={h.id} className="app-alerts-dropdown-item">
+                <div className="app-alerts-dropdown-text">{h.text}</div>
+                <div className="app-alerts-dropdown-time">{timeAgo(new Date(h.ts).toISOString())}</div>
+              </div>
+            ))
+          )}
+          <Link
+            to={dashboardPath('/alerts')}
+            className="app-alerts-dropdown-showall"
+            onClick={() => setOpen(false)}
+          >
+            Show all
+          </Link>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TabLoading() {
   return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3, #6b7280)', fontSize: '0.875rem' }}>Loading…</div>
 }
@@ -133,12 +188,16 @@ export default function AppShell() {
   const { locked } = useSubscriptionGate()
   const [user, setUser] = useState<User | null>(null)
   const [category, setCategory] = useState('all')
-  const [alertsOpen, setAlertsOpen] = useState(false)
-  const alertsRef = useRef<HTMLDivElement>(null)
   // Persisted so the choice sticks across reloads/sessions, same pattern as
   // useAlerts.ts's localStorage-backed watchlist/tier state.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('vt_sidebar_collapsed') === '1')
   useEffect(() => { localStorage.setItem('vt_sidebar_collapsed', sidebarCollapsed ? '1' : '0') }, [sidebarCollapsed])
+  // Mobile-only — the sidebar itself becomes an off-canvas drawer there
+  // (see .app-sidebar's 768px override) instead of morphing into a top
+  // bar, so this just slides it in/out; .app-main is never touched by it,
+  // which is the whole point (a pure overlay, not a layout push).
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  useEffect(() => { setMobileNavOpen(false) }, [location.pathname])
   // Owned here (not by AlertsPage) so it keeps running regardless of which
   // tab is active — see useAlerts.ts. Both the bell's preview dropdown and
   // the full /alerts page read from this one instance.
@@ -152,15 +211,6 @@ export default function AppShell() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  useEffect(() => {
-    if (!alertsOpen) return
-    const onClickOutside = (e: MouseEvent) => {
-      if (alertsRef.current && !alertsRef.current.contains(e.target as Node)) setAlertsOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [alertsOpen])
-
   const signOut = async () => {
     await supabase.auth.signOut()
     navigate('/login')
@@ -169,11 +219,42 @@ export default function AppShell() {
   const settingsPath = dashboardPath('/settings')
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? 'app-sidebar-collapsed' : ''}`}>
+    <div className={`app-shell ${sidebarCollapsed ? 'app-sidebar-collapsed' : ''} ${mobileNavOpen ? 'app-mobile-nav-open' : ''}`}>
+      {/* Compact mobile-only top bar — separate element from .app-sidebar
+          now that the sidebar is a genuine off-canvas drawer (see its
+          768px override below) rather than morphing into this bar itself.
+          Own Search/Bell/Avatar instances, same reasoning as AlertsBell/
+          UserMenu being reusable: independent state from the sidebar's
+          copies so neither fights the other over one open flag. */}
+      <div className="app-mobile-topbar">
+        <button
+          type="button"
+          className="app-mobile-menu-btn"
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="Open menu"
+        >
+          <Menu size={20} />
+          <span>Menu</span>
+        </button>
+        {user && (
+          <div className="app-mobile-topbar-actions">
+            <AlertsBell alerts={alerts} />
+            <UserMenu user={user} settingsPath={settingsPath} signOut={signOut} />
+          </div>
+        )}
+      </div>
+
+      {mobileNavOpen && (
+        <div className="app-mobile-drawer-backdrop" onClick={() => setMobileNavOpen(false)} />
+      )}
+
       <aside className="app-sidebar">
         <div className="app-sidebar-inner">
           <div className="app-sidebar-brand-row">
-            <div className="app-header-logo">{sidebarCollapsed ? 'VT' : 'VisibleTrader.com'}</div>
+            <div className="app-header-logo">
+              <span className="app-logo-full">VisibleTrader.com</span>
+              <span className="app-logo-short">VT</span>
+            </div>
             <button
               type="button"
               className="app-sidebar-collapse-btn"
@@ -182,6 +263,14 @@ export default function AppShell() {
               title={sidebarCollapsed ? 'Expand' : 'Collapse'}
             >
               {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
+            <button
+              type="button"
+              className="app-mobile-drawer-close"
+              onClick={() => setMobileNavOpen(false)}
+              aria-label="Close menu"
+            >
+              <X size={18} />
             </button>
           </div>
           {user && <div className="app-sidebar-search"><GlobalSearch label="Search" /></div>}
@@ -239,70 +328,13 @@ export default function AppShell() {
           {user && (
             <div className="app-sidebar-actions">
               <div className="app-sidebar-actions-row">
-              <div className="app-alerts-menu" ref={alertsRef}>
-                <button
-                  type="button"
-                  className="app-bell-btn"
-                  onClick={() => setAlertsOpen(o => !o)}
-                  aria-label="Alerts"
-                >
-                  <Bell size={18} />
-                  {alerts.history.length > 0 && (
-                    <span className="app-bell-badge">{alerts.history.length > 9 ? '9+' : alerts.history.length}</span>
-                  )}
-                </button>
-                {alertsOpen && (
-                  <div className="app-alerts-dropdown">
-                    <div className="app-alerts-dropdown-title">Alerts</div>
-                    {alerts.history.length === 0 ? (
-                      <div className="app-alerts-dropdown-empty">No alerts yet.</div>
-                    ) : (
-                      alerts.history.slice(0, 5).map(h => (
-                        <div key={h.id} className="app-alerts-dropdown-item">
-                          <div className="app-alerts-dropdown-text">{h.text}</div>
-                          <div className="app-alerts-dropdown-time">{timeAgo(new Date(h.ts).toISOString())}</div>
-                        </div>
-                      ))
-                    )}
-                    <Link
-                      to={dashboardPath('/alerts')}
-                      className="app-alerts-dropdown-showall"
-                      onClick={() => setAlertsOpen(false)}
-                    >
-                      Show all
-                    </Link>
-                  </div>
-                )}
-              </div>
-
-              <UserMenu user={user} settingsPath={settingsPath} signOut={signOut} />
+                <AlertsBell alerts={alerts} />
+                <UserMenu user={user} settingsPath={settingsPath} signOut={signOut} />
               </div>
             </div>
           )}
         </div>
       </aside>
-
-      {/* Mobile-only fixed bottom tab bar — replaces the old hamburger +
-          slide-in drawer. Settings/sign-out stay in the avatar dropdown
-          above, not duplicated down here. Profits dropped from this row
-          (still reachable from the desktop nav) to keep it to 4 items on
-          the narrower mobile width; Alerts is the header bell instead,
-          same as desktop. */}
-      <nav className="app-mobile-nav-bottom">
-        {navItems.filter(({ id }) => id !== 'profits').map(({ id, label, path, Icon }) => {
-          const target = dashboardPath(path)
-          return (
-            <Link
-              key={id}
-              to={target}
-              className={`app-mobile-nav-bottom-item ${location.pathname === target ? 'active' : ''}`}
-            >
-              <Icon size={20} />
-              <span>{label}</span>
-            </Link>
-          )
-        })}
-      </nav>
 
       <main className={`app-main ${locked ? 'app-main-locked' : ''}`}>
         <div className={locked ? 'search-locked-bg' : undefined}>
