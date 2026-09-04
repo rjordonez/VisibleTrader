@@ -1,14 +1,16 @@
 import { supabase } from '../lib/supabase'
-import type { Opportunity, TickerTrade } from './types'
+import type { Opportunity } from './types'
 
-// live-signal-service.py batches opportunities/ticker writes into one
-// broadcast message per ~5s window (BROADCAST_INTERVAL_SECONDS) instead of
-// every write firing its own postgres_changes event — see the 2026-09
+// live-signal-service.py batches opportunities writes into one broadcast
+// message per ~5s window (BROADCAST_INTERVAL_SECONDS) instead of every
+// write firing its own postgres_changes event — see the 2026-09
 // Realtime-quota investigation: ~1,400 tracked markets ticking individually
 // blew through the message quota despite barely any real users, and three
 // separate frontend subscriptions to the same table tripled it further.
-// Each topic below opens exactly one channel, shared across every caller
-// (HomePage/Terminal/SignalsDemo), instead of one per component.
+// (ticker was originally batched the same way too, but its volume was
+// never actually the problem — it's back on plain postgres_changes, see
+// SignalsDemo.tsx.) This opens exactly one channel, shared across every
+// caller (Terminal/SignalsDemo), instead of one per component.
 function makeBatchTopic<T>(topic: string, event: string) {
   let channel: ReturnType<typeof supabase.channel> | null = null
   const listeners = new Set<(rows: T[]) => void>()
@@ -38,7 +40,6 @@ function makeBatchTopic<T>(topic: string, event: string) {
 }
 
 export const onOpportunitiesBatch = makeBatchTopic<Opportunity>('opportunities-batch', 'update')
-export const onTickerBatch = makeBatchTopic<TickerTrade>('ticker-batch', 'insert')
 
 export function opportunityKey(o: { condition_id: string; outcome: string }): string {
   return `${o.condition_id}::${o.outcome}`

@@ -6,7 +6,7 @@ import {
   categoryIcon, categoryLabel, fmtFull, fmtSigned, isToday,
   profileUrl, traderLabel, timeAgo, avatarGradient, avatarInitial,
 } from './helpers'
-import { onOpportunitiesBatch, onTickerBatch } from './realtimeBroadcast'
+import { onOpportunitiesBatch } from './realtimeBroadcast'
 import { SignalModal } from './SignalModal'
 import { SkelLbRow } from './Skeleton'
 
@@ -201,27 +201,24 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
         .catch(() => { if (!cancelled) setTickerLoading(false) })
     }
     load()
-    // Merges the batch straight from the broadcast payload instead of
-    // refetching all 200 rows — live-signal-service.py already batches
-    // ticker writes into one broadcast every ~5s (see
-    // BROADCAST_INTERVAL_SECONDS), each batch carrying full rows for
-    // whatever tx_hashes changed (a new trade, or the same trade a moment
-    // later once wallet resolution lands — see update_ticker_wallet), so
-    // this upserts by id rather than assuming every row is a fresh insert.
-    const unsubBroadcast = onTickerBatch(rows => {
-      if (cancelled || rows.length === 0) return
-      setTicker(prev => {
-        const byId = new Map(prev.map(t => [t.id, t]))
-        for (const row of rows) byId.set(row.id, row)
-        return Array.from(byId.values()).sort((a, b) => b.id - a.id).slice(0, 200)
+    // ticker's volume (~1 trade/sec, one subscriber) was never actually a
+    // Realtime-quota problem — unlike opportunities, it doesn't need
+    // batching, so it stays on a plain postgres_changes subscription and
+    // merges the inserted row straight from the payload instead of
+    // refetching all 200 rows on every insert.
+    const channel = supabase
+      .channel('ticker-changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticker' }, payload => {
+        if (cancelled) return
+        setTicker(prev => [payload.new as TickerTrade, ...prev].slice(0, 200))
       })
-    })
-    // Broadcast is the primary delivery path — this interval is only a
-    // fallback in case a broadcast is ever missed, not the main way
+      .subscribe()
+    // Realtime is the primary delivery path here — this interval is only a
+    // fallback in case a realtime event is ever missed, not the main way
     // updates land, so it doesn't need to be aggressive.
     const interval = setInterval(load, 60000)
     const unsubVisible = onTabVisible(load)
-    return () => { cancelled = true; clearInterval(interval); unsubBroadcast(); unsubVisible() }
+    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel); unsubVisible() }
   }, [])
 
   // Wins feed — closed, profitable positions from tracked wallets only
