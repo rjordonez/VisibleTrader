@@ -25,7 +25,7 @@ interface MarketResult {
 // the real <input>, not this button, same as the reference. Default state
 // (empty query) shows real "Top Traders"/"Trending Markets" suggestions
 // instead of nothing, so the modal never opens onto a blank screen.
-export default function GlobalSearch() {
+export default function GlobalSearch({ label = 'Search Traders or Markets' }: { label?: string }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -103,7 +103,7 @@ export default function GlobalSearch() {
     <>
       <button type="button" className="gsearch-trigger" onClick={() => setOpen(true)}>
         <Search size={15} />
-        <span>Search Traders or Markets</span>
+        <span>{label}</span>
       </button>
 
       {open && (

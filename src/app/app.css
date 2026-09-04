@@ -6,8 +6,9 @@
    this is a real, visible step up (RGB ~20 vs ~11). */
 .app-shell {
   --shell-bg: #050505;
+  --sidebar-width: 220px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   min-height: 100vh;
   background: var(--shell-bg);
   color: var(--text-1);
@@ -22,31 +23,48 @@
   outline: none;
 }
 
-/* ── Top header ──
-   Bar itself stays edge-to-edge (background/border read as one continuous
-   strip); the actual content is inset into a centered max-width column so
-   large screens get real side margins instead of the nav stretching wall
-   to wall — matches how much breathing room Polymarket leaves on the sides. */
-.app-header {
+/* ── Left sidebar ──
+   Fixed full-height column instead of a top bar — nav items stack
+   vertically, search/bell/avatar sit at the bottom of the same column.
+   Desktop only; collapses to the existing mobile bottom tab bar below
+   768px (see .app-mobile-nav-bottom) rather than trying to be a sidebar
+   on a narrow screen too. */
+.app-sidebar {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
-  height: 60px;
+  bottom: 0;
+  width: var(--sidebar-width);
   background: var(--shell-bg);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   z-index: 50;
+  overflow-y: auto;
+  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.app-header-inner {
-  max-width: 1600px;
-  margin: 0 auto;
+.app-sidebar-inner {
+  display: flex;
+  flex-direction: column;
   height: 100%;
+  min-height: 100%;
+  padding: 1.5rem 1rem;
+}
+
+/* Flush with .app-sidebar-actions' own 60px/border-bottom (see below) so
+   the two dividers line up into one continuous line across the sidebar
+   and the top bar, instead of reading as two separate, misaligned boxes.
+   Negative margin cancels .app-sidebar-inner's own padding just for this
+   row, so the border runs edge-to-edge like the top bar's does. */
+.app-sidebar-brand-row {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  /* Fluid instead of a breakpoint — scales continuously with viewport width
-     rather than needing a guessed pixel threshold to snap at. */
-  padding: 0 clamp(1rem, 4vw, 2.5rem);
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 60px;
+  margin: -1.5rem -1rem 1.5rem;
+  padding: 0 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .app-header-logo {
@@ -56,28 +74,59 @@
   color: var(--text-1);
   letter-spacing: -0.02em;
   white-space: nowrap;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+  padding: 0 0.5rem;
 }
 
-.app-header-nav {
+/* Second UserMenu instance (see index.tsx) pinned to the bottom of the
+   rail, above .app-sidebar-actions in the markup but visually below it
+   in effect since that block is position:fixed and out of this column's
+   flow — .app-sidebar-nav's flex:1 is what actually pushes this down. */
+.app-sidebar-bottom-user {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 1rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.app-sidebar-help { color: var(--text-2); }
+/* expanded is false when collapsed (see index.tsx), so the avatar always
+   falls back to the bare circle automatically — just needs centering. */
+.app-sidebar-collapsed .app-sidebar-bottom-user { align-items: center; }
+
+/* Search sits as its own icon-only item directly above the nav list (not
+   inside .app-sidebar-nav itself) so hiding that list on mobile — see the
+   768px query below — doesn't also hide search; it's centered separately
+   there instead. Styled to match .app-nav-item rather than the default
+   .gsearch-trigger pill, which was sized for the old horizontal top bar. */
+.app-sidebar-search { margin-bottom: 10px; }
+.app-sidebar-search .gsearch-trigger {
+  width: 100%; max-width: none;
+  background: none; border: none;
+  padding: 0.6rem 0.6rem;
+  border-radius: 8px;
+  color: var(--text-2);
+  transition: color 0.12s, background 0.12s;
+}
+.app-sidebar-search .gsearch-trigger:hover { color: var(--text-1); background: rgba(255,255,255,0.04); border-color: transparent; }
+
+.app-sidebar-nav {
   flex: 1;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 2px;
-  overflow-x: auto;
-  /* Explicit, not just relying on the default — overflow-x: auto with an
-     unset overflow-y computes overflow-y to auto too per spec, which was
-     clipping the active-tab underline below (a box-shadow, so it doesn't
-     affect layout/centering the way a border would). */
-  overflow-y: visible;
-  scrollbar-width: none;
 }
-.app-header-nav::-webkit-scrollbar { display: none; }
 
 .app-nav-item {
   display: flex;
   align-items: center;
-  padding: 0.5rem 0.75rem;
+  gap: 10px;
+  padding: 0.6rem 0.6rem;
+  border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-2);
@@ -86,18 +135,72 @@
   background: none;
   white-space: nowrap;
   text-decoration: none;
-  transition: color 0.12s;
+  transition: color 0.12s, background 0.12s;
 }
 
 .app-nav-item:hover {
   color: var(--text-1);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .app-nav-item.active {
   color: var(--text-1);
   font-weight: 600;
-  box-shadow: 0 2px 0 0 var(--accent);
+  background: rgba(255, 255, 255, 0.06);
 }
+
+.app-nav-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text-3, #6b7280);
+  padding: 0 0.6rem;
+  margin: 18px 0 6px;
+}
+.app-sidebar-collapsed .app-nav-section-label {
+  height: 1px;
+  margin: 14px 8px 13px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  color: transparent;
+}
+
+/* Collapse toggle — pinned to the bottom of the rail. Sits after .app-
+   sidebar-actions in the markup, but that element is position:fixed (see
+   below) and out of this column's flow, so margin-top:auto here still
+   correctly pushes just this button down against .app-sidebar-nav's own
+   flex:1, without needing the actions block accounted for. */
+.app-sidebar-collapse-btn {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.app-sidebar-collapse-btn:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.04); }
+
+/* Collapsed rail — icons only, no labels. --sidebar-width cascades into
+   both .app-sidebar's own width and .app-main/.app-sidebar-actions'
+   offset automatically, since all three already reference the same
+   variable rather than hardcoding 220px separately. Brand row stacks
+   (logo above toggle) instead of sitting side by side — 72px isn't wide
+   enough for both inline. */
+.app-shell.app-sidebar-collapsed { --sidebar-width: 72px; }
+/* Logo text hides rather than the row stacking vertically — stacking
+   would need more than 60px tall, breaking the flush alignment with
+   .app-sidebar-actions' own fixed 60px height. */
+.app-sidebar-collapsed .app-sidebar-brand-row { justify-content: center; }
+.app-sidebar-collapsed .app-header-logo { display: none; }
+.app-sidebar-collapsed .app-nav-label { display: none; }
+.app-sidebar-collapsed .app-nav-item { justify-content: center; }
+.app-sidebar-collapsed .app-header-logo { text-align: center; padding: 0; font-size: 0.9rem; }
+.app-sidebar-collapsed .app-sidebar-search .gsearch-trigger { justify-content: center; }
+.app-sidebar-collapsed .app-sidebar-search .gsearch-trigger span { display: none; }
 
 /* Fixed bottom tab bar — mobile only, replaces the old hamburger + slide-
    down dropdown. Settings/sign-out live in the avatar dropdown only (see
@@ -108,7 +211,50 @@
 }
 
 @media (max-width: 768px) {
-  .app-header-nav { display: none; }
+  /* Sidebar collapses back into a slim top bar on mobile — full nav list
+     is redundant with the bottom tab bar below, but search/bell/avatar
+     still need to be reachable, so the bar itself doesn't disappear, just
+     the link list inside it. */
+  .app-sidebar {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: auto;
+    width: auto;
+    height: 60px;
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: visible;
+  }
+  .app-sidebar-inner {
+    position: relative;
+    flex-direction: row;
+    align-items: center;
+    height: 100%;
+    padding: 0 1rem;
+  }
+  .app-sidebar-brand-row { height: auto; margin: 0; padding: 0; border-bottom: none; }
+  .app-header-logo { padding: 0; }
+  .app-sidebar-nav { display: none; }
+  .app-sidebar-collapse-btn { display: none; }
+  .app-sidebar-bottom-user { display: none; }
+  .app-main { margin-left: 0; margin-top: 60px; min-height: calc(100vh - 60px); }
+
+  /* Search sits dead-center in the mobile bar regardless of how wide the
+     logo or the bell/avatar group are — a flex/auto-margin approach only
+     centers it relative to the leftover space between those two, not the
+     true middle of the bar, since logo and bell+avatar aren't equal
+     widths. Absolute-centering against .app-sidebar-inner (position:
+     relative, set above) sidesteps that. Bell/avatar stay in normal flex
+     flow (margin-left:auto on .app-sidebar-actions), unaffected since the
+     search trigger is taken out of flow here. */
+  .gsearch-trigger {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: auto;
+  }
+  .app-sidebar-search { margin-bottom: 0; }
+  .app-sidebar-search .gsearch-trigger span { display: inline; }
 
   .app-mobile-nav-bottom {
     display: flex;
@@ -142,17 +288,47 @@
   .app-main { padding-bottom: 68px; }
 }
 
-/* Wraps the bell + avatar as one group — .app-header-nav supplies the
-   flex:1 spacer that pushes this to the right edge on desktop, but that
-   nav is display:none on mobile, so this carries its own margin-left:auto
-   (moved here from .app-user-menu, now that there's a second item in the
-   group) to still land at the top-right corner on mobile. */
-.app-header-actions {
+/* Bell + avatar's own top bar, running alongside the sidebar rather than
+   inside it — still physically nested in .app-sidebar-inner in the markup
+   (so it shares the same refs/dropdown state as everywhere else, no
+   duplicated interactive elements), but position:fixed detaches it from
+   that parent's box entirely and places it as a real strip starting where
+   the sidebar ends. On mobile the sidebar itself becomes the top bar, so
+   this reverts to sitting normally inside it instead (see the 768px
+   override below). */
+.app-sidebar-actions {
+  position: fixed;
+  top: 0;
+  left: var(--sidebar-width);
+  right: 0;
+  height: 60px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  margin-left: auto;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 clamp(1rem, 4vw, 2rem);
+  background: var(--shell-bg);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 40;
+  transition: left 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.app-sidebar-actions-row { display: flex; align-items: center; gap: 8px; }
+
+@media (max-width: 768px) {
+  .app-sidebar-actions {
+    position: static;
+    height: auto;
+    background: none;
+    border-bottom: none;
+    padding: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    margin-left: auto;
+  }
 }
 
 .app-user-menu {
@@ -263,11 +439,35 @@
 .app-avatar-btn {
   position: relative;
   display: flex;
+  align-items: center;
   border: none;
   background: none;
   padding: 0;
   cursor: pointer;
 }
+
+/* Sidebar-bottom placement (see UserMenu's expanded prop) — full-width row
+   matching .app-nav-item's own hover/padding instead of a bare circle. */
+.app-avatar-btn-expanded {
+  width: 100%;
+  gap: 10px;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  color: var(--text-2);
+  transition: color 0.12s, background 0.12s;
+}
+.app-avatar-btn-expanded:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.04); }
+.app-avatar-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-avatar-chevron { flex-shrink: 0; opacity: 0.6; }
 
 .app-avatar {
   width: 32px;
@@ -334,24 +534,20 @@
 
 /* ── Main Content ── */
 .app-main {
+  /* .app-sidebar is position:fixed, so it's out of .app-shell's flex flow
+     entirely — .app-main would otherwise span the full viewport width
+     underneath it. This margin is what actually reserves the sidebar's
+     space; individual pages cap their own inner content width (e.g.
+     .sig-panel) rather than this element centering a max-width column the
+     way the old top-bar layout did. */
+  margin-left: var(--sidebar-width);
   margin-top: 60px;
   flex: 1;
-  /* The actual bug: .app-main is a flex item of .app-shell (column-direction,
-     default align-items:stretch), but margin-left/right:auto — needed to
-     center it once max-width:1600px caps out on huge screens — puts auto
-     margins on the cross axis. Per the flexbox spec, cross-axis auto margins
-     disable stretch and fall back to shrink-to-fit sizing based on content
-     instead of the container. That's why this was measuring ~880px on a
-     411px viewport regardless of any content-level fix: the container itself
-     was never being sized to the viewport in the first place. Explicit
-     width:100% overrides that fallback and forces the intended stretch. */
-  width: 100%;
+  width: auto;
   min-width: 0;
   min-height: calc(100vh - 60px);
+  transition: margin-left 0.45s cubic-bezier(0.4, 0, 0.2, 1);
   background: var(--shell-bg);
-  max-width: 1600px;
-  margin-left: auto;
-  margin-right: auto;
   padding: clamp(1.25rem, 4vw, 2rem) clamp(1rem, 4vw, 2.5rem);
 }
 
@@ -501,6 +697,119 @@
 .sig-mover-title { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sig-mover-title .sig-out { color: var(--text-dim); font-weight: 500; }
 .sig-mover-amt { font-size: 12.5px; font-weight: 700; color: var(--green); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+/* ── Home (HomePage.tsx) — a launcher grid into the real product areas
+   (Signals/Terminal/Leaderboard/Profits/Alerts) instead of a duplicate
+   dashboard. Shape borrowed from a competitor reference (big icon + bold
+   title + one-line description, 2 large tiles over 3 smaller ones), kept
+   in this app's own dark surface/border tokens rather than their light
+   theme so it doesn't clash with the rest of the product. ── */
+.home-welcome { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 20px; }
+.home-tile-grid { display: flex; flex-direction: column; gap: 14px; }
+.home-tile-row { display: flex; gap: 14px; }
+.home-tile-row-small { flex-wrap: wrap; }
+.home-tile {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  height: 280px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.home-tile:hover { border-color: rgba(255,255,255,0.2); transform: translateY(-1px); }
+.home-tile-large { padding: 44px; }
+.home-tile-badge {
+  position: absolute; top: 20px; right: 20px;
+  font-size: 11px; font-weight: 700; color: var(--blue);
+  background: rgba(47,111,237,0.12); border: 1px solid rgba(47,111,237,0.3);
+  border-radius: 100px; padding: 5px 12px;
+}
+.home-tile-head { display: flex; align-items: center; gap: 16px; }
+.home-tile-icon {
+  width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.home-tile-large .home-tile-icon { width: 68px; height: 68px; border-radius: 16px; }
+.home-tile-title { font-size: 19px; font-weight: 800; letter-spacing: -0.01em; }
+.home-tile-large .home-tile-title { font-size: 30px; }
+.home-tile-desc { font-size: 13.5px; color: var(--text-dim); line-height: 1.4; }
+.home-tile-large .home-tile-desc { font-size: 14.5px; }
+@media (max-width: 700px) {
+  .home-tile-row { flex-direction: column; }
+  .home-tile-large { padding: 32px; }
+}
+
+/* ── Journal (JournalPage.tsx) — manually-entered daily P&L calendar ── */
+.journal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.journal-month-nav { display: flex; align-items: center; gap: 10px; }
+.journal-nav-btn {
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 7px; background: none; color: var(--text-dim);
+  cursor: pointer; transition: color 0.12s, background 0.12s;
+}
+.journal-nav-btn:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.journal-month-label { font-size: 15px; font-weight: 700; min-width: 150px; text-align: center; }
+.journal-month-total { font-size: 13.5px; font-weight: 700; }
+.journal-month-total.g { color: var(--green); }
+.journal-month-total.r { color: var(--red); }
+
+.journal-weekdays {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+  font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em;
+  margin-bottom: 8px; text-align: center;
+}
+.journal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.journal-cell {
+  aspect-ratio: 1; min-height: 64px;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between;
+  padding: 8px; border-radius: 8px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  cursor: pointer; font-family: inherit; transition: border-color 0.12s;
+}
+.journal-cell:hover { border-color: rgba(255,255,255,0.2); }
+.journal-cell-blank { background: none; border: none; cursor: default; }
+.journal-cell-today { border-color: var(--blue); }
+.journal-cell-day { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+.journal-cell-amt { font-size: 12px; font-weight: 700; align-self: flex-end; }
+.journal-cell-win { background: rgba(0, 209, 122, 0.08); }
+.journal-cell-win .journal-cell-amt { color: var(--green); }
+.journal-cell-loss { background: rgba(255, 59, 92, 0.08); }
+.journal-cell-loss .journal-cell-amt { color: var(--red); }
+
+.journal-editor-backdrop {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.journal-editor {
+  width: 100%; max-width: 360px;
+  background: var(--surface-2, #14161d); border: 1px solid var(--border);
+  border-radius: 14px; padding: 20px;
+}
+.journal-editor-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.journal-editor-title { font-size: 15px; font-weight: 700; }
+.journal-editor-close {
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  border: none; background: none; color: var(--text-faint); cursor: pointer; border-radius: 6px;
+}
+.journal-editor-close:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.journal-note-input { width: 100%; resize: vertical; font-family: inherit; }
+.journal-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+@media (max-width: 560px) {
+  .journal-cell { min-height: 48px; padding: 6px; }
+  .journal-cell-amt { font-size: 10.5px; }
+}
 
 /* ── Dense grid (Home's "All signals" section — more, smaller cards) ── */
 .sig-grid-dense { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; padding: 4px 0; }

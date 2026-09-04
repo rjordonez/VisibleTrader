@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell } from 'lucide-react'
+import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -21,6 +21,65 @@ const LeaderboardPage = lazy(() => import('./LeaderboardPage'))
 const TraderDetailPage = lazy(() => import('./TraderDetailPage'))
 const AlertsPage = lazy(() => import('./AlertsPage'))
 const SettingsPage = lazy(() => import('./SettingsPage'))
+const JournalPage = lazy(() => import('./JournalPage'))
+
+// Self-contained (own state/ref/outside-click handling) rather than driven
+// by AppShell-level state, specifically so it can be mounted twice — once
+// in the top bar, once pinned to the bottom of the sidebar — without both
+// instances opening/closing together the way sharing one boolean would.
+function UserMenu({ user, settingsPath, signOut, expanded = false }: {
+  user: User
+  settingsPath: string
+  signOut: () => void
+  // Avatar + name + chevron (sidebar-bottom placement) vs. just the bare
+  // avatar circle (top-bar placement, where horizontal space is tighter).
+  expanded?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const displayName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Account'
+
+  useEffect(() => {
+    if (!open) return
+    const onClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [open])
+
+  return (
+    <div className="app-user-menu" ref={ref}>
+      <button
+        type="button"
+        className={`app-avatar-btn ${expanded ? 'app-avatar-btn-expanded' : ''}`}
+        onClick={() => setOpen(o => !o)}
+        aria-label="Account menu"
+      >
+        <span className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</span>
+        {isProdDb && <span className="app-prod-dot" title="Connected to production data" />}
+        {expanded && (
+          <>
+            <span className="app-avatar-name">{displayName}</span>
+            <ChevronDown size={14} className="app-avatar-chevron" />
+          </>
+        )}
+      </button>
+      {open && (
+        <div className="app-user-dropdown">
+          <Link
+            to={settingsPath}
+            className="app-user-dropdown-item"
+            onClick={() => setOpen(false)}
+          >
+            Settings
+          </Link>
+          <button className="app-user-dropdown-item danger" onClick={signOut}>Sign out</button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function TabLoading() {
   return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3, #6b7280)', fontSize: '0.875rem' }}>Loading…</div>
@@ -35,6 +94,15 @@ const navItems = [
   { id: 'signals',     label: 'Signals',     path: '/signals',     Icon: Zap },
   { id: 'profits',     label: 'Profits',     path: '/profits',     Icon: TrendingUp },
   { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
+]
+
+// Own group, own section label — separate from the tracked-wallet pages
+// above since this is the user's own self-reported data, not anything the
+// live-signal-service computes. Left out of the mobile bottom tab bar
+// (same treatment Profits already gets there) to keep that row to 3 items;
+// still reachable from the sidebar/desktop.
+const personalNavItems = [
+  { id: 'journal', label: 'Journal', path: '/journal', Icon: CalendarDays },
 ]
 
 // Wraps TraderDetailPage so it can live at a real /trader/:wallet URL —
@@ -65,10 +133,12 @@ export default function AppShell() {
   const { locked } = useSubscriptionGate()
   const [user, setUser] = useState<User | null>(null)
   const [category, setCategory] = useState('all')
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const userMenuRef = useRef<HTMLDivElement>(null)
   const [alertsOpen, setAlertsOpen] = useState(false)
   const alertsRef = useRef<HTMLDivElement>(null)
+  // Persisted so the choice sticks across reloads/sessions, same pattern as
+  // useAlerts.ts's localStorage-backed watchlist/tier state.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('vt_sidebar_collapsed') === '1')
+  useEffect(() => { localStorage.setItem('vt_sidebar_collapsed', sidebarCollapsed ? '1' : '0') }, [sidebarCollapsed])
   // Owned here (not by AlertsPage) so it keeps running regardless of which
   // tab is active — see useAlerts.ts. Both the bell's preview dropdown and
   // the full /alerts page read from this one instance.
@@ -83,14 +153,13 @@ export default function AppShell() {
   }, [])
 
   useEffect(() => {
-    if (!userMenuOpen && !alertsOpen) return
+    if (!alertsOpen) return
     const onClickOutside = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setUserMenuOpen(false)
       if (alertsRef.current && !alertsRef.current.contains(e.target as Node)) setAlertsOpen(false)
     }
     document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [userMenuOpen, alertsOpen])
+  }, [alertsOpen])
 
   const signOut = async () => {
     await supabase.auth.signOut()
@@ -100,29 +169,76 @@ export default function AppShell() {
   const settingsPath = dashboardPath('/settings')
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div className="app-header-inner">
-          <div className="app-header-logo">VisibleTrader.com</div>
-          <nav className="app-header-nav">
-            {navItems.map(({ id, label, path }) => {
+    <div className={`app-shell ${sidebarCollapsed ? 'app-sidebar-collapsed' : ''}`}>
+      <aside className="app-sidebar">
+        <div className="app-sidebar-inner">
+          <div className="app-sidebar-brand-row">
+            <div className="app-header-logo">{sidebarCollapsed ? 'VT' : 'VisibleTrader.com'}</div>
+            <button
+              type="button"
+              className="app-sidebar-collapse-btn"
+              onClick={() => setSidebarCollapsed(c => !c)}
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={sidebarCollapsed ? 'Expand' : 'Collapse'}
+            >
+              {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
+          </div>
+          {user && <div className="app-sidebar-search"><GlobalSearch label="Search" /></div>}
+          <nav className="app-sidebar-nav">
+            {navItems.map(({ id, label, path, Icon }) => {
               const target = dashboardPath(path)
               return (
                 <Link
                   key={id}
                   to={target}
+                  title={label}
                   className={`app-nav-item ${location.pathname === target ? 'active' : ''}`}
                 >
-                  {label}
+                  <Icon size={17} />
+                  <span className="app-nav-label">{label}</span>
+                </Link>
+              )
+            })}
+
+            <div className="app-nav-section-label">Personal</div>
+            {personalNavItems.map(({ id, label, path, Icon }) => {
+              const target = dashboardPath(path)
+              return (
+                <Link
+                  key={id}
+                  to={target}
+                  title={label}
+                  className={`app-nav-item ${location.pathname === target ? 'active' : ''}`}
+                >
+                  <Icon size={17} />
+                  <span className="app-nav-label">{label}</span>
                 </Link>
               )
             })}
           </nav>
 
+          {/* Second UserMenu instance — same component, independent state
+              from the one in .app-sidebar-actions below, so this can sit at
+              the bottom of the rail without the two fighting over one open/
+              closed flag. */}
           {user && (
-            <div className="app-header-actions">
-              <GlobalSearch />
+            <div className="app-sidebar-bottom-user">
+              <a
+                href="mailto:visibletradehq@gmail.com"
+                title="Help"
+                className="app-nav-item app-sidebar-help"
+              >
+                <HelpCircle size={17} />
+                <span className="app-nav-label">Help</span>
+              </a>
+              <UserMenu user={user} settingsPath={settingsPath} signOut={signOut} expanded={!sidebarCollapsed} />
+            </div>
+          )}
 
+          {user && (
+            <div className="app-sidebar-actions">
+              <div className="app-sidebar-actions-row">
               <div className="app-alerts-menu" ref={alertsRef}>
                 <button
                   type="button"
@@ -159,33 +275,12 @@ export default function AppShell() {
                 )}
               </div>
 
-              <div className="app-user-menu" ref={userMenuRef}>
-                <button
-                  type="button"
-                  className="app-avatar-btn"
-                  onClick={() => setUserMenuOpen(o => !o)}
-                  aria-label="Account menu"
-                >
-                  <span className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</span>
-                  {isProdDb && <span className="app-prod-dot" title="Connected to production data" />}
-                </button>
-                {userMenuOpen && (
-                  <div className="app-user-dropdown">
-                    <Link
-                      to={settingsPath}
-                      className="app-user-dropdown-item"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      Settings
-                    </Link>
-                    <button className="app-user-dropdown-item danger" onClick={signOut}>Sign out</button>
-                  </div>
-                )}
+              <UserMenu user={user} settingsPath={settingsPath} signOut={signOut} />
               </div>
             </div>
           )}
         </div>
-      </header>
+      </aside>
 
       {/* Mobile-only fixed bottom tab bar — replaces the old hamburger +
           slide-in drawer. Settings/sign-out stay in the avatar dropdown
@@ -213,12 +308,13 @@ export default function AppShell() {
         <div className={locked ? 'search-locked-bg' : undefined}>
           <Suspense fallback={<TabLoading />}>
             <Routes>
-              <Route index element={<HomePage onOpenSignals={() => navigate(dashboardPath('/signals'))} category={category} onCategoryChange={setCategory} />} />
+              <Route index element={<HomePage user={user} />} />
               <Route path="signals" element={<SignalsDemo category={category} onCategoryChange={setCategory} />} />
               <Route path="profits" element={<ProfitsPage />} />
               <Route path="leaderboard" element={<LeaderboardPage />} />
               <Route path="alerts" element={<AlertsPage {...alerts} />} />
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="journal" element={<JournalPage />} />
               <Route path="trader/:wallet" element={<TraderDetailRoute />} />
               <Route path="*" element={<Navigate to={dashboardPath('/')} replace />} />
             </Routes>
