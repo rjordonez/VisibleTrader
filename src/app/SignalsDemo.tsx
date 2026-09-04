@@ -380,16 +380,15 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
   // also left duplicate React keys (same wallet+market+outcome+closed_at
   // rendered twice). Map preserves first-seen order, which is the most
   // recent occurrence since filteredWins is already sorted desc.
-  const mergedWinsMap = new Map<string, WalletPosition & { legCount: number }>()
+  const mergedWinsMap = new Map<string, WalletPosition>()
   for (const w of filteredWins) {
     const gkey = `${w.wallet}::${w.condition_id}::${w.outcome}`
     const existing = mergedWinsMap.get(gkey)
     if (existing) {
       existing.usd += w.usd
       existing.profit += w.profit
-      existing.legCount += 1
     } else {
-      mergedWinsMap.set(gkey, { ...w, legCount: 1 })
+      mergedWinsMap.set(gkey, { ...w })
     }
   }
   const mergedWins = Array.from(mergedWinsMap.values())
@@ -440,9 +439,9 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
           )}
 
           <div className="sig-seg">
-            <div className={tab === 'ticker' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('ticker')}>Live Ticker</div>
-            <div className={tab === 'wins' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('wins')}>Winners</div>
             <div className={tab === 'vetted' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('vetted')}>Expert Picks</div>
+            <div className={tab === 'wins' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('wins')}>Recent Winners</div>
+            <div className={tab === 'ticker' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('ticker')}>Live Ticker</div>
           </div>
 
           <div className="sig-toolbar">
@@ -580,10 +579,7 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
                       ) : (
                         <span className="lb-name">someone</span>
                       )}
-                      <div className="lb-sub">
-                        {t.roster_tagged ? <span className="sig-trk" style={{ marginRight: 5 }}>Tracked</span> : null}
-                        {timeAgo(t.ts)}
-                      </div>
+                      <div className="lb-sub">{timeAgo(t.ts)}</div>
                     </div>
                   </div>
 
@@ -656,7 +652,6 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
                     <div className="lb-col" data-label="Staked">
                       <div className="lb-col-stack">
                         <div className="lb-val">{fmtFull(w.usd)}</div>
-                        <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{w.legCount > 1 ? `${w.legCount} legs` : '1 leg'}</div>
                       </div>
                     </div>
                   </div>
@@ -687,8 +682,9 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
                   <div className="lb-trader">
                     <div className="lb-avatar" style={{ background: ic.bg }}>{ic.emoji}</div>
                     <div style={{ minWidth: 0 }}>
-                      <div className="lb-name">{o.wallet_count} top trader{o.wallet_count > 1 ? 's' : ''}</div>
-                      <div className="lb-sub">{categoryLabel(o.category ?? 'other')}</div>
+                      <div className="lb-name">
+                        {o.wallet_count > 1 ? `${o.wallet_count} expert traders agree` : '1 top trader'}
+                      </div>
                     </div>
                   </div>
 
@@ -700,7 +696,6 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
                     <div className="lb-col" data-label="Profit">
                       <div className="lb-col-stack">
                         <div className={o.total_profit >= 0 ? 'lb-val g' : 'lb-val r'}>{fmtSigned(o.total_profit)}</div>
-                        <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{Math.round(o.latest_price * 100)}¢</div>
                       </div>
                     </div>
 

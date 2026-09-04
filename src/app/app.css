@@ -35,7 +35,10 @@
   left: 0;
   bottom: 0;
   width: var(--sidebar-width);
-  background: var(--shell-bg);
+  /* A shade lighter than --shell-bg (#050505) on purpose — against the
+     dimmed backdrop on mobile (rgba(0,0,0,0.6) over the page), the exact
+     shell color was nearly indistinguishable from the backdrop itself. */
+  background: #17181c;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   z-index: 50;
   overflow-y: auto;
@@ -113,6 +116,11 @@
   transition: color 0.12s, background 0.12s;
 }
 .app-sidebar-search .gsearch-trigger:hover { color: var(--text-1); background: rgba(255,255,255,0.04); border-color: transparent; }
+/* Overrides the generic max-width:900px collapse-to-icon rule further
+   down — the sidebar (and, on mobile, the drawer built from the same
+   markup) should keep the "Search" label regardless of viewport width;
+   only .app-sidebar-collapsed hides it, via a more specific rule below. */
+.app-sidebar-search .gsearch-trigger span { display: inline; }
 
 .app-sidebar-nav {
   flex: 1;
@@ -201,91 +209,100 @@
 .app-sidebar-collapsed .app-header-logo { text-align: center; padding: 0; font-size: 0.9rem; }
 .app-sidebar-collapsed .app-sidebar-search .gsearch-trigger { justify-content: center; }
 .app-sidebar-collapsed .app-sidebar-search .gsearch-trigger span { display: none; }
+.app-logo-short { display: none; }
+.app-sidebar-collapsed .app-logo-full { display: none; }
+.app-sidebar-collapsed .app-logo-short { display: inline; }
 
-/* Fixed bottom tab bar — mobile only, replaces the old hamburger + slide-
-   down dropdown. Settings/sign-out live in the avatar dropdown only (see
-   .app-user-menu below), which is why that no longer hides on mobile the
-   way it did when the hamburger drawer duplicated that access. */
-.app-mobile-nav-bottom {
-  display: none;
-}
+/* ── Mobile: compact top bar (always visible) + off-canvas drawer ──
+   The sidebar no longer morphs into a horizontal bar on mobile — it stays
+   the same full vertical layout as desktop, just slid off-screen via
+   transform until opened, as a pure overlay (.app-main's own margins never
+   change when it opens, see the 768px override on .app-sidebar itself).
+   This separate bar is what's normally visible instead: hamburger, logo,
+   and its own Search/Bell/Avatar instances (independent state from the
+   sidebar's copies of the same, same reasoning as AlertsBell/UserMenu
+   being reusable components). */
+.app-mobile-topbar { display: none; }
+.app-mobile-drawer-backdrop { display: none; }
+.app-mobile-drawer-close { display: none; }
 
 @media (max-width: 768px) {
-  /* Sidebar collapses back into a slim top bar on mobile — full nav list
-     is redundant with the bottom tab bar below, but search/bell/avatar
-     still need to be reachable, so the bar itself doesn't disappear, just
-     the link list inside it. */
-  .app-sidebar {
+  .app-mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: auto;
-    width: auto;
+    top: 0; left: 0; right: 0;
     height: 60px;
-    border-right: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    overflow: visible;
-  }
-  .app-sidebar-inner {
-    position: relative;
-    flex-direction: row;
-    align-items: center;
-    height: 100%;
     padding: 0 1rem;
-  }
-  .app-sidebar-brand-row { height: auto; margin: 0; padding: 0; border-bottom: none; }
-  .app-header-logo { padding: 0; }
-  .app-sidebar-nav { display: none; }
-  .app-sidebar-collapse-btn { display: none; }
-  .app-sidebar-bottom-user { display: none; }
-  .app-main { margin-left: 0; margin-top: 60px; min-height: calc(100vh - 60px); }
-
-  /* Search sits dead-center in the mobile bar regardless of how wide the
-     logo or the bell/avatar group are — a flex/auto-margin approach only
-     centers it relative to the leftover space between those two, not the
-     true middle of the bar, since logo and bell+avatar aren't equal
-     widths. Absolute-centering against .app-sidebar-inner (position:
-     relative, set above) sidesteps that. Bell/avatar stay in normal flex
-     flow (margin-left:auto on .app-sidebar-actions), unaffected since the
-     search trigger is taken out of flow here. */
-  .gsearch-trigger {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: auto;
-  }
-  .app-sidebar-search { margin-bottom: 0; }
-  .app-sidebar-search .gsearch-trigger span { display: inline; }
-
-  .app-mobile-nav-bottom {
-    display: flex;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 49;
     background: var(--shell-bg);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
-    padding: 0.4rem 0.25rem calc(0.4rem + env(safe-area-inset-bottom, 0px));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 60;
   }
-  .app-mobile-nav-bottom-item {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 3px;
-    padding: 4px 2px;
-    color: var(--text-3);
-    text-decoration: none;
-    font-size: 0.625rem;
-    font-weight: 600;
-    transition: color 0.15s;
+  .app-mobile-menu-btn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px; flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.08); background: none; color: var(--text-2);
+    font-size: 0.85rem; font-weight: 600; font-family: inherit;
+    border-radius: 8px; cursor: pointer;
   }
-  .app-mobile-nav-bottom-item.active { color: var(--text-1); }
+  .app-mobile-menu-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-1); }
+  .app-mobile-topbar-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 
-  /* Room for the fixed bottom bar so page content (and anything else
-     pinned to the viewport bottom) doesn't sit underneath it. */
-  .app-main { padding-bottom: 68px; }
+  .app-mobile-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 150;
+  }
+
+  /* Flush top-to-bottom (no inset gap), but the right edge — the open
+     side, opposite the hinge — stays rounded. */
+  .app-sidebar {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 280px;
+    max-width: 82vw;
+    border-right: none;
+    border-radius: 0 18px 18px 0;
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.5);
+    transform: translateX(-100%);
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 200;
+  }
+  .app-mobile-nav-open .app-sidebar { transform: translateX(0); }
+  .app-mobile-drawer-close {
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; flex-shrink: 0;
+    border: none; background: none; color: var(--text-2);
+    border-radius: 8px; cursor: pointer;
+  }
+  .app-mobile-drawer-close:hover { background: rgba(255,255,255,0.06); color: var(--text-1); }
+  .app-sidebar-collapse-btn { display: none; }
+
+  /* The drawer reuses the exact same markup as the desktop rail, so if
+     the desktop sidebar happens to be collapsed (a separate, persisted
+     preference — see sidebarCollapsed), all of .app-sidebar-collapsed's
+     icon-only styling would otherwise apply here too, even though the
+     drawer always has plenty of width for full labels. Re-expand
+     everything that rule hides, scoped to mobile only. */
+  .app-sidebar-collapsed .app-header-logo { display: block; }
+  .app-sidebar-collapsed .app-logo-full { display: inline; }
+  .app-sidebar-collapsed .app-logo-short { display: none; }
+  .app-sidebar-collapsed .app-sidebar-brand-row { justify-content: space-between; }
+  .app-sidebar-collapsed .app-nav-label { display: inline; }
+  .app-sidebar-collapsed .app-nav-item { justify-content: flex-start; }
+  .app-sidebar-collapsed .app-sidebar-search .gsearch-trigger { justify-content: flex-start; }
+  .app-sidebar-collapsed .app-sidebar-search .gsearch-trigger span { display: inline; }
+  .app-sidebar-collapsed .app-nav-section-label {
+    height: auto; margin: 18px 0 6px; padding: 0 0.6rem;
+    background: none; color: var(--text-3, #6b7280); overflow: visible;
+  }
+  .app-sidebar-collapsed .app-sidebar-bottom-user { align-items: stretch; }
+  .app-sidebar-collapsed .app-avatar-name,
+  .app-sidebar-collapsed .app-avatar-chevron { display: inline; }
 }
 
 /* Bell + avatar's own top bar, running alongside the sidebar rather than
@@ -314,21 +331,11 @@
 }
 .app-sidebar-actions-row { display: flex; align-items: center; gap: 8px; }
 
+/* Must come after the base rule above — same source-order lesson as
+   .app-main's fix. The compact mobile top bar already has its own
+   Bell/Avatar instances, so this would otherwise duplicate them. */
 @media (max-width: 768px) {
-  .app-sidebar-actions {
-    position: static;
-    height: auto;
-    background: none;
-    border-bottom: none;
-    padding: 0;
-    flex-direction: row;
-    align-items: center;
-    gap: 6px;
-    margin-top: 0;
-    padding-top: 0;
-    border-top: none;
-    margin-left: auto;
-  }
+  .app-sidebar-actions { display: none; }
 }
 
 .app-user-menu {
@@ -549,6 +556,14 @@
   transition: margin-left 0.45s cubic-bezier(0.4, 0, 0.2, 1);
   background: var(--shell-bg);
   padding: clamp(1.25rem, 4vw, 2rem) clamp(1rem, 4vw, 2.5rem);
+}
+/* Must come after the base rule above, not before — equal specificity
+   means source order decides, and an earlier media-scoped override still
+   loses to a later unconditional rule that also matches. This bit the
+   sidebar-width margin specifically: it kept winning on mobile despite
+   this override existing, just because it was declared further down. */
+@media (max-width: 768px) {
+  .app-main { margin-left: 0; margin-top: 60px; min-height: calc(100vh - 60px); }
 }
 
 /* Full-page variant of the .search-locked blur-gate (see the .search-locked
@@ -1083,6 +1098,27 @@
 .sig-stat-cell-val.g { color: var(--green); }
 .sig-stat-cell-val.r { color: var(--red); }
 
+/* ── Profits chart header (ProfitsPage.tsx) — plain number, no card/border,
+   with the range chips at the opposite end of the same row instead of the
+   header, since they only affect this chart, not the positions table. ── */
+.profits-chart-net-label { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.profits-chart-net { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.profits-chart-net.g { color: var(--green); }
+.profits-chart-net.r { color: var(--red); }
+/* Chart's own ResponsiveContainer is always width:100% of this box — max-
+   width equal to the height prop passed alongside (480px) is what actually
+   makes it read as square instead of a wide banner. */
+.profits-chart-square { width: 480px; max-width: 100%; }
+
+.profits-positions-toggle {
+  display: flex; align-items: center; gap: 6px;
+  margin: 24px 0 12px;
+  background: none; border: none; padding: 0;
+  font-size: 13px; font-weight: 600; color: var(--text-dim);
+  font-family: inherit; cursor: pointer;
+}
+.profits-positions-toggle:hover { color: var(--text); }
+
 .sig-table-wrap { border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; scrollbar-width: none; }
 .sig-table-wrap::-webkit-scrollbar { display: none; }
 .sig-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -1209,49 +1245,56 @@
    becomes its own small grid instead, decoupled from .lb-row entirely. */
 .lb-stats { display: contents; }
 
-/* Below 640px: a label-left/value-right row per stat (via a ::before
-   pseudo-label) got cramped and truncated with real data — wide dollar
-   values and long trader names left little room for either side. Instead:
-   .lb-trader and .lb-market (if present) each get their own full-width
-   line, and the stat cells become a small grid of labeled tiles (label
-   above value, not beside it) — standard mobile stat-card pattern, and
-   every cell gets its own box instead of fighting for one shared line. */
+/* Below 640px: a dense flat list instead of a boxed stat-tile card per
+   row — this feed's whole job on mobile is proving real activity fast, so
+   more rows visible per scroll beats spacious cards. .lb-trader/.lb-market
+   still get their own full-width lines (question text especially needs to
+   wrap), but the stat cells drop their individual background/border/
+   padding and sit inline as one compact "label: value" line instead of a
+   2-up grid of tiles — each entry went from ~380px to roughly 100px. */
 @media (max-width: 640px) {
   .lb-head { display: none; }
   .lb-row {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin: 8px;
-    padding: 14px;
+    /* The base (desktop grid) rule above sets align-items:center for its
+       own row-height centering — never overridden here, so every child
+       (.lb-trader, .lb-stats) was shrinking to content width and centering
+       horizontally in this flex-column context instead of stretching to
+       fill the row, which is what put everything in the middle. */
+    align-items: stretch;
+    gap: 4px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
   }
-  .lb-row:last-child { margin-bottom: 8px; }
-  .lb-row .lb-market { order: -1; }
+  .lb-row:last-child { border-bottom: none; }
+  .lb-row .lb-market { order: -1; text-align: left; }
+  /* Single line + ellipsis instead of wrapping to 2-3 lines — the full
+     question is still one tap away in the detail modal, and this alone is
+     most of the remaining per-row height on top of the stats change
+     above. */
   .lb-row .lb-market .sig-q {
-    white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.3; font-size: 13px; text-align: left;
   }
-  .lb-stats {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-  }
+  .lb-stats { display: flex; flex-wrap: wrap; gap: 14px; }
   .lb-row .lb-col {
     text-align: left;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px 10px;
+    background: none;
+    border: none;
+    padding: 0;
     min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
   }
   .lb-row .lb-col::before {
-    content: attr(data-label); display: block; margin-bottom: 4px;
-    font-size: 10px; font-weight: 600; color: var(--text-dim);
-    text-transform: uppercase; letter-spacing: 0.04em;
+    content: attr(data-label) ':'; margin-bottom: 0;
+    font-size: 10.5px; font-weight: 600; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.03em;
   }
-  .lb-row .lb-col-stack { text-align: left; }
+  .lb-row .lb-col-stack { display: flex; align-items: baseline; gap: 6px; text-align: left; }
+  .lb-row .lb-val-sub { margin-top: 0; }
   .lb-row .lb-val, .lb-row .lb-val-sub { overflow-wrap: anywhere; }
 }
 
