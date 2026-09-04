@@ -17,6 +17,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import psycopg
+from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from _env import load_env
 
@@ -36,6 +37,9 @@ AGGREGATE_REFRESH_SECONDS = 90  # opportunities_live's best_win_rate/best_bet_ra
 LEADERBOARD_REFRESH_SECONDS = 120  # leaderboard_cache — see refresh_leaderboard()
 WALLET_CATEGORY_REFRESH_SECONDS = 180  # wallet_category_breakdown_cache — see refresh_wallet_category_breakdown()
 WARM_SEARCH_SECONDS = 4 * 60  # keeps the wallet-search Edge Function's isolate warm — see ping_wallet_search()
+BROADCAST_INTERVAL_SECONDS = 5  # batches opportunities/ticker changes into one Realtime broadcast per window —
+# see flush_dirty_broadcast(). Replaces per-row postgres_changes delivery on these two tables, which was blowing
+# through the Realtime message quota (~1,400 tracked markets ticking individually) despite barely any real users.
 ROSTER_SIZE = 500
 TIERS = [1000, 5000, 20000, 50000, 100000]
 SOLO_TIER = 0  # sentinel: first tracked-trader entry into a market, fires immediately (keeps the feed active between rarer multi-wallet tier crossings)
@@ -634,6 +638,7 @@ def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, t
                    (condition_id, outcome, condition_id, outcome))
 
     db.run_transaction(txn)
+    mark_opportunity_dirty(condition_id, outcome)
 
 
 def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, price, trade_ts):
@@ -1037,6 +1042,7 @@ def sweep_resolved_positions(db):
         if n and won is not None:
             with state_lock:
                 resolved_markets.add((condition_id, outcome))
+            mark_opportunity_dirty(condition_id, outcome)  # only this txn's opportunities.latest_price write is relevant here
         if n:
             closed_count += 1
     if closed_count:
@@ -1070,6 +1076,7 @@ def record_ticker_trade(db, info, usd, price, side, tx_hash, trade_ts):
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NULL,false,%s,%s)''',
         (info['conditionId'], info['outcome'], info['slug'], info['title'],
          usd, price, side, tx_hash, trade_ts, trade_ts.timestamp()))
+    mark_ticker_dirty(tx_hash)
 
 
 def update_ticker_wallet(db, tx_hash, wallet, wallet_name, roster_tagged, category):
@@ -1080,6 +1087,7 @@ def update_ticker_wallet(db, tx_hash, wallet, wallet_name, roster_tagged, catego
     db.execute('''UPDATE ticker SET wallet=%s, wallet_name=%s, roster_tagged=%s, category=%s
         WHERE tx_hash=%s AND wallet IS NULL''',
                 (wallet, wallet_name, bool(roster_tagged), category, tx_hash))
+    mark_ticker_dirty(tx_hash)
 
 
 def prune_ticker(db):
@@ -1140,6 +1148,82 @@ def write_price_updates(db, updates):
     for condition_id, outcome, mid in updates:
         db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
                    (mid, condition_id, outcome))
+        mark_opportunity_dirty(condition_id, outcome)
+
+
+# ---------------- realtime broadcast (opportunities/ticker) ----------------
+# The frontend used to listen via postgres_changes on `opportunities`/`ticker`
+# directly — automatic, but tied 1:1 to every row write, and Realtime can't
+# tell "this write was already accounted for elsewhere" from "brand new
+# change", so a partial move to broadcast (e.g. price ticks only) wouldn't
+# actually reduce message volume: the old subscription would still fire on
+# those same writes. So every write path touching these two tables stages a
+# key here instead, and one background flush turns however many piled up
+# into a single batched broadcast — see main()'s BROADCAST_INTERVAL_SECONDS
+# check. Frontend subscribes via broadcast only, postgres_changes not used
+# for these two tables at all.
+_dirty_lock = threading.Lock()
+_dirty_opportunities = set()  # {(condition_id, outcome)} touched since the last flush
+_dirty_ticker_tx_hashes = set()  # tx_hash values touched since the last flush
+
+
+def mark_opportunity_dirty(condition_id, outcome):
+    with _dirty_lock:
+        _dirty_opportunities.add((condition_id, outcome))
+
+
+def mark_ticker_dirty(tx_hash):
+    with _dirty_lock:
+        _dirty_ticker_tx_hashes.add(tx_hash)
+
+
+def broadcast_send(topic, event, payload):
+    """POSTs one Realtime broadcast message via Supabase's REST broadcast
+    endpoint — avoids holding open a websocket from this synchronous
+    script just to publish. VITE_SUPABASE_URL/ANON_KEY (loaded by
+    load_env()) already resolve to whichever project DATABASE_URL points
+    at, same as the frontend's own env pair."""
+    url = os.environ['VITE_SUPABASE_URL'].rstrip('/') + '/realtime/v1/api/broadcast'
+    key = os.environ['VITE_SUPABASE_ANON_KEY']
+    body = json.dumps({'messages': [{'topic': topic, 'event': event, 'payload': payload, 'private': False}]},
+                       default=str).encode()
+    req = urllib.request.Request(url, data=body, method='POST', headers={
+        'Content-Type': 'application/json', 'apikey': key, 'Authorization': f'Bearer {key}',
+    })
+    try:
+        urllib.request.urlopen(req, timeout=10).read()
+    except urllib.error.URLError as e:
+        print(f'  [broadcast] failed to send {topic}/{event}: {e}')
+
+
+def flush_dirty_broadcast(db):
+    """Runs every BROADCAST_INTERVAL_SECONDS from the main loop (see
+    main()) — bundles whatever opportunities/ticker rows changed since the
+    last flush into at most one broadcast message per table, instead of
+    each individual write triggering its own delivery."""
+    with _dirty_lock:
+        opp_keys = list(_dirty_opportunities)
+        _dirty_opportunities.clear()
+        tx_hashes = list(_dirty_ticker_tx_hashes)
+        _dirty_ticker_tx_hashes.clear()
+
+    if opp_keys:
+        placeholders = ','.join(['(%s,%s)'] * len(opp_keys))
+        params = [v for pair in opp_keys for v in pair]
+        with db.pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(f'SELECT * FROM opportunities_live WHERE (condition_id, outcome) IN ({placeholders})', params)
+                rows = cur.fetchall()
+            conn.commit()
+        broadcast_send('opportunities-batch', 'update', {'rows': rows})
+
+    if tx_hashes:
+        with db.pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute('SELECT * FROM ticker WHERE tx_hash = ANY(%s)', (tx_hashes,))
+                rows = cur.fetchall()
+            conn.commit()
+        broadcast_send('ticker-batch', 'insert', {'rows': rows})
 
 
 def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet, roster, wallet_names, trade_ts, record_ticker=True):
@@ -1587,6 +1671,7 @@ def main():
     last_leaderboard_refresh = 0.0  # fire once on startup, not just after the first interval
     last_wallet_category_refresh = 0.0  # fire once on startup, not just after the first interval
     last_warm_search = 0.0  # fire once on startup, not just after the first interval
+    last_broadcast_flush = time.time()
 
     last_activity['ts'] = time.time()
     threading.Thread(target=watchdog, daemon=True).start()
@@ -1685,6 +1770,10 @@ def main():
                 if now - last_config_reload > 10:  # picks up Settings-page changes without a restart
                     apply_config(load_config(db), roster, all_users)
                     last_config_reload = now
+
+                if now - last_broadcast_flush > BROADCAST_INTERVAL_SECONDS:  # batched opportunities/ticker broadcast — see flush_dirty_broadcast()
+                    executor.submit(flush_dirty_broadcast, db)
+                    last_broadcast_flush = now
 
                 # recv_frames already swallows socket.timeout internally (expected,
                 # just means no data this tick) and raises ConnectionError on a real
