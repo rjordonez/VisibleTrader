@@ -1618,19 +1618,13 @@ def main():
         raise SystemExit('DATABASE_URL not set — export it or pass --database-url '
                           '(Supabase Settings > Database > Connection string, session pooler, port 5432)')
 
-    # 14, not 16 — confirmed live (2026-08-26) that pool_size=16 alone
-    # exceeds the Supabase session-mode pooler's hard ceiling
-    # (EMAXCONNSESSION, capped at 15 total clients for this pooler, shared
-    # with anything else connecting in session mode — ad-hoc scripts,
-    # apply_migration.py), which refused the connection outright rather
-    # than queuing — a real outage, not just slow. 14 leaves 1 slot of
-    # headroom under that ceiling — bumped from 12 (2026-09-04) under a
-    # genuine high-volume backlog (executor_in_flight climbing ~145/s,
-    # nowhere near explained by pool contention alone — avg_process_trade_ms
-    # and avg_profile_fetch_ms both stayed flat while the backlog grew, so
-    # this bump is not expected to fully resolve it, just squeeze out what
-    # headroom is safely available under the hard ceiling).
-    db = Database(args.database_url, pool_size=14)
+    # 18 (2026-09-04) — ABOVE the 15-connection hard ceiling that was
+    # confirmed live on 2026-08-26 for the session-mode pooler
+    # (EMAXCONNSESSION, refused connections outright rather than queuing
+    # past it). Pushed past that documented ceiling anyway under a
+    # high-volume backlog where 12->14 wasn't enough — if this starts
+    # throwing connection-refused errors, drop back to 14 immediately.
+    db = Database(args.database_url, pool_size=18)
 
     all_users = load_all_users(db)
     config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page
