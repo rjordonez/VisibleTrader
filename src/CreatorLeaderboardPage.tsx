@@ -292,6 +292,10 @@ export default function CreatorLeaderboardPage() {
           )}
         </div>
 
+        <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.5 }}>
+          Views here are for tracking purposes only, not a direct indication of payout. To count toward CPM earnings, a video needs a call-to-action for VisibleTrader in it.
+        </div>
+
         <div className="sig-panel">
           <div className="sig-chips" style={{ marginBottom: 16 }}>
             {PLATFORM_FILTERS.map(f => (

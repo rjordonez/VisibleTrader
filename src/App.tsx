@@ -36,6 +36,7 @@ const Terminal = lazy(() => import('./app/terminal/Terminal'))
 const ProtectedRoute = lazy(() => import('./ProtectedRoute'))
 const SearchPage = lazy(() => import('./SearchPage'))
 const CreatorLeaderboardPage = lazy(() => import('./CreatorLeaderboardPage'))
+const ReferralRedirect = lazy(() => import('./ReferralRedirect'))
 
 function PageLoading() {
   return (
@@ -88,6 +89,9 @@ function MarketingRoutes() {
           see where they rank. Own chrome (dark app styling), not
           LandingLayout's marketing navbar/footer. */}
       <Route path="/creator-leaderboard" element={<CreatorLeaderboardPage />} />
+      {/* Affiliate referral links — logs the visit then bounces straight to
+          the homepage, no chrome of its own to render. */}
+      <Route path="/r/:code" element={<ReferralRedirect />} />
       <Route path="/app/*" element={<CrossDomainRedirect />} />
       <Route path="/login" element={<CrossDomainRedirect />} />
       <Route path="/signup" element={<CrossDomainRedirect />} />

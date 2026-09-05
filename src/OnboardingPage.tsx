@@ -157,8 +157,21 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
 
   const finish = async (finalAnswers: Record<string, string>) => {
     setSaving(true)
-    await supabase.auth.updateUser({ data: { ...finalAnswers, onboarding_completed: true } })
-    posthog.capture('onboarding_completed', finalAnswers)
+    // Onboarding runs exactly once per real account regardless of signup
+    // method (see the OAuth signup_completed note above), so it's the one
+    // place that reliably covers both paths for writing whatever referral
+    // code ReferralRedirect.tsx left in localStorage onto the actual
+    // account — the click alone (PostHog) never confirmed a signup happened.
+    let referralCode: string | null = null
+    try {
+      referralCode = localStorage.getItem('vt_referral_code')
+    } catch {
+      // Private-browsing/storage-disabled — no referral code to attach.
+    }
+    await supabase.auth.updateUser({
+      data: { ...finalAnswers, onboarding_completed: true, ...(referralCode ? { referral_code: referralCode } : {}) },
+    })
+    posthog.capture('onboarding_completed', { ...finalAnswers, ...(referralCode ? { referral_code: referralCode } : {}) })
     setSaving(false)
     onComplete()
   }
