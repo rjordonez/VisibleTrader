@@ -34,6 +34,7 @@ const Terminal = lazy(() => import('./app/terminal/Terminal'))
 // ever touching it.
 const ProtectedRoute = lazy(() => import('./ProtectedRoute'))
 const SearchPage = lazy(() => import('./SearchPage'))
+const CreatorLeaderboardPage = lazy(() => import('./CreatorLeaderboardPage'))
 
 function PageLoading() {
   return (
@@ -81,6 +82,10 @@ function MarketingRoutes() {
         <Route path="/refund-policy" element={<RefundPage />} />
       </Route>
       <Route path="/estimate" element={<EstimatePage />} />
+      {/* Public, no login — a plain link creators themselves can open to
+          see where they rank. Own chrome (dark app styling), not
+          LandingLayout's marketing navbar/footer. */}
+      <Route path="/creator-leaderboard" element={<CreatorLeaderboardPage />} />
       <Route path="/app/*" element={<CrossDomainRedirect />} />
       <Route path="/login" element={<CrossDomainRedirect />} />
       <Route path="/signup" element={<CrossDomainRedirect />} />
