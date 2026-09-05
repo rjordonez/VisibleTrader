@@ -18,6 +18,7 @@ const EstimatePage = lazy(() => import('./landing/EstimatePage'))
 const CalculatorsPage = lazy(() => import('./landing/CalculatorsPage'))
 const BlogPage = lazy(() => import('./landing/BlogPage'))
 const CareersPage = lazy(() => import('./landing/CareersPage'))
+const AffiliatePage = lazy(() => import('./landing/AffiliatePage'))
 const PrivacyPage = lazy(() => import('./landing/PrivacyPage'))
 const TermsPage = lazy(() => import('./landing/TermsPage'))
 const RefundPage = lazy(() => import('./landing/RefundPage'))
@@ -34,6 +35,7 @@ const Terminal = lazy(() => import('./app/terminal/Terminal'))
 // ever touching it.
 const ProtectedRoute = lazy(() => import('./ProtectedRoute'))
 const SearchPage = lazy(() => import('./SearchPage'))
+const CreatorLeaderboardPage = lazy(() => import('./CreatorLeaderboardPage'))
 
 function PageLoading() {
   return (
@@ -76,11 +78,16 @@ function MarketingRoutes() {
         <Route path="/calculators" element={<CalculatorsPage />} />
         <Route path="/blog" element={<BlogPage />} />
         <Route path="/careers" element={<CareersPage />} />
+        <Route path="/affiliates" element={<AffiliatePage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/refund-policy" element={<RefundPage />} />
       </Route>
       <Route path="/estimate" element={<EstimatePage />} />
+      {/* Public, no login — a plain link creators themselves can open to
+          see where they rank. Own chrome (dark app styling), not
+          LandingLayout's marketing navbar/footer. */}
+      <Route path="/creator-leaderboard" element={<CreatorLeaderboardPage />} />
       <Route path="/app/*" element={<CrossDomainRedirect />} />
       <Route path="/login" element={<CrossDomainRedirect />} />
       <Route path="/signup" element={<CrossDomainRedirect />} />

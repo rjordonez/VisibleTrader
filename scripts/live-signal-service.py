@@ -1085,7 +1085,6 @@ def record_ticker_trade(db, info, usd, price, side, tx_hash, trade_ts):
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NULL,false,%s,%s)''',
         (info['conditionId'], info['outcome'], info['slug'], info['title'],
          usd, price, side, tx_hash, trade_ts, trade_ts.timestamp()))
-    mark_ticker_dirty(tx_hash)
 
 
 def update_ticker_wallet(db, tx_hash, wallet, wallet_name, roster_tagged, category):
@@ -1096,7 +1095,6 @@ def update_ticker_wallet(db, tx_hash, wallet, wallet_name, roster_tagged, catego
     db.execute('''UPDATE ticker SET wallet=%s, wallet_name=%s, roster_tagged=%s, category=%s
         WHERE tx_hash=%s AND wallet IS NULL''',
                 (wallet, wallet_name, bool(roster_tagged), category, tx_hash))
-    mark_ticker_dirty(tx_hash)
 
 
 def prune_ticker(db):
@@ -1160,20 +1158,29 @@ def write_price_updates(db, updates):
         mark_opportunity_dirty(condition_id, outcome)
 
 
-# ---------------- realtime broadcast (opportunities/ticker) ----------------
-# The frontend used to listen via postgres_changes on `opportunities`/`ticker`
-# directly — automatic, but tied 1:1 to every row write, and Realtime can't
-# tell "this write was already accounted for elsewhere" from "brand new
-# change", so a partial move to broadcast (e.g. price ticks only) wouldn't
-# actually reduce message volume: the old subscription would still fire on
-# those same writes. So every write path touching these two tables stages a
-# key here instead, and one background flush turns however many piled up
-# into a single batched broadcast — see main()'s BROADCAST_INTERVAL_SECONDS
-# check. Frontend subscribes via broadcast only, postgres_changes not used
-# for these two tables at all.
+# ---------------- realtime broadcast (opportunities only) ----------------
+# opportunities' mark-to-market price ticks land continuously across ~1,400
+# tracked markets — postgres_changes fires one message per row write with no
+# way to batch, so that volume alone was blowing through the Realtime quota
+# (worse, tripled by 3 separate frontend subscriptions before the shared-
+# channel fix). Every write path touching `opportunities` stages a key here
+# instead, and one background flush turns however many piled up into a
+# batched broadcast — see main()'s BROADCAST_INTERVAL_SECONDS check.
+#
+# ticker was originally swept into this same batched design too, but its
+# volume (~1 trade/sec, one subscriber, already merged in place rather than
+# refetched) was never actually a quota problem — batching it just added a
+# ~5s delay to what used to be an instant feed for no real benefit, so it's
+# back on a plain postgres_changes subscription (see SignalsDemo.tsx).
+MAX_BROADCAST_BATCH_ROWS = 200  # caps flush_dirty_broadcast's payload size — a flush
+# after a large burst (e.g. catching up post-reconnect) used to try to bundle every
+# dirty key into one message; Realtime's broadcast REST endpoint rejects oversized
+# payloads with a 422, which then just silently dropped that flush's updates
+# entirely. Capping means a big burst spreads over a few extra 5s cycles instead
+# of failing outright — leftover keys stay dirty and get picked up next flush.
+
 _dirty_lock = threading.Lock()
 _dirty_opportunities = set()  # {(condition_id, outcome)} touched since the last flush
-_dirty_ticker_tx_hashes = set()  # tx_hash values touched since the last flush
 
 
 def mark_opportunity_dirty(condition_id, outcome):
@@ -1181,13 +1188,6 @@ def mark_opportunity_dirty(condition_id, outcome):
         _dirty_opportunities.add((condition_id, outcome))
     with state_lock:
         stats['old_message_estimate'] += 3  # HomePage + Terminal + SignalsDemo each had their own postgres_changes subscription
-
-
-def mark_ticker_dirty(tx_hash):
-    with _dirty_lock:
-        _dirty_ticker_tx_hashes.add(tx_hash)
-    with state_lock:
-        stats['old_message_estimate'] += 1  # ticker only ever had one subscriber, no duplication
 
 
 def broadcast_send(topic, event, payload):
@@ -1213,14 +1213,13 @@ def broadcast_send(topic, event, payload):
 
 def flush_dirty_broadcast(db):
     """Runs every BROADCAST_INTERVAL_SECONDS from the main loop (see
-    main()) — bundles whatever opportunities/ticker rows changed since the
-    last flush into at most one broadcast message per table, instead of
-    each individual write triggering its own delivery."""
+    main()) — bundles whatever opportunities rows changed since the last
+    flush into at most one size-capped broadcast message, instead of each
+    individual write triggering its own delivery."""
     with _dirty_lock:
-        opp_keys = list(_dirty_opportunities)
-        _dirty_opportunities.clear()
-        tx_hashes = list(_dirty_ticker_tx_hashes)
-        _dirty_ticker_tx_hashes.clear()
+        opp_keys = list(_dirty_opportunities)[:MAX_BROADCAST_BATCH_ROWS]
+        for k in opp_keys:
+            _dirty_opportunities.discard(k)
 
     if opp_keys:
         placeholders = ','.join(['(%s,%s)'] * len(opp_keys))
@@ -1231,14 +1230,6 @@ def flush_dirty_broadcast(db):
                 rows = cur.fetchall()
             conn.commit()
         broadcast_send('opportunities-batch', 'update', {'rows': rows})
-
-    if tx_hashes:
-        with db.pool.connection() as conn:
-            with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute('SELECT * FROM ticker WHERE tx_hash = ANY(%s)', (tx_hashes,))
-                rows = cur.fetchall()
-            conn.commit()
-        broadcast_send('ticker-batch', 'insert', {'rows': rows})
 
 
 def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet, roster, wallet_names, trade_ts, record_ticker=True):
@@ -1627,18 +1618,17 @@ def main():
         raise SystemExit('DATABASE_URL not set — export it or pass --database-url '
                           '(Supabase Settings > Database > Connection string, session pooler, port 5432)')
 
-    # 12, not 16 — confirmed live (2026-08-26) that pool_size=16 alone
-    # exceeds the Supabase session-mode pooler's hard ceiling
-    # (EMAXCONNSESSION, capped at 15 total clients for this pooler, shared
-    # with anything else connecting in session mode — ad-hoc scripts,
-    # apply_migration.py), which refused the connection outright rather
-    # than queuing — a real outage, not just slow. 12 leaves 3 slots of
-    # headroom under that ceiling for everything else. Reverting to the
-    # class default (8) alone left 32 workers heavily contended for too
-    # few connections — real fill volume (~58/s, ~116 process_trade
-    # calls/s) settled into a steady ~30s-behind backlog, confirmed live
-    # by comparing ticker's newest row against wall-clock time.
-    db = Database(args.database_url, pool_size=12)
+    # 32 (2026-09-04) — matches --workers exactly, so every worker can always
+    # get a connection without contention. The earlier 15-connection ceiling
+    # (EMAXCONNSESSION, pool_size=18 got refused outright) turned out to be
+    # Supavisor's own dashboard "Pool Size" setting for this project (Project
+    # Settings > Database > Connection Pooling), not a hard plan-tier limit —
+    # the Pro/Micro compute tier actually supports up to 60 direct database
+    # connections. Raised that dashboard setting to 40 first, leaving 8
+    # connections of headroom under it for everything else sharing this
+    # pooler (PostgREST, Auth, migrations, ad-hoc scripts). Do not raise
+    # pool_size here past whatever the dashboard setting currently is.
+    db = Database(args.database_url, pool_size=32)
 
     all_users = load_all_users(db)
     config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page

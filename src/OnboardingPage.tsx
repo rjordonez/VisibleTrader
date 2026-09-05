@@ -11,10 +11,11 @@ import './app/app.css'
 // renders in place of the real app, not a page of the app itself (which
 // lives under src/app instead).
 //
-// Same 3 questions as the marketing site's /estimate quiz (EstimatePage.tsx)
-// — duplicated rather than imported since that page's quiz-progression
-// state isn't meant to be reused as a shared component, and it's just 3
-// lines of data.
+// First 3 questions match the marketing site's /estimate quiz
+// (EstimatePage.tsx) — duplicated rather than imported since that page's
+// quiz-progression state isn't meant to be reused as a shared component.
+// The 4th (feature_interest) is onboarding-only, used to tailor which
+// tile/page we could point a user at first.
 const questions = [
   {
     key: 'interest',
@@ -30,6 +31,11 @@ const questions = [
     key: 'experience',
     q: 'How familiar are you with Polymarket?',
     options: ['Brand new', "I've placed a few bets", 'Active trader', 'I trade daily'],
+  },
+  {
+    key: 'feature_interest',
+    q: 'What are you here for?',
+    options: ['Live signals & alerts', 'Browsing markets (Terminal)', 'Leaderboard of top traders', 'Tracking my own P&L'],
   },
 ]
 

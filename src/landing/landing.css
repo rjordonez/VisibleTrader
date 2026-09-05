@@ -3626,3 +3626,116 @@
 @media (max-width: 480px) {
   .promo-banner { font-size: 0.6875rem; padding: 0.55rem 2rem; }
 }
+
+/* ── Affiliate Program (AffiliatePage.tsx) ── */
+.aff-hero { text-align: left; margin-bottom: 1rem; }
+.aff-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-hover);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.aff-steps {
+  display: grid;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+.aff-step {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.75rem;
+}
+.aff-step-n {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.9375rem;
+  margin-bottom: 1rem;
+}
+.aff-step-title { font-size: 1.25rem; font-weight: 800; margin: 0 0 0.5rem; }
+.aff-step-body { font-size: 0.9375rem; color: var(--text-3); line-height: 1.6; margin: 0; }
+
+.aff-form-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 420px;
+}
+.aff-form-label { font-size: 0.8125rem; font-weight: 700; color: var(--text-2); }
+.aff-form-submit { align-self: flex-start; }
+.aff-form-done {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.aff-form-error { color: #ff3b5c; font-size: 0.875rem; }
+
+.aff-mock {
+  margin-top: 1.25rem;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  max-width: 420px;
+}
+.aff-mock-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  margin-bottom: 0.5rem;
+}
+.aff-mock-link { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.9375rem; font-weight: 600; color: var(--accent-hover); margin-bottom: 1rem; }
+.aff-mock-stats { display: flex; gap: 1.5rem; margin-bottom: 0.75rem; }
+.aff-mock-stat-label { font-size: 0.75rem; color: var(--text-3); margin-bottom: 0.25rem; }
+.aff-mock-stat-val { font-size: 1.25rem; font-weight: 800; }
+.aff-mock-caption { font-size: 0.8125rem; color: var(--text-3); }
+
+.aff-benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+}
+.aff-benefit-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+}
+.aff-benefit-icon { color: var(--accent-hover); margin-bottom: 0.75rem; }
+.aff-benefit-title { font-size: 1.0625rem; font-weight: 800; margin: 0 0 0.5rem; }
+.aff-benefit-body { font-size: 0.875rem; color: var(--text-3); line-height: 1.55; margin: 0; }
+
+.aff-cta {
+  margin-top: 3.5rem;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3rem 1.5rem;
+}
+.aff-cta-title { font-size: 1.5rem; font-weight: 800; margin-bottom: 0.5rem; }
+.aff-cta-sub { font-size: 0.9375rem; color: var(--text-3); margin-bottom: 1.5rem; }
+
+@media (max-width: 720px) {
+  .aff-benefits-grid { grid-template-columns: 1fr; }
+}
