@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from './lib/supabase'
 import { avatarGradient, avatarInitial, onTabVisible } from './app/helpers'
 import { SkelBlock } from './app/Skeleton'
@@ -23,6 +23,13 @@ interface CreatorRow {
 
 type Platform = 'creator_stats' | 'tiktok_creator_stats'
 const PLATFORMS: Platform[] = ['creator_stats', 'tiktok_creator_stats']
+
+const PLATFORM_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'creator_stats', label: 'Instagram' },
+  { id: 'tiktok_creator_stats', label: 'TikTok' },
+] as const
+type PlatformFilter = typeof PLATFORM_FILTERS[number]['id']
 
 function fmtCountdown(ms: number) {
   const h = Math.floor(ms / 3600000)
@@ -85,9 +92,15 @@ async function viewsByCreatorAt(table: Platform, checkedAt: string) {
   return { views, reels }
 }
 
-async function platformSnapshot(table: Platform) {
+interface PlatformSnapshot {
+  views: Map<string, number>
+  reels: Map<string, number>
+  checkedAt: string | null
+}
+
+async function platformSnapshot(table: Platform): Promise<PlatformSnapshot> {
   const checkedAt = await latestRunAt(table)
-  if (!checkedAt) return { views: new Map<string, number>(), reels: new Map<string, number>(), checkedAt: null as string | null }
+  if (!checkedAt) return { views: new Map(), reels: new Map(), checkedAt: null }
   const { views, reels } = await viewsByCreatorAt(table, checkedAt)
   return { views, reels, checkedAt }
 }
@@ -189,9 +202,14 @@ function CreatorReelsModal({ creator, onClose }: { creator: string; onClose: () 
   )
 }
 
+const EMPTY_SNAPSHOT: PlatformSnapshot = { views: new Map(), reels: new Map(), checkedAt: null }
+
 export default function CreatorLeaderboardPage() {
-  const [rows, setRows] = useState<CreatorRow[]>([])
-  const [lastScraped, setLastScraped] = useState<string | null>(null)
+  const [snapshots, setSnapshots] = useState<Record<Platform, PlatformSnapshot>>({
+    creator_stats: EMPTY_SNAPSHOT,
+    tiktok_creator_stats: EMPTY_SNAPSHOT,
+  })
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [openCreator, setOpenCreator] = useState<string | null>(null)
@@ -200,25 +218,7 @@ export default function CreatorLeaderboardPage() {
   const load = useCallback(async () => {
     try {
       const [ig, tiktok] = await Promise.all(PLATFORMS.map(p => platformSnapshot(p)))
-
-      if (!ig.checkedAt && !tiktok.checkedAt) {
-        setRows([])
-        setLastScraped(null)
-        setLoading(false)
-        setError(null)
-        return
-      }
-
-      const creators = new Set([...ig.views.keys(), ...tiktok.views.keys()])
-      const merged: CreatorRow[] = Array.from(creators, creator => ({
-        creator,
-        views: (ig.views.get(creator) ?? 0) + (tiktok.views.get(creator) ?? 0),
-        reels: (ig.reels.get(creator) ?? 0) + (tiktok.reels.get(creator) ?? 0),
-      }))
-      merged.sort((a, b) => b.views - a.views)
-
-      setRows(merged)
-      setLastScraped([ig.checkedAt, tiktok.checkedAt].filter((x): x is string => !!x).sort().reverse()[0] ?? null)
+      setSnapshots({ creator_stats: ig, tiktok_creator_stats: tiktok })
       setLoading(false)
       setError(null)
     } catch (e) {
@@ -241,6 +241,28 @@ export default function CreatorLeaderboardPage() {
     const tick = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(tick)
   }, [])
+
+  // Filtering is a client-side reslice of data already fetched for both
+  // platforms — switching the chip is instant, no network round-trip.
+  const activePlatforms = platformFilter === 'all' ? PLATFORMS : [platformFilter]
+
+  const rows = useMemo(() => {
+    const creators = new Set(activePlatforms.flatMap(p => [...snapshots[p].views.keys()]))
+    const merged: CreatorRow[] = Array.from(creators, creator => ({
+      creator,
+      views: activePlatforms.reduce((sum, p) => sum + (snapshots[p].views.get(creator) ?? 0), 0),
+      reels: activePlatforms.reduce((sum, p) => sum + (snapshots[p].reels.get(creator) ?? 0), 0),
+    }))
+    merged.sort((a, b) => b.views - a.views)
+    return merged
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshots, platformFilter])
+
+  const lastScraped = activePlatforms
+    .map(p => snapshots[p].checkedAt)
+    .filter((x): x is string => !!x)
+    .sort()
+    .reverse()[0] ?? null
 
   // Both scrapers run on their own schedules (IG hourly, TikTok on its own
   // cadence) with no single shared "next run" timestamp exposed anywhere —
@@ -271,6 +293,14 @@ export default function CreatorLeaderboardPage() {
         </div>
 
         <div className="sig-panel">
+          <div className="sig-chips" style={{ marginBottom: 16 }}>
+            {PLATFORM_FILTERS.map(f => (
+              <div key={f.id} className={platformFilter === f.id ? 'sig-chip active' : 'sig-chip'} onClick={() => setPlatformFilter(f.id)}>
+                {f.label}
+              </div>
+            ))}
+          </div>
+
           {error && <div style={{ color: '#ff3b5c', padding: '0 0 20px', fontSize: '0.875rem' }}>{error}</div>}
           {!loading && !error && rows.length === 0 && <div className="sig-empty">No creator data yet.</div>}
 
