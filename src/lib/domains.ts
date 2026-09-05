@@ -28,3 +28,22 @@ export const terminalPath = (path: string) =>
 // doesn't work for that, so this always returns a full URL in both envs.
 export const oauthRedirectUrl = () =>
   import.meta.env.DEV ? `${window.location.origin}/app/` : 'https://app.visibletrader.com/'
+
+// A referral code gets set on visibletrader.com (ReferralRedirect.tsx) but
+// needs to still be readable once the visitor actually signs up on
+// app.visibletrader.com (OnboardingPage.tsx) — two different origins in
+// prod, so localStorage (origin-scoped) can't carry it across that hop the
+// way it can for same-origin state. A cookie scoped to the shared parent
+// domain can. Dev has no real subdomain split (same origin throughout via
+// the /app path prefix), so no domain attribute is needed there.
+const REFERRAL_COOKIE = 'vt_referral_code'
+
+export function setReferralCode(code: string) {
+  const domainAttr = import.meta.env.DEV ? '' : '; domain=.visibletrader.com'
+  document.cookie = `${REFERRAL_COOKIE}=${encodeURIComponent(code)}; path=/; max-age=2592000; SameSite=Lax${domainAttr}`
+}
+
+export function getReferralCode(): string | null {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${REFERRAL_COOKIE}=([^;]*)`))
+  return match ? decodeURIComponent(match[1]) : null
+}
