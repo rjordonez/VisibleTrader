@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import posthog from './lib/posthog'
+import { setReferralCode } from './lib/domains'
 
 // A referral link's whole job: record who sent this visitor, then get out
 // of the way. Codes are opaque random strings, not creator handles — a
@@ -23,11 +24,11 @@ const REFERRAL_CODES: Record<string, string> = {
 }
 
 // `referral_link_visited` is queryable in PostHog by both the raw code and
-// the resolved creator name; if signup/checkout events ever get tagged with
-// the stored code too, this becomes full click-to-conversion attribution
-// with no change needed here.
-const STORAGE_KEY = 'vt_referral_code'
-
+// the resolved creator name; OnboardingPage.tsx reads the cookie set below
+// (via lib/domains.ts's setReferralCode/getReferralCode — a cookie, not
+// localStorage, since the visitor lands here on visibletrader.com but signs
+// up on the separate app.visibletrader.com origin) to attach it to the real
+// account if the visit actually turns into a signup.
 export default function ReferralRedirect() {
   const { code } = useParams<{ code: string }>()
 
@@ -36,10 +37,10 @@ export default function ReferralRedirect() {
       const creator = REFERRAL_CODES[code] ?? null
       posthog.capture('referral_link_visited', { referral_code: code, creator })
       try {
-        localStorage.setItem(STORAGE_KEY, code)
+        setReferralCode(code)
       } catch {
-        // Private-browsing/storage-disabled — the visit is still logged to
-        // PostHog above, this just skips the later-attribution nicety.
+        // Cookies disabled — the visit is still logged to PostHog above,
+        // this just skips the later-attribution nicety.
       }
     }
     window.location.replace('/')

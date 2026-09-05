@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import posthog from './lib/posthog'
 import { useLiveTradeCounter, RollingNumber } from './lib/RollingCounter'
+import { getReferralCode } from './lib/domains'
 import './app/app.css'
 
 // Shown by ProtectedRoute for a signed-in user who hasn't been through
@@ -160,14 +161,11 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
     // Onboarding runs exactly once per real account regardless of signup
     // method (see the OAuth signup_completed note above), so it's the one
     // place that reliably covers both paths for writing whatever referral
-    // code ReferralRedirect.tsx left in localStorage onto the actual
-    // account — the click alone (PostHog) never confirmed a signup happened.
-    let referralCode: string | null = null
-    try {
-      referralCode = localStorage.getItem('vt_referral_code')
-    } catch {
-      // Private-browsing/storage-disabled — no referral code to attach.
-    }
+    // code ReferralRedirect.tsx left in a cookie onto the actual account —
+    // the click alone (PostHog) never confirmed a signup happened. A cookie,
+    // not localStorage, since the click happened on the separate
+    // visibletrader.com origin — see lib/domains.ts.
+    const referralCode = getReferralCode()
     await supabase.auth.updateUser({
       data: { ...finalAnswers, onboarding_completed: true, ...(referralCode ? { referral_code: referralCode } : {}) },
     })
