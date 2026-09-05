@@ -39,6 +39,7 @@ export default function Footer() {
               <ul>
                 <li><Link to="/blog">Blog</Link></li>
                 <li><Link to="/careers">Careers</Link></li>
+                <li><Link to="/affiliates">Affiliates</Link></li>
               </ul>
             </div>
 

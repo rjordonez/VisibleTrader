@@ -18,6 +18,7 @@ const EstimatePage = lazy(() => import('./landing/EstimatePage'))
 const CalculatorsPage = lazy(() => import('./landing/CalculatorsPage'))
 const BlogPage = lazy(() => import('./landing/BlogPage'))
 const CareersPage = lazy(() => import('./landing/CareersPage'))
+const AffiliatePage = lazy(() => import('./landing/AffiliatePage'))
 const PrivacyPage = lazy(() => import('./landing/PrivacyPage'))
 const TermsPage = lazy(() => import('./landing/TermsPage'))
 const RefundPage = lazy(() => import('./landing/RefundPage'))
@@ -77,6 +78,7 @@ function MarketingRoutes() {
         <Route path="/calculators" element={<CalculatorsPage />} />
         <Route path="/blog" element={<BlogPage />} />
         <Route path="/careers" element={<CareersPage />} />
+        <Route path="/affiliates" element={<AffiliatePage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/refund-policy" element={<RefundPage />} />
