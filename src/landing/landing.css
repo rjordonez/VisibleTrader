@@ -3739,3 +3739,147 @@
 @media (max-width: 720px) {
   .aff-benefits-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Careers list + role detail (CareersPage.tsx / CareerRolePage.tsx) ── */
+.career-list { border-top: 1px solid var(--border); }
+.career-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--text-1);
+  transition: opacity 0.15s;
+}
+.career-row:hover { opacity: 0.7; }
+.career-row-title { font-size: 1.0625rem; font-weight: 700; }
+.career-row-team { font-weight: 500; color: var(--text-3); }
+.career-row-right { display: flex; align-items: center; gap: 1.5rem; flex-shrink: 0; }
+.career-row-location { color: var(--text-3); font-size: 0.9375rem; }
+.career-row-apply { font-weight: 700; }
+.career-back {
+  display: inline-block;
+  font-size: 0.875rem;
+  color: var(--text-3);
+  text-decoration: none;
+  margin-bottom: 1.5rem;
+}
+.career-back:hover { color: var(--text-1); }
+
+@media (max-width: 560px) {
+  .career-row { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+  .career-row-right { width: 100%; justify-content: space-between; }
+}
+
+/* Role detail page (CareerRolePage.tsx) — bigger and brighter than the
+   shared .blog-title/.aff-step-* defaults, which are tuned for denser
+   pages (calculators, affiliates) rather than a single long-form posting
+   meant to be read top to bottom. */
+.career-detail .blog-title { font-size: clamp(2.25rem, 5vw, 3rem); }
+.career-detail .blog-sub { font-size: 1.125rem; color: var(--text-1); }
+.career-detail .aff-step-title { font-size: 1.375rem; color: var(--text-1); }
+.career-detail .aff-step-body { font-size: 1.0625rem; color: var(--text-1); line-height: 1.7; }
+.career-detail .career-label { font-weight: 700; }
+
+/* ── Job application form (CareerApplyPage.tsx) ── */
+.job-form { display: flex; flex-direction: column; gap: 1.5rem; max-width: 560px; }
+.job-field { display: flex; flex-direction: column; gap: 0.4rem; }
+.job-label { font-size: 0.9375rem; font-weight: 700; color: var(--text-1); }
+.job-label .job-optional { font-weight: 500; color: var(--text-3); }
+.job-hint { font-size: 0.8125rem; color: var(--text-3); margin: -0.15rem 0 0; }
+.job-input, .job-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+  font-family: inherit;
+  color: var(--text-1);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.job-input:focus, .job-textarea:focus { border-color: var(--accent-hover); }
+.job-textarea { resize: vertical; min-height: 110px; line-height: 1.5; }
+.job-file-wrap {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  background: var(--bg-2);
+  transition: border-color 0.15s;
+}
+.job-file-wrap:hover, .job-file-wrap.has-file { border-color: var(--accent-hover); }
+.job-file-wrap input[type="file"] { display: none; }
+.job-file-label { font-size: 0.9375rem; font-weight: 600; color: var(--text-1); }
+.job-file-hint { font-size: 0.8125rem; color: var(--text-3); margin-top: 0.35rem; }
+.job-submit-error { color: #ff3b5c; font-size: 0.875rem; }
+.job-done {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2.5rem;
+  text-align: center;
+}
+.job-done-title { font-size: 1.375rem; font-weight: 800; margin-bottom: 0.5rem; color: var(--text-1); }
+.job-done-body { font-size: 1rem; color: var(--text-3); }
+
+/* ── Career detail layout (CareerLayout.tsx) — sidebar + tabbed content,
+   shared by the Overview (CareerRolePage) and Application (CareerApplyPage)
+   pages. ── */
+.career-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 3rem;
+  align-items: start;
+}
+.career-sidebar { display: flex; flex-direction: column; }
+.career-meta { padding: 1rem 0; border-bottom: 1px solid var(--border); }
+.career-meta:first-child { padding-top: 0; }
+.career-meta-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); margin-bottom: 0.35rem; }
+.career-meta-value { font-size: 1rem; color: var(--text-1); font-weight: 600; }
+.career-main { min-width: 0; }
+.career-tabs { display: flex; gap: 1.75rem; border-bottom: 1px solid var(--border); margin-bottom: 1.75rem; }
+.career-tab {
+  padding: 0 0 0.85rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-3);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.career-tab.active { color: var(--accent-hover); border-bottom-color: var(--accent-hover); }
+.career-apply-btn {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 1rem 1.5rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.career-apply-btn:hover { background: var(--accent-hover); }
+.career-apply-btn:disabled { opacity: 0.6; cursor: default; }
+
+.job-required { color: #ff3b5c; margin-left: 0.15rem; }
+.job-radio-group { display: flex; flex-direction: column; gap: 0.6rem; }
+.job-radio { display: flex; align-items: center; gap: 0.6rem; font-size: 1rem; color: var(--text-1); cursor: pointer; }
+.job-radio input[type="radio"] { width: 18px; height: 18px; accent-color: var(--accent-hover); cursor: pointer; }
+
+@media (max-width: 720px) {
+  .career-layout { grid-template-columns: 1fr; }
+  .career-sidebar { flex-direction: row; flex-wrap: wrap; gap: 0 1.5rem; margin-bottom: 1rem; }
+  .career-meta { border-bottom: none; padding: 0.5rem 0; flex: 1 1 auto; }
+}
