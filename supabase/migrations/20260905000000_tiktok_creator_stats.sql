@@ -18,12 +18,14 @@ alter table public.tiktok_creator_stats enable row level security;
 -- Same open anon insert/select policies as creator_stats: the scraper writes
 -- with the anon key (no service role in play), and the public Creator
 -- Leaderboard page reads with it too.
+drop policy if exists "anon can insert tiktok creator stats" on public.tiktok_creator_stats;
 create policy "anon can insert tiktok creator stats"
     on public.tiktok_creator_stats
     for insert
     to anon
     with check (true);
 
+drop policy if exists "anon can select tiktok creator stats" on public.tiktok_creator_stats;
 create policy "anon can select tiktok creator stats"
     on public.tiktok_creator_stats
     for select

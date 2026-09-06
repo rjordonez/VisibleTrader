@@ -5,6 +5,7 @@ insert into storage.buckets (id, name, public)
 values ('resumes', 'resumes', false)
 on conflict (id) do nothing;
 
+drop policy if exists "anon can upload resumes" on storage.objects;
 create policy "anon can upload resumes"
     on storage.objects
     for insert
@@ -26,6 +27,7 @@ alter table public.job_applications enable row level security;
 
 -- Applications are private, same as affiliate_applications — visitors can
 -- submit one but never read them back.
+drop policy if exists "anon can submit job applications" on public.job_applications;
 create policy "anon can submit job applications"
     on public.job_applications
     for insert
