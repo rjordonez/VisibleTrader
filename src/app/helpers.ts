@@ -165,23 +165,30 @@ function abbrevMagnitude(abs: number) {
   return String(Math.round(abs))
 }
 
+// Numeric Postgres columns come back from PostgREST as strings ("171386.59"),
+// and String#toLocaleString ignores its options — so an un-coerced value
+// renders raw ("$171386.5928"). Coerce every amount before formatting.
+const num = (n: number) => (typeof n === 'number' ? n : Number(n)) || 0
+
 export function fmtAbbrev(n: number) {
-  return '$' + abbrevMagnitude(n)
+  return '$' + abbrevMagnitude(num(n))
 }
 
 export function fmtFull(n: number) {
-  return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 })
+  return '$' + num(n).toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
 export function fmtSigned(n: number) {
-  return (n >= 0 ? '+$' : '-$') + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 })
+  const v = num(n)
+  return (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
 // Same as fmtSigned but abbreviated ("+$382k") — for narrow contexts (a
 // sidebar table column) where the full "+$381,743" would force horizontal
 // scroll.
 export function fmtAbbrevSigned(n: number) {
-  return `${n >= 0 ? '+' : '-'}$${abbrevMagnitude(Math.abs(n))}`
+  const v = num(n)
+  return `${v >= 0 ? '+' : '-'}$${abbrevMagnitude(Math.abs(v))}`
 }
 
 export function signalsTag(tier: number, cumulativeUsd: number) {
