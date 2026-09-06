@@ -158,8 +158,15 @@ export function categoryLabel(category: string) {
 // renders before any page has fetched its own category counts.
 export const NAV_CATEGORIES = ['politics', 'sports', 'crypto', 'esports', 'finance', 'economics', 'tech', 'culture', 'weather', 'mentions']
 
+// 1 decimal place, but never a pointless trailing ".0" ($308.0k -> $308k).
+function abbrevMagnitude(abs: number) {
+  if (abs >= 1_000_000) return (abs / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'm'
+  if (abs >= 1_000) return (abs / 1_000).toFixed(1).replace(/\.0$/, '') + 'k'
+  return String(Math.round(abs))
+}
+
 export function fmtAbbrev(n: number) {
-  return n >= 1000 ? '$' + (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'k' : '$' + Math.round(n)
+  return '$' + abbrevMagnitude(n)
 }
 
 export function fmtFull(n: number) {
@@ -174,9 +181,7 @@ export function fmtSigned(n: number) {
 // sidebar table column) where the full "+$381,743" would force horizontal
 // scroll.
 export function fmtAbbrevSigned(n: number) {
-  const sign = n >= 0 ? '+' : '-'
-  const abs = Math.abs(n)
-  return abs >= 1000 ? `${sign}$${(abs / 1000).toFixed(abs % 1000 === 0 ? 0 : 1)}k` : `${sign}$${Math.round(abs)}`
+  return `${n >= 0 ? '+' : '-'}$${abbrevMagnitude(Math.abs(n))}`
 }
 
 export function signalsTag(tier: number, cumulativeUsd: number) {
