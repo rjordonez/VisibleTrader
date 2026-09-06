@@ -3,7 +3,12 @@ import type { User } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
 const projectToken = import.meta.env.VITE_POSTHOG_PROJECT_TOKEN
+// Events are sent to our managed reverse proxy (VITE_POSTHOG_HOST, e.g.
+// https://t.visibletrader.com) so ad-blockers don't drop them. ui_host is
+// PostHog's real app origin — without it, links PostHog generates back to
+// itself (session replays, toolbar) would point at the proxy domain.
 const host = import.meta.env.VITE_POSTHOG_HOST
+const uiHost = import.meta.env.VITE_POSTHOG_UI_HOST ?? 'https://us.posthog.com'
 
 const identifyUser = (user: User) => {
   posthog.identify(user.id, {
@@ -23,6 +28,7 @@ if (!projectToken || !host) {
 } else {
   posthog.init(projectToken, {
     api_host: host,
+    ui_host: uiHost,
     capture_exceptions: {
       capture_unhandled_errors: true,
       capture_unhandled_rejections: true,
