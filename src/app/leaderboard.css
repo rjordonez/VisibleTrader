@@ -1,0 +1,73 @@
+.leaders-page { max-width: 1120px; min-height: 0; }
+.leaders-period { font-size: 12px; color: var(--text-dim); margin: 0; }
+.leaders-header { gap: 16px; }
+.leaders-header-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.leaders-select { position: relative; display: inline-flex; }
+.leaders-select select { appearance: none; min-height: 44px; padding: 10px 34px 10px 13px; border: 1px solid #30303d; border-radius: 13px; background: #17171e; color: #e2e3ef; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.leaders-select select:hover { border-color: #606078; }
+.leaders-select > svg { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-dim); pointer-events: none; }
+.leaders-minimum select { color: var(--text-dim); font-weight: 500; }
+.leaders-podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 36px; }
+.leaders-card { min-width: 0; border: 1px solid #30303d; border-radius: 22px; background: #14141b; padding: 20px; }
+.leaders-place-1 { background: linear-gradient(145deg, #202031, #14141b 70%); border-color: #4c4c6a; }
+.leaders-card-top { display: flex; align-items: center; justify-content: space-between; margin: -8px -6px 6px 0; }
+.leaders-place { color: #afb3d6; font-size: 13px; font-weight: 700; }
+.leaders-place-1 .leaders-place { color: #dbdda5; }
+.leaders-card-top a { display: grid; place-items: center; width: 44px; height: 44px; color: var(--text-dim); border-radius: 12px; }
+.leaders-card-person { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; color: var(--text); text-decoration: none; min-width: 0; }
+.leaders-avatar { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0; color: #fff; font-size: 18px; font-weight: 700; }
+.leaders-card h2 { font-size: 17px; letter-spacing: -0.02em; font-weight: 700; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0 0 14px; }
+.leaders-card-profit { display: block; font-size: clamp(24px, 2.6vw, 32px); font-weight: 750; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.leaders-metric-label { display: block; color: var(--text-dim); font-size: 11px; margin-top: 5px; }
+.leaders-card-record { display: flex; flex-direction: column; gap: 5px; padding: 18px 0; }
+.leaders-card-record > strong { font-size: 17px; font-weight: 700; color: #d5d8ff; }
+.leaders-card-record strong span, .leaders-card-record > span { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+.leaders-follow { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 10px 13px; border: 1px solid #45465f; border-radius: 13px; background: #28293b; color: #dddfff; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; white-space: nowrap; }
+.leaders-follow.is-following { background: #17171e; color: var(--text-dim); border-color: #333340; }
+.leaders-card .leaders-follow { width: 100%; }
+.leaders-follow:hover { border-color: #8186bc; }
+.leaders-list-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.leaders-list-heading h2 { font-size: 22px; letter-spacing: -0.035em; margin: 0; }
+.leaders-list-heading > span { color: var(--text-dim); font-size: 12px; }
+.leaders-column-head, .leaders-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, .45fr) 100px 108px; gap: 20px; align-items: center; }
+.leaders-column-head { padding: 12px 0; border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 12px; }
+.leaders-column-head > span:not(:first-child) { text-align: right; }
+.leaders-rows { list-style: none; margin: 0; padding: 0; }
+.leaders-row { padding: 22px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.leaders-person { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.leaders-rank { width: 24px; flex-shrink: 0; text-align: right; color: var(--text-dim); font-size: 12px; }
+.leaders-person a { display: flex; align-items: center; gap: 12px; min-width: 0; text-decoration: none; color: var(--text); }
+.leaders-name { min-width: 0; }
+.leaders-name strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 650; }
+.leaders-name small { display: block; margin-top: 5px; color: var(--text-dim); font-size: 12px; }
+.leaders-row-profit, .leaders-row-rate { text-align: right; font-variant-numeric: tabular-nums; }
+.leaders-row-profit strong { font-size: 20px; letter-spacing: -0.03em; overflow-wrap: anywhere; }
+.leaders-row-rate strong { font-size: 17px; font-weight: 700; }
+.leaders-row-rate small { display: block; font-size: 11px; margin-top: 5px; color: var(--text-dim); }
+.leaders-mobile-label { display: none; }
+.leaders-page .is-positive { color: var(--green); }
+.leaders-page .is-negative { color: var(--red); }
+.leaders-notice { color: var(--text-dim); font-size: 14px; line-height: 1.7; padding: 20px 0; }
+.leaders-podium-skeleton { height: 296px; border-radius: 22px; }
+.leaders-row-skeleton { height: 74px; margin: 12px 0; border-radius: 14px; }
+@media (max-width: 1000px) {
+  .leaders-podium { display: flex; overflow-x: auto; padding: 4px 4px 14px; scroll-snap-type: x proximity; scrollbar-width: thin; scrollbar-color: #333340 transparent; }
+  .leaders-card, .leaders-podium-skeleton { flex: 0 0 240px; scroll-snap-align: start; }
+  .leaders-column-head, .leaders-row { gap: 12px; grid-template-columns: minmax(0, 1fr) 120px 80px 100px; }
+}
+@media (max-width: 700px) {
+  .leaders-list-heading { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .leaders-column-head { display: none; }
+  .leaders-row { grid-template-columns: minmax(0, 1fr) 100px; gap: 16px 12px; }
+  .leaders-person { grid-column: 1; grid-row: 1; gap: 8px; }
+  .leaders-row > .leaders-follow { grid-column: 2; grid-row: 1; }
+  .leaders-person a { gap: 8px; }
+  .leaders-person .leaders-avatar { width: 36px; height: 36px; font-size: 14px; }
+  .leaders-rank { width: 19px; }
+  .leaders-name strong { font-size: 14px; }
+  .leaders-name small { font-size: 11px; }
+  .leaders-row-profit { grid-column: 1; text-align: left; padding-left: 27px; }
+  .leaders-row-rate { grid-column: 2; }
+  .leaders-mobile-label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
+  .leaders-card { flex-basis: 225px; }
+}

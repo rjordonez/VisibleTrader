@@ -1,102 +1,60 @@
-import { useState } from 'react'
-import { Bell } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
+import { Bell, Plus, Users, X, Zap } from 'lucide-react'
+import { dashboardPath } from '../lib/domains'
 import { traderLabel, fmtFull, timeAgo } from './helpers'
-import type { AlertEvent, WalletWatch } from './useAlerts'
+import type { useAlerts } from './useAlerts'
 
-/* ── Alerts ──
-   State/polling now lives in useAlerts.ts (owned by AppShell, see
-   index.tsx) instead of here, so it keeps running and accumulating
-   history regardless of which tab is active — this page (and the header
-   bell's dropdown) are both just views onto that same shared state. */
-function AlertsPage({ watchedWallets, minTier, setMinTier, permission, requestPermission, history, addWallet, removeWallet }: {
-  watchedWallets: WalletWatch[]
-  minTier: number
-  setMinTier: (tier: number) => void
-  permission: NotificationPermission
-  requestPermission: () => void
-  history: AlertEvent[]
-  addWallet: (wallet: string) => void
-  removeWallet: (wallet: string) => void
-}) {
+// Home and the header bell consume the same AppShell-owned alert state.
+// This view never starts another polling loop or requests notification permission automatically.
+function AlertsPage({ watchedWallets, minTier, setMinTier, permission, requestPermission, history, addWallet, removeWallet }: ReturnType<typeof useAlerts>) {
   const [walletInput, setWalletInput] = useState('')
+  const [walletError, setWalletError] = useState('')
+  const notificationsSupported = typeof window !== 'undefined' && 'Notification' in window
 
-  const submitWallet = () => {
-    addWallet(walletInput)
+  const submitWallet = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const address = walletInput.trim()
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+      setWalletError('Enter a valid wallet address: 0x followed by 40 letters and numbers.')
+      return
+    }
+    if (watchedWallets.some(w => w.wallet.toLowerCase() === address.toLowerCase())) {
+      setWalletError('You’re already following this wallet.')
+      return
+    }
+    addWallet(address)
     setWalletInput('')
+    setWalletError('')
   }
 
   return (
-    <div className="sig-page">
-      <div className="app-section-header">
-        <div>
-          <h1 className="app-section-title">Alerts</h1>
-          <p className="app-section-sub">Fires while this tab is open — not a background/closed-tab push notification</p>
-        </div>
-      </div>
-
-      <div className="sig-panel">
-        {permission !== 'granted' && (
-          <div style={{ marginBottom: 24 }}>
-            <button className="sig-btn" onClick={requestPermission}>Enable browser notifications</button>
-          </div>
-        )}
-
-        <div style={{ marginBottom: 28 }}>
-          <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Watch a wallet</div>
-          <div className="sig-watch-form">
-            <input
-              className="sig-watch-input"
-              placeholder="0x… wallet address"
-              value={walletInput}
-              onChange={e => setWalletInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && submitWallet()}
-            />
-            <button className="sig-btn" onClick={submitWallet}>Add</button>
-          </div>
-          {watchedWallets.map(w => (
-            <div key={w.wallet} className="sig-watch-item">
-              <span>{traderLabel(w.wallet, null)}</span>
-              <span className="sig-watch-remove" onClick={() => removeWallet(w.wallet)}>Remove</span>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ marginBottom: 28 }}>
-          <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Alert on any signal crossing</div>
-          <div className="sig-chips">
-            {[1000, 5000, 20000, 50000, 100000].map(t => (
-              <div key={t} className={minTier === t ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinTier(t)}>
-                {fmtFull(t)}+
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Alert history</div>
-        {history.length === 0 ? (
-          <div className="sig-empty">No alerts yet.</div>
-        ) : (
-          <div className="lb-table">
-            {history.map(h => (
-              <div className="lb-row lb-1col" key={h.id}>
-                <div className="lb-trader">
-                  <div className="lb-avatar" style={{ background: 'var(--surface-2)', color: 'var(--blue)' }}>
-                    <Bell size={16} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="sig-q">{h.text}</div>
-                  </div>
-                </div>
-                <div className="lb-stats">
-                  <div className="lb-col">
-                    <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{timeAgo(new Date(h.ts).toISOString())}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+    <div className="home-alert-controls">
+        <section className="home-control-section">
+          <h3><Users size={16} /> Follow a wallet</h3>
+          <p>See a wallet’s buys and sells in your feed.</p>
+          <form onSubmit={submitWallet} className="home-wallet-form">
+            <label htmlFor="home-wallet-address">Wallet address</label>
+            <div><input id="home-wallet-address" placeholder="0x…" value={walletInput} onChange={e => { setWalletInput(e.target.value); setWalletError('') }} autoComplete="off" spellCheck={false} aria-invalid={!!walletError} aria-describedby={walletError ? 'home-wallet-error' : undefined} /><button type="submit" aria-label="Follow wallet"><Plus size={20} /></button></div>
+            {walletError && <p id="home-wallet-error" className="home-wallet-error" role="alert">{walletError}</p>}
+          </form>
+          {watchedWallets.length > 0 && <ul className="home-manage-wallets">{watchedWallets.map(w => <li key={w.wallet}><Link to={dashboardPath(`/trader/${w.wallet}`)} title={w.wallet}>{traderLabel(w.wallet, null)}</Link><button type="button" onClick={() => removeWallet(w.wallet)} aria-label={`Unfollow ${w.wallet}`}><X size={15} /></button></li>)}</ul>}
+        </section>
+        <section className="home-control-section">
+          <h3><Zap size={16} /> Signal threshold</h3>
+          <p>Also show market signals crossing this amount.</p>
+          <div className="home-thresholds">{[1000, 5000, 20000, 50000, 100000].map(t => <button key={t} type="button" aria-pressed={minTier === t} className={minTier === t ? 'active' : undefined} onClick={() => setMinTier(t)}>{fmtFull(t)}+</button>)}</div>
+        </section>
+        <section className="home-control-section">
+          <h3><Bell size={16} /> Browser notifications</h3>
+          {permission === 'granted' ? <p className="home-notifications-on">Enabled for this browser.</p> : notificationsSupported && permission === 'default' ? <><p>Get notified while VisibleTrader is open.</p><button type="button" className="home-notification-button" onClick={requestPermission}>Enable notifications</button></> : <p>{notificationsSupported ? 'Notifications are blocked. You can enable them in your browser’s site settings.' : 'This browser does not support notifications.'} Your alerts will still appear in the feed.</p>}
+        </section>
+      <section className="home-control-section home-alert-history">
+        <h3><Bell size={16} /> Alert history</h3>
+        <p>Signal thresholds affect these alerts. The Following trade feed shows all available trades from your wallets.</p>
+        {history.length === 0 ? <p>No alerts this session yet.</p> : <ol>{history.map(h => <li key={h.id}><p>{h.text}</p><time dateTime={new Date(h.ts).toISOString()}>{timeAgo(new Date(h.ts).toISOString())}</time></li>)}</ol>}
+        <p>Alerts are checked every minute while the app is open. History lasts for this session.</p>
+      </section>
     </div>
   )
 }
