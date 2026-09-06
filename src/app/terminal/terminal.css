@@ -457,3 +457,13 @@
   .terminal-market-main { padding: 16px; }
   .terminal-featured-markets { grid-template-columns: 1fr; max-width: 460px; }
 }
+
+/* Mobile stub — shown instead of the workspace below 768px (see Terminal.tsx). */
+.terminal-topbar-bare { grid-template-columns: 1fr; justify-items: start; }
+.terminal-desktop-only { flex: 1; display: grid; place-items: center; padding: 24px; }
+.terminal-desktop-only-card { max-width: 380px; text-align: center; }
+.terminal-desktop-only-icon { width: 30px; height: 30px; color: var(--text-dim); margin-bottom: 18px; }
+.terminal-desktop-only-card h1 { font-size: 20px; letter-spacing: -0.02em; margin: 0 0 10px; color: var(--text); }
+.terminal-desktop-only-card p { font-size: 14px; line-height: 1.6; color: var(--text-dim); margin: 0 0 22px; }
+.terminal-desktop-only-btn { display: inline-block; padding: 11px 18px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none; }
+.terminal-desktop-only-btn:hover { border-color: var(--text-dim); }

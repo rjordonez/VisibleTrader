@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, Link, useNavigate } from 'react-router-dom'
+import { BarChart3 } from 'lucide-react'
 import { supabase, isProdDb } from '../../lib/supabase'
 import { dashboardPath, terminalPath } from '../../lib/domains'
 import { useSubscriptionGate } from '../../lib/subscriptionGate'
@@ -60,6 +61,20 @@ export default function Terminal() {
   const [user, setUser] = useState<User | null>(null)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  // The Terminal is a desktop-only surface — its side-by-side sidebar +
+  // market panels and wide charts don't collapse to a phone. On a narrow
+  // viewport we show a stub instead (the nav link stays visible so people
+  // know it's there), and skip the live opportunities subscription below.
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches,
+  )
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    const onChange = () => setIsMobile(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null))
@@ -82,6 +97,7 @@ export default function Terminal() {
   }
 
   useEffect(() => {
+    if (isMobile) return
     let cancelled = false
     const load = () => {
       Promise.resolve(
@@ -113,7 +129,7 @@ export default function Terminal() {
       unsubBroadcast()
       unsubVisible()
     }
-  }, [])
+  }, [isMobile])
 
   const q = search.trim().toLowerCase()
   const bySearch = q ? opportunities.filter(o => o.title.toLowerCase().includes(q)) : opportunities
@@ -126,6 +142,24 @@ export default function Terminal() {
   // (from the query) is preserved within each half.
   const isDecidedPrice = (o: Opportunity) => o.latest_price >= 0.90 || o.latest_price <= 0.10
   const filtered = [...byCat].sort((a, b) => Number(isDecidedPrice(a)) - Number(isDecidedPrice(b)))
+
+  if (isMobile) {
+    return (
+      <div className="sig-page terminal-shell">
+        <header className="terminal-topbar terminal-topbar-bare">
+          <Link to={dashboardPath('/')} className="terminal-logo">VisibleTrader.com</Link>
+        </header>
+        <div className="terminal-desktop-only">
+          <div className="terminal-desktop-only-card">
+            <BarChart3 className="terminal-desktop-only-icon" aria-hidden="true" />
+            <h1>The Terminal is built for desktop</h1>
+            <p>The market workspace needs a wider screen for its sidebar, side-by-side panels, and price charts. Open VisibleTrader.com on a computer to use it.</p>
+            <Link to={dashboardPath('/')} className="terminal-desktop-only-btn">Back to dashboard</Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="sig-page terminal-shell">
