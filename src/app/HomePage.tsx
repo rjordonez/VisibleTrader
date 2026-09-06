@@ -21,6 +21,11 @@ const tiles = [
     title: 'Terminal',
     desc: 'Charts, activity, and every contributing trader for any market.',
     large: true,
+    // Dense, desktop-oriented layout (its own sidebar + chart + trader
+    // list side by side) that was never adapted for narrow screens —
+    // hide the entry point on mobile rather than ship a broken-looking
+    // page. Still reachable by URL if someone lands on it directly.
+    hideMobile: true,
   },
   {
     to: dashboardPath('/leaderboard'),
@@ -50,7 +55,7 @@ const tiles = [
 
 function Tile({ t }: { t: typeof tiles[number] }) {
   return (
-    <Link to={t.to} className={`home-tile ${t.large ? 'home-tile-large' : ''}`}>
+    <Link to={t.to} className={`home-tile ${t.large ? 'home-tile-large' : ''} ${t.hideMobile ? 'home-tile-hide-mobile' : ''}`}>
       {t.badge && <span className="home-tile-badge">{t.badge}</span>}
       <div className="home-tile-head">
         <div className="home-tile-icon" style={{ background: t.iconBg }}>
