@@ -10,14 +10,17 @@ import './app/app.css'
 // open anon-select `true` policy — rather than going through the app's
 // normal auth'd Supabase client flows, since there's no session here at all.
 //
-// Daily/Weekly/Monthly range toggles were tried and pulled: "gained" mostly
-// reflected newly-appeared reels/videos counting their full view total
-// rather than real growth (worst right after TikTok started being tracked,
-// where day one counts 100% of it as "gained") — misleading enough to hold
-// off until there's a cleaner way to compute real per-window growth.
+// The board ranks by views since the most recent 10am PST reset (a fixed
+// daily contest window), not lifetime totals — Daily/Weekly/Monthly range
+// toggles were tried and pulled earlier for being misleading in the same
+// way this can be: a newly-appeared reel/video counts its full view total
+// as "since reset" even though it existed before the boundary. Kept anyway
+// per explicit request, since a fixed daily reset is a legible, standard
+// leaderboard format even with that caveat.
 interface CreatorRow {
   creator: string
   views: number
+  sinceReset: number
   reels: number
 }
 
@@ -44,6 +47,25 @@ function fmtViews(n: number) {
   return n.toLocaleString('en-US')
 }
 
+// "10am PST" means 10am America/Los_Angeles wall-clock time year-round
+// (PST or PDT, whichever is in effect) — computed via Intl rather than a
+// hardcoded UTC-8 offset so it stays correct across the DST transition.
+function laOffsetMinutes(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', timeZoneName: 'shortOffset' }).formatToParts(date)
+  const tz = parts.find(p => p.type === 'timeZoneName')?.value ?? 'GMT-8'
+  const match = tz.match(/GMT([+-]\d+)/)
+  return match ? parseInt(match[1], 10) * 60 : -480
+}
+
+function dailyResetBoundaries(now: Date) {
+  const offsetMin = laOffsetMinutes(now)
+  const laShifted = new Date(now.getTime() + offsetMin * 60000)
+  const y = laShifted.getUTCFullYear(), m = laShifted.getUTCMonth(), d = laShifted.getUTCDate()
+  let nextMs = Date.UTC(y, m, d, 10, 0, 0) - offsetMin * 60000
+  if (nextMs <= now.getTime()) nextMs = Date.UTC(y, m, d + 1, 10, 0, 0) - offsetMin * 60000
+  return { previous: new Date(nextMs - 86400000), next: new Date(nextMs) }
+}
+
 function SkelCreatorRow() {
   return (
     <div className="lb-row lb-1col">
@@ -63,18 +85,23 @@ function SkelCreatorRow() {
 
 // Fetches the single checked_at (a whole scrape run shares one timestamp)
 // closest to `iso` without going past it, for one platform's table. Keeps
-// "current totals" bounded regardless of how much scrape history has piled
-// up. IG and TikTok scrape on independent schedules, so this is always
-// looked up per-table rather than assuming a shared timestamp.
-async function latestRunAt(table: Platform) {
+// this bounded regardless of how much scrape history has piled up. IG and
+// TikTok scrape on independent schedules, so this is always looked up
+// per-table rather than assuming a shared timestamp.
+async function closestRunAtOrBefore(table: Platform, iso: string) {
   const { data, error } = await supabase
     .from(table)
     .select('checked_at')
+    .lte('checked_at', iso)
     .order('checked_at', { ascending: false })
     .limit(1)
     .maybeSingle()
   if (error) throw error
   return data?.checked_at ?? null
+}
+
+async function latestRunAt(table: Platform) {
+  return closestRunAtOrBefore(table, new Date().toISOString())
 }
 
 async function viewsByCreatorAt(table: Platform, checkedAt: string) {
@@ -94,15 +121,23 @@ async function viewsByCreatorAt(table: Platform, checkedAt: string) {
 
 interface PlatformSnapshot {
   views: Map<string, number>
+  sinceReset: Map<string, number>
   reels: Map<string, number>
   checkedAt: string | null
 }
 
-async function platformSnapshot(table: Platform): Promise<PlatformSnapshot> {
+async function platformSnapshot(table: Platform, resetBoundaryIso: string): Promise<PlatformSnapshot> {
   const checkedAt = await latestRunAt(table)
-  if (!checkedAt) return { views: new Map(), reels: new Map(), checkedAt: null }
+  if (!checkedAt) return { views: new Map(), sinceReset: new Map(), reels: new Map(), checkedAt: null }
   const { views, reels } = await viewsByCreatorAt(table, checkedAt)
-  return { views, reels, checkedAt }
+
+  const baselineCheckedAt = await closestRunAtOrBefore(table, resetBoundaryIso)
+  const baselineViews = (baselineCheckedAt && baselineCheckedAt !== checkedAt)
+    ? (await viewsByCreatorAt(table, baselineCheckedAt)).views
+    : new Map<string, number>()
+  const sinceReset = new Map(Array.from(views, ([creator, v]) => [creator, v - (baselineViews.get(creator) ?? 0)]))
+
+  return { views, sinceReset, reels, checkedAt }
 }
 
 interface ReelRow {
@@ -202,7 +237,7 @@ function CreatorReelsModal({ creator, onClose }: { creator: string; onClose: () 
   )
 }
 
-const EMPTY_SNAPSHOT: PlatformSnapshot = { views: new Map(), reels: new Map(), checkedAt: null }
+const EMPTY_SNAPSHOT: PlatformSnapshot = { views: new Map(), sinceReset: new Map(), reels: new Map(), checkedAt: null }
 
 export default function CreatorLeaderboardPage() {
   const [snapshots, setSnapshots] = useState<Record<Platform, PlatformSnapshot>>({
@@ -217,7 +252,8 @@ export default function CreatorLeaderboardPage() {
 
   const load = useCallback(async () => {
     try {
-      const [ig, tiktok] = await Promise.all(PLATFORMS.map(p => platformSnapshot(p)))
+      const { previous } = dailyResetBoundaries(new Date())
+      const [ig, tiktok] = await Promise.all(PLATFORMS.map(p => platformSnapshot(p, previous.toISOString())))
       setSnapshots({ creator_stats: ig, tiktok_creator_stats: tiktok })
       setLoading(false)
       setError(null)
@@ -251,24 +287,15 @@ export default function CreatorLeaderboardPage() {
     const merged: CreatorRow[] = Array.from(creators, creator => ({
       creator,
       views: activePlatforms.reduce((sum, p) => sum + (snapshots[p].views.get(creator) ?? 0), 0),
+      sinceReset: activePlatforms.reduce((sum, p) => sum + (snapshots[p].sinceReset.get(creator) ?? 0), 0),
       reels: activePlatforms.reduce((sum, p) => sum + (snapshots[p].reels.get(creator) ?? 0), 0),
     }))
-    merged.sort((a, b) => b.views - a.views)
+    merged.sort((a, b) => b.sinceReset - a.sinceReset)
     return merged
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshots, platformFilter])
 
-  const lastScraped = activePlatforms
-    .map(p => snapshots[p].checkedAt)
-    .filter((x): x is string => !!x)
-    .sort()
-    .reverse()[0] ?? null
-
-  // Both scrapers run on their own schedules (IG hourly, TikTok on its own
-  // cadence) with no single shared "next run" timestamp exposed anywhere —
-  // 24h after the most recent successful scrape is a reasonable stand-in
-  // upper bound for "data this stale should refresh again by."
-  const nextRefreshMs = lastScraped ? Math.max(0, new Date(lastScraped).getTime() + 86400000 - now) : null
+  const nextResetMs = Math.max(0, dailyResetBoundaries(new Date(now)).next.getTime() - now)
 
   return (
     <div className="sig-page" style={{ padding: '48px 20px' }}>
@@ -276,17 +303,17 @@ export default function CreatorLeaderboardPage() {
         <div className="app-section-header">
           <div>
             <h1 className="app-section-title">Creator Leaderboard</h1>
-            {(loading || error) && (
-              <p className="app-section-sub">{loading ? 'Loading…' : 'Connection trouble — retrying…'}</p>
-            )}
+            <p className="app-section-sub">
+              {loading ? 'Loading…' : error ? 'Connection trouble — retrying…' : 'Resets daily at 10am PST'}
+            </p>
           </div>
-          {nextRefreshMs !== null && !loading && !error && (
+          {!loading && !error && (
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>
-                Next refresh
+                Next reset
               </div>
               <div style={{ fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text-dim)' }}>
-                {fmtCountdown(nextRefreshMs)}
+                {fmtCountdown(nextResetMs)}
               </div>
             </div>
           )}
@@ -312,7 +339,7 @@ export default function CreatorLeaderboardPage() {
             <div className="lb-table">
               <div className="lb-head lb-1col">
                 <div>Creator</div>
-                <div className="lb-col">Views</div>
+                <div className="lb-col">Views today</div>
               </div>
 
               {loading && Array.from({ length: 9 }).map((_, i) => <SkelCreatorRow key={i} />)}
@@ -332,8 +359,11 @@ export default function CreatorLeaderboardPage() {
                     </div>
                   </div>
                   <div className="lb-stats">
-                    <div className="lb-col" data-label="Views">
-                      <div className="lb-val">{fmtViews(r.views)}</div>
+                    <div className="lb-col" data-label="Views today">
+                      <div className="lb-col-stack">
+                        <div className="lb-val">{fmtViews(Math.max(0, r.sinceReset))}</div>
+                        <div className="lb-val-sub" style={{ color: 'var(--text-faint)' }}>{fmtViews(r.views)} total</div>
+                      </div>
                     </div>
                   </div>
                 </div>
