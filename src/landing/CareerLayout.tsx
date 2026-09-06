@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 const META = [
@@ -14,6 +15,18 @@ const META = [
 export default function CareerLayout({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation()
   const isApply = pathname.endsWith('/apply')
+
+  const overviewRef = useRef<HTMLAnchorElement>(null)
+  const applyRef = useRef<HTMLAnchorElement>(null)
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null)
+
+  // Measures the active tab's actual rendered position each time it changes
+  // (and once tabs have mounted) so the underline can slide to it via a CSS
+  // transition, rather than the border just jumping between tabs instantly.
+  useEffect(() => {
+    const el = isApply ? applyRef.current : overviewRef.current
+    if (el) setIndicator({ left: el.offsetLeft, width: el.offsetWidth })
+  }, [isApply])
 
   return (
     <div className="blog-content career-detail">
@@ -32,8 +45,11 @@ export default function CareerLayout({ children }: { children: React.ReactNode }
 
         <div className="career-main">
           <div className="career-tabs">
-            <Link to="/careers/growth-intern" className={`career-tab ${!isApply ? 'active' : ''}`}>Overview</Link>
-            <Link to="/careers/growth-intern/apply" className={`career-tab ${isApply ? 'active' : ''}`}>Application</Link>
+            <Link ref={overviewRef} to="/careers/growth-intern" className={`career-tab ${!isApply ? 'active' : ''}`}>Overview</Link>
+            <Link ref={applyRef} to="/careers/growth-intern/apply" className={`career-tab ${isApply ? 'active' : ''}`}>Application</Link>
+            {indicator && (
+              <div className="career-tab-indicator" style={{ left: indicator.left, width: indicator.width }} />
+            )}
           </div>
           {children}
         </div>
