@@ -12,14 +12,6 @@ export default function Footer() {
             <p>
               The #1 Whale Tracker To Beat Prediction Markets
             </p>
-            <div className="footer-socials">
-              <a href="#" className="social-btn" aria-label="X / Twitter">
-                <img src="/x-logo.jpg" alt="X" style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'cover' }} />
-              </a>
-              <a href="#" className="social-btn" aria-label="Discord">
-                <img src="/discord.png" alt="Discord" style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'contain' }} />
-              </a>
-            </div>
           </div>
 
           <div className="footer-cols">
