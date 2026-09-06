@@ -2998,6 +2998,9 @@
 }
 
 .footer-col a {
+  display: inline-block;
+  padding: 0.5rem 0;
+  margin: -0.5rem 0;
   font-size: 0.875rem;
   color: var(--text-2);
   text-decoration: none;
