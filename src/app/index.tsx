@@ -19,7 +19,6 @@ const HomePage = lazy(() => import('./HomePage'))
 const ProfitsPage = lazy(() => import('./ProfitsPage'))
 const LeaderboardPage = lazy(() => import('./LeaderboardPage'))
 const TraderDetailPage = lazy(() => import('./TraderDetailPage'))
-const AlertsPage = lazy(() => import('./AlertsPage'))
 const SettingsPage = lazy(() => import('./SettingsPage'))
 const JournalPage = lazy(() => import('./JournalPage'))
 
@@ -124,7 +123,7 @@ function AlertsBell({ alerts }: { alerts: ReturnType<typeof useAlerts> }) {
             ))
           )}
           <Link
-            to={dashboardPath('/alerts')}
+            to={dashboardPath('/')}
             className="app-alerts-dropdown-showall"
             onClick={() => setOpen(false)}
           >
@@ -340,11 +339,11 @@ export default function AppShell() {
         <div className={locked ? 'search-locked-bg' : undefined}>
           <Suspense fallback={<TabLoading />}>
             <Routes>
-              <Route index element={<HomePage user={user} />} />
+              <Route index element={<HomePage user={user} alerts={alerts} />} />
               <Route path="signals" element={<SignalsDemo category={category} onCategoryChange={setCategory} />} />
               <Route path="profits" element={<ProfitsPage />} />
-              <Route path="leaderboard" element={<LeaderboardPage />} />
-              <Route path="alerts" element={<AlertsPage {...alerts} />} />
+              <Route path="leaderboard" element={<LeaderboardPage {...alerts} />} />
+              <Route path="alerts" element={<Navigate to={dashboardPath('/')} replace />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="journal" element={<JournalPage />} />
               <Route path="trader/:wallet" element={<TraderDetailRoute />} />
@@ -359,6 +358,18 @@ export default function AppShell() {
           </div>
         )}
       </main>
+      <nav className="app-mobile-dock" aria-label="Main navigation">
+        {navItems.map(({ id, label, path, Icon }) => {
+          const target = dashboardPath(path)
+          const active = location.pathname === target
+          return (
+            <Link key={id} to={target} className={active ? 'active' : undefined} aria-current={active ? 'page' : undefined}>
+              <Icon size={22} strokeWidth={active ? 2.5 : 1.8} />
+              <span>{label}</span>
+            </Link>
+          )
+        })}
+      </nav>
     </div>
   )
 }

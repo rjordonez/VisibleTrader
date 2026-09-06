@@ -5,6 +5,12 @@
 }
 
 :root {
+  --ui-radius-control: 14px;
+  --ui-radius-card: 20px;
+  --ui-radius-dialog: 24px;
+  --ui-accent: #6370ff;
+  --ui-surface: #131318;
+  --ui-muted: #a2a2b0;
   font-family: 'Manrope', system-ui, -apple-system, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;

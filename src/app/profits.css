@@ -1,0 +1,67 @@
+.profits-page { max-width: 1120px; min-height: 0; }
+.profits-period { color: var(--text-dim); font-size: 12px; }
+.profits-overview { border: 1px solid #292933; border-radius: 24px; background: #101014; padding: 28px 28px 0; }
+.profits-net-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.profits-net-heading h2 { font-size: 13px; color: var(--text-dim); font-weight: 550; margin: 0 0 10px; }
+.profits-net-value { display: block; font-size: clamp(34px, 4.6vw, 54px); letter-spacing: -0.055em; font-weight: 750; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.profits-net-heading > div:first-child { min-width: 0; }
+.profits-net-context { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; padding-bottom: 5px; }
+.profits-net-context strong { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.profits-net-context span { font-size: 11px; color: var(--text-dim); }
+.profits-chart-area { min-width: 0; }
+.profits-chart-label { font-size: 11px; color: var(--text-dim); margin: 0 0 12px; }
+.profits-supporting-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin: 0; padding: 22px 0; border-top: 1px solid var(--border); }
+.profits-supporting-stats dt { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+.profits-supporting-stats dd { margin: 0; font-size: 23px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; overflow-wrap: anywhere; }
+.profits-outcomes { padding: 24px 0 32px; }
+.profits-outcome-labels { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
+.profits-outcome-labels strong { color: var(--text); font-size: 14px; margin-right: 3px; }
+.profits-outcome-bar { display: flex; gap: 4px; height: 5px; border-radius: 4px; overflow: hidden; }
+.profits-outcome-bar span { border-radius: 4px; min-width: 0; }
+.profits-wins-bar { background: #00d17a; }
+.profits-losses-bar { background: #b94a64; }
+.profits-results-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; }
+.profits-results-heading h2 { margin: 0 0 7px; font-size: 23px; font-weight: 750; letter-spacing: -0.03em; }
+.profits-results-heading p { margin: 0; color: var(--text-dim); font-size: 12px; line-height: 1.6; }
+.profits-filter { position: relative; display: inline-flex; }
+.profits-filter select { appearance: none; padding: 10px 34px 10px 13px; min-height: 44px; border-radius: 13px; border: 1px solid #30303d; background: #17171e; color: #e2e3ef; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.profits-filter svg { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: var(--text-dim); pointer-events: none; }
+.app-shell .profits-page :is(select, button, a):focus-visible { outline: 2px solid #8590ff; outline-offset: 3px; }
+.profits-result-list { margin: 0; padding: 0; list-style: none; }
+.profits-list-head, .profits-result-row { display: grid; grid-template-columns: minmax(0, 1fr) 130px 160px; align-items: center; gap: 24px; }
+.profits-list-head { font-size: 12px; color: var(--text-dim); padding: 14px 0; border-bottom: 1px solid var(--border); }
+.profits-list-head span:not(:first-child) { text-align: right; }
+.profits-result-row { padding: 22px 0; border-bottom: 1px solid rgba(255,255,255,0.055); }
+.profits-position { min-width: 0; }
+.profits-position h3 { font-size: 16px; line-height: 1.5; font-weight: 600; margin: 0 0 10px; overflow-wrap: anywhere; }
+.profits-trader-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--text-dim); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.profits-trader-line a { display: inline-flex; align-items: center; gap: 7px; color: #bfc0d0; text-decoration: none; }
+.profits-trader-line a:hover { color: #fff; }
+.profits-avatar { display: grid; place-items: center; width: 23px; height: 23px; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 650; flex-shrink: 0; }
+.profits-entry, .profits-result-value { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; min-width: 0; }
+.profits-entry strong { font-size: 15px; font-weight: 600; }
+.profits-entry span, .profits-result-value > span { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+.profits-result-value > strong { font-size: 21px; font-weight: 750; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.profits-page .is-positive { color: var(--green); }
+.profits-page .is-negative { color: var(--red); }
+.profits-notice { font-size: 14px; color: var(--text-dim); line-height: 1.7; padding: 18px 0; }
+.profits-overview-skeleton { height: 390px; border-radius: 24px; margin-bottom: 24px; }
+.profits-row-skeleton { height: 80px; border-radius: 14px; margin: 12px 0; }
+@media (max-width: 700px) {
+  .profits-overview { padding: 20px 16px 0; }
+  .profits-net-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .profits-net-context { flex-direction: row; align-items: baseline; gap: 6px; }
+  .profits-net-context strong { font-size: 13px; }
+  .profits-supporting-stats { gap: 16px 10px; }
+  .profits-supporting-stats dt { font-size: 11px; min-height: 30px; }
+  .profits-supporting-stats dd { font-size: 18px; }
+  .profits-list-head { display: none; }
+  .profits-result-row { grid-template-columns: minmax(0, 1fr) 110px; gap: 12px; align-items: start; }
+  .profits-position { grid-column: 1; grid-row: 1 / span 2; }
+  .profits-position h3 { font-size: 14px; }
+  .profits-entry { grid-column: 2; grid-row: 2; gap: 3px; }
+  .profits-entry strong { font-size: 12px; color: var(--text-dim); }
+  .profits-entry strong::after { content: ' staked'; font-size: 10px; font-weight: 400; }
+  .profits-result-value { grid-column: 2; grid-row: 1; }
+  .profits-result-value > strong { font-size: 18px; }
+}

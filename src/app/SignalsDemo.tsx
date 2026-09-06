@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { SlidersHorizontal, ArrowUpRight, Trophy } from 'lucide-react'
+import './signals.css'
 import { supabase } from '../lib/supabase'
 import type { Opportunity, TickerTrade, WalletPosition } from './types'
 import {
@@ -409,7 +411,7 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
     .sort((a, b) => Number(isDecidedPrice(a)) - Number(isDecidedPrice(b)))
     .sort((a, b) => Number(b.total_profit > 0) - Number(a.total_profit > 0))
   const activeFilterCount =
-    (tab !== 'ticker' && category !== 'all' ? 1 : 0) +
+    (category !== 'all' ? 1 : 0) +
     (todayOnly ? 1 : 0) +
     (minWinRate > 0 ? 1 : 0) +
     (minBetRatio > 0 ? 1 : 0) +
@@ -417,20 +419,44 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
     (minTotal > 0 || maxTotal < TOTAL_CAP ? 1 : 0)
 
   return (
-    <div className="sig-page">
+    <div className="sig-page signals-page">
       <div className="app-section-header">
         <div>
-          <h1 className="app-section-title">Top Trader Signals</h1>
+          <h1 className="app-section-title">Live signals</h1>
           <p className="app-section-sub">
             {loading ? 'Loading live signals…'
               : error ? 'Connection trouble — retrying…'
               : <>{opportunities.length} live opportunities · capital-weighted conviction from top traders</>}
           </p>
         </div>
-        {!error && <div className="sig-live">LIVE</div>}
+        {!error && !loading && <div className="sig-live">Live updates</div>}
       </div>
 
       <div className="sig-panel">
+        {(winsLoading || mergedWins.length > 0) && (
+          <section className="signals-highlights" aria-labelledby="signals-highlights-title">
+            <div className="signals-highlights-heading">
+              <h2 id="signals-highlights-title"><Trophy size={17} /> Recent wins</h2>
+              <button type="button" onClick={() => setTab('wins')}>View all <ArrowUpRight size={15} /></button>
+            </div>
+            <div className="signals-highlights-track" aria-busy={winsLoading}>
+              {winsLoading ? Array.from({ length: 4 }, (_, i) => (
+                <div key={i} className="signals-win-card signals-win-skeleton" aria-hidden="true" />
+              )) : mergedWins.slice(0, 8).map(w => (
+                <a className="signals-win-card" key={`${w.wallet}:${w.condition_id}:${w.outcome}`}
+                  href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer">
+                  <div className="signals-win-trader">
+                    <span className="signals-win-avatar" style={{ background: avatarGradient(w.wallet) }}>{avatarInitial(w.wallet, w.wallet_name)}</span>
+                    <span>{traderLabel(w.wallet, w.wallet_name)}</span>
+                    <ArrowUpRight size={14} />
+                  </div>
+                  <div className="signals-win-profit">{fmtSigned(w.profit)}</div>
+                  <div className="signals-win-market" title={`${w.title} — ${w.outcome}`}>{w.title} — {w.outcome}</div>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
         <div className="sig-head">
           {error && (
             <div style={{ color: '#ff3b5c', padding: '0 0 20px', fontSize: '0.875rem' }}>
@@ -439,9 +465,18 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
           )}
 
           <div className="sig-seg">
-            <div className={tab === 'vetted' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('vetted')}>Expert Picks</div>
-            <div className={tab === 'wins' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('wins')}>Recent Winners</div>
-            <div className={tab === 'ticker' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('ticker')}>Live Ticker</div>
+            <button type="button" aria-pressed={tab === 'vetted'} className={tab === 'vetted' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('vetted')}>Expert Picks</button>
+            <button type="button" aria-pressed={tab === 'wins'} className={tab === 'wins' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('wins')}>Recent Winners</button>
+            <button type="button" aria-pressed={tab === 'ticker'} className={tab === 'ticker' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('ticker')}>Live Ticker</button>
+          </div>
+
+          <div className="sig-chips signals-categories" aria-label="Market categories">
+            {['all', ...NAV_CATEGORIES].map(c => (
+              <button type="button" key={c} aria-pressed={category === c}
+                className={category === c ? 'sig-chip active' : 'sig-chip'} onClick={() => onCategoryChange(c)}>
+                {c === 'all' ? 'All markets' : categoryLabel(c)}
+              </button>
+            ))}
           </div>
 
           <div className="sig-toolbar">
@@ -449,53 +484,39 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
               type="button"
               className={filtersOpen ? 'sig-filters-toggle active' : 'sig-filters-toggle'}
               onClick={() => setFiltersOpen(o => !o)}
+              aria-expanded={filtersOpen}
+              aria-controls="signals-filters"
             >
-              Filters
+              <SlidersHorizontal size={16} /> Filters
               {activeFilterCount > 0 && <span className="sig-filters-badge">{activeFilterCount}</span>}
             </button>
             {tab === 'vetted' && (
               <div style={{ display: 'flex', gap: 8 }}>
-                <div className={sortMode === 'recent' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('recent')}>Most recent</div>
-                <div className={sortMode === 'profit' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('profit')}>Most profitable</div>
+                <button type="button" className={sortMode === 'recent' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('recent')}>Most recent</button>
+                <button type="button" className={sortMode === 'profit' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('profit')}>Most profitable</button>
               </div>
             )}
           </div>
 
           {filtersOpen && (
-          <div className="sig-filters">
-            {(tab === 'wins' || tab === 'vetted') && (
-              <div className="sig-filter-group">
-                <span className="sig-filter-label">Category</span>
-                <div className="sig-chips">
-                  <div className={category === 'all' ? 'sig-chip active' : 'sig-chip'} onClick={() => onCategoryChange('all')}>
-                    All
-                  </div>
-                  {NAV_CATEGORIES.map(c => (
-                    <div key={c} className={category === c ? 'sig-chip active' : 'sig-chip'} onClick={() => onCategoryChange(c)}>
-                      {categoryLabel(c)}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
+          <div className="sig-filters" id="signals-filters">
             <div className="sig-filter-group">
-              <div
+              <button type="button"
                 className={todayOnly ? 'sig-chip active' : 'sig-chip'}
                 style={{ alignSelf: 'flex-start' }}
                 onClick={() => setTodayOnly(t => !t)}
               >
                 Today only
-              </div>
+              </button>
             </div>
 
             <div className="sig-filter-group">
               <span className="sig-filter-label">Win rate</span>
               <div className="sig-chips">
                 {[0, 50, 65, 80].map(v => (
-                  <div key={v} className={minWinRate === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinWinRate(v)}>
+                  <button type="button" key={v} className={minWinRate === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinWinRate(v)}>
                     {v === 0 ? 'Any' : `${v}%+`}
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -504,9 +525,9 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
               <span className="sig-filter-label">Bet vs wallet balance</span>
               <div className="sig-chips">
                 {[0, 5, 15, 30].map(v => (
-                  <div key={v} className={minBetRatio === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinBetRatio(v)}>
+                  <button type="button" key={v} className={minBetRatio === v ? 'sig-chip active' : 'sig-chip'} onClick={() => setMinBetRatio(v)}>
                     {v === 0 ? 'Any' : `${v}%+`}
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -517,12 +538,12 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
                 <div className="sig-range-track" />
                 <div className="sig-range-fill" style={{ left: `${minPrice}%`, right: `${100 - maxPrice}%` }} />
                 <input
-                  type="range" min={0} max={100} value={minPrice}
+                  type="range" min={0} max={100} aria-label="Minimum price in cents" value={minPrice}
                   onChange={e => setMinPrice(Math.min(Number(e.target.value), maxPrice - 1))}
                   className="sig-range-input"
                 />
                 <input
-                  type="range" min={0} max={100} value={maxPrice}
+                  type="range" min={0} max={100} aria-label="Maximum price in cents" value={maxPrice}
                   onChange={e => setMaxPrice(Math.max(Number(e.target.value), minPrice + 1))}
                   className="sig-range-input"
                 />
@@ -537,12 +558,12 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
                 <div className="sig-range-track" />
                 <div className="sig-range-fill" style={{ left: `${totalPos(minTotal)}%`, right: `${100 - totalPos(maxTotal)}%` }} />
                 <input
-                  type="range" min={0} max={100} step={0.5} value={totalPos(minTotal)}
+                  type="range" min={0} max={100} step={0.5} aria-label="Minimum trade size" value={totalPos(minTotal)}
                   onChange={e => setMinTotal(Math.min(totalVal(Number(e.target.value)), maxTotal - 100))}
                   className="sig-range-input"
                 />
                 <input
-                  type="range" min={0} max={100} step={0.5} value={totalPos(maxTotal)}
+                  type="range" min={0} max={100} step={0.5} aria-label="Maximum trade size" value={totalPos(maxTotal)}
                   onChange={e => setMaxTotal(Math.max(totalVal(Number(e.target.value)), minTotal + 100))}
                   className="sig-range-input"
                 />
@@ -672,13 +693,13 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
             </div>
             {loading && Array.from({ length: 8 }).map((_, i) => <SkelLbRow key={i} />)}
             {!loading && filteredOpportunities.length === 0 && (
-              <div className="sig-empty">No opportunities detected yet — the live backend hasn't caught a tracked trader's trade yet. This is normal; keep it running.</div>
+              <div className="sig-empty">No signals match right now. Try adjusting your filters or check back soon.</div>
             )}
             {!loading && filteredOpportunities.map(o => {
               const key = `${o.condition_id}::${o.outcome}`
               const ic = categoryIcon(o.category)
               return (
-                <div key={key} className="lb-row lb-4col" style={{ cursor: 'pointer' }} onClick={() => setModalOpp(o)}>
+                <div key={key} className="lb-row lb-4col" role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setModalOpp(o) } }} onClick={() => setModalOpp(o)}>
                   <div className="lb-trader">
                     <div className="lb-avatar" style={{ background: ic.bg }}>{ic.emoji}</div>
                     <div style={{ minWidth: 0 }}>

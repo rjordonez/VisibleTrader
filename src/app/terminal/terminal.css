@@ -392,6 +392,20 @@
 .terminal-about-disclaimer a { color: var(--blue); text-decoration: none; }
 .terminal-about-disclaimer a:hover { text-decoration: underline; }
 
+/* Match the product surfaces while keeping room for adjacent data panels. */
+.terminal-card { border-radius: var(--ui-radius-card); }
+.terminal-search input { min-height: 42px; border-radius: 13px; font-size: 14px; }
+.terminal-sidebar-row { min-height: 58px; padding: 10px 8px; border-radius: 12px; }
+.terminal-sidebar-title, .terminal-sidebar-price { font-size: 14px; }
+.terminal-sidebar-sub, .terminal-sidebar-change { font-size: 12px; }
+.terminal-sidebar-icon { width: 34px; height: 34px; border-radius: 10px; }
+.terminal-sidebar-tabs button { min-height: 38px; border-radius: 11px; font-size: 12px; }
+.terminal-main .sig-hero-q { font-size: clamp(22px, 2vw, 28px); line-height: 1.35; letter-spacing: -0.03em; }
+.terminal-main .sig-stat-cell { padding: 14px; border-radius: 16px; }
+.terminal-main .sig-stat-cell-val { font-size: 25px; }
+.terminal-main .sig-chip { min-height: 36px; padding: 7px 11px; }
+.terminal-empty-title { font-size: 22px; letter-spacing: -0.03em; }
+
 @media (max-width: 720px) {
   .terminal-sidebar { position: fixed; inset: 72px 16px 16px; z-index: 5; width: auto; }
   .terminal-market-main { padding: 16px; }

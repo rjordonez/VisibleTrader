@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { ChevronLeft, ChevronRight, X, Plus, MessageSquare, ArrowUpRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { fmtSigned } from './helpers'
+import './journal.css'
 
 interface JournalEntry {
   entry_date: string
@@ -28,9 +29,16 @@ function JournalPage() {
   const [editAmount, setEditAmount] = useState('')
   const [editNote, setEditNote] = useState('')
   const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [editorError, setEditorError] = useState('')
+  const editorRef = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null))
+    supabase.auth.getUser().then(({ data, error }) => {
+      if (error) throw error
+      setUserId(data.user?.id ?? null)
+      if (!data.user) setLoading(false)
+    }).catch(() => { setLoadError(true); setLoading(false) })
   }, [])
 
   const year = viewDate.getFullYear()
@@ -40,20 +48,35 @@ function JournalPage() {
 
   useEffect(() => {
     if (!userId) return
-    setLoading(true)
+    let active = true
     Promise.resolve(
       supabase.from('personal_pnl_entries').select('entry_date, amount, note')
         .gte('entry_date', monthStart).lte('entry_date', monthEnd)
     )
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) throw error
+        if (!active) return
         const m = new Map<string, JournalEntry>()
         for (const e of (data ?? []) as JournalEntry[]) m.set(e.entry_date, e)
         setEntries(m)
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch(() => { if (active) setLoadError(true) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
   }, [userId, monthStart, monthEnd])
+
+  useEffect(() => {
+    if (editingDate) editorRef.current?.showModal()
+    else editorRef.current?.close()
+  }, [editingDate])
+
+  const changeMonth = (date: Date) => {
+    if (date.getFullYear() === year && date.getMonth() === month) return
+    setLoading(Boolean(userId))
+    setLoadError(false)
+    setEntries(new Map())
+    setViewDate(date)
+  }
 
   // Leading blanks (days from the previous month needed to fill the first
   // week) + every real day of the month — trailing blanks aren't needed
@@ -69,6 +92,10 @@ function JournalPage() {
 
   const monthTotal = Array.from(entries.values()).reduce((s, e) => s + e.amount, 0)
   const todayISO = toISODate(new Date())
+  const monthEntries = Array.from(entries.values()).sort((a, b) => b.entry_date.localeCompare(a.entry_date))
+  const profitableDays = monthEntries.filter(entry => entry.amount > 0).length
+  const bestDay = monthEntries.length ? Math.max(...monthEntries.map(entry => entry.amount)) : null
+  const monthLabel = viewDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
 
   const openDay = (day: number) => {
     const iso = toISODate(new Date(year, month, day))
@@ -76,19 +103,22 @@ function JournalPage() {
     setEditingDate(iso)
     setEditAmount(existing ? String(existing.amount) : '')
     setEditNote(existing?.note ?? '')
+    setEditorError('')
   }
 
   const closeEditor = () => {
+    if (saving) return
     setEditingDate(null)
     setEditAmount('')
     setEditNote('')
   }
 
   const saveEntry = () => {
-    if (!editingDate || !userId) return
+    if (!editingDate || !userId || editAmount.trim() === '') return
     const amount = Number(editAmount)
     if (!Number.isFinite(amount)) return
     setSaving(true)
+    setEditorError('')
     Promise.resolve(
       supabase.from('personal_pnl_entries')
         .upsert(
@@ -102,13 +132,14 @@ function JournalPage() {
         setEntries(prev => new Map(prev).set(data.entry_date, data as JournalEntry))
         closeEditor()
       })
-      .catch(() => {})
+      .catch(() => setEditorError('Could not save this entry. Please try again.'))
       .finally(() => setSaving(false))
   }
 
   const deleteEntry = () => {
     if (!editingDate || !userId) return
     setSaving(true)
+    setEditorError('')
     Promise.resolve(
       supabase.from('personal_pnl_entries').delete()
         .eq('user_id', userId).eq('entry_date', editingDate)
@@ -122,35 +153,47 @@ function JournalPage() {
         })
         closeEditor()
       })
-      .catch(() => {})
+      .catch(() => setEditorError('Could not delete this entry. Please try again.'))
       .finally(() => setSaving(false))
   }
 
   return (
-    <div className="sig-page">
-      <div className="app-section-header">
+    <div className="sig-page journal-page">
+      <div className="app-section-header journal-header">
         <div>
           <h1 className="app-section-title">Journal</h1>
-          <p className="app-section-sub">Your own daily wins and losses — not tracked-wallet data, just your record.</p>
+          <p className="app-section-sub">Your trades. Your progress.</p>
         </div>
+        <button type="button" className="journal-add-button" disabled={!userId || loading || loadError} onClick={() => openDay(year === new Date().getFullYear() && month === new Date().getMonth() ? new Date().getDate() : 1)}><Plus size={18} /> Log a day</button>
       </div>
 
-      <div className="sig-panel" style={{ maxWidth: 780 }}>
+      <section className="journal-summary" aria-label={`${monthLabel} summary`}>
+        <div className="journal-summary-main">
+          <span>Monthly P&L</span>
+          <strong className={monthTotal > 0 ? 'g' : monthTotal < 0 ? 'r' : ''}>{loading || loadError ? '—' : fmtSigned(monthTotal)}</strong>
+          <p>{monthLabel} · Manually logged</p>
+        </div>
+        <dl className="journal-summary-details">
+          <div><dt>Days logged</dt><dd>{loading || loadError ? '—' : entries.size}</dd></div>
+          <div><dt>Profitable days</dt><dd>{loading || loadError ? '—' : profitableDays}</dd></div>
+          <div><dt>Best day</dt><dd className={bestDay !== null && bestDay > 0 ? 'g' : bestDay !== null && bestDay < 0 ? 'r' : ''}>{loading || loadError || bestDay === null ? '—' : fmtSigned(bestDay)}</dd></div>
+        </dl>
+      </section>
+
+      <section className="journal-calendar" aria-label="Daily P&L calendar" aria-busy={loading}>
         <div className="journal-toolbar">
           <div className="journal-month-nav">
-            <button type="button" className="journal-nav-btn" onClick={() => setViewDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))} aria-label="Previous month">
+            <button type="button" className="journal-nav-btn" onClick={() => changeMonth(new Date(year, month - 1, 1))} aria-label="Previous month">
               <ChevronLeft size={16} />
             </button>
             <div className="journal-month-label">
-              {viewDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+              {monthLabel}
             </div>
-            <button type="button" className="journal-nav-btn" onClick={() => setViewDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))} aria-label="Next month">
+            <button type="button" className="journal-nav-btn" onClick={() => changeMonth(new Date(year, month + 1, 1))} aria-label="Next month">
               <ChevronRight size={16} />
             </button>
           </div>
-          <div className={`journal-month-total ${monthTotal >= 0 ? 'g' : 'r'}`}>
-            {fmtSigned(monthTotal)} this month
-          </div>
+          <button type="button" className="journal-today-button" onClick={() => changeMonth(new Date())} disabled={year === new Date().getFullYear() && month === new Date().getMonth()}>This month</button>
         </div>
 
         <div className="journal-weekdays">
@@ -166,60 +209,77 @@ function JournalPage() {
               <button
                 type="button"
                 key={iso}
-                className={`journal-cell ${iso === todayISO ? 'journal-cell-today' : ''} ${entry ? (entry.amount >= 0 ? 'journal-cell-win' : 'journal-cell-loss') : ''}`}
+                className={`journal-cell ${iso === todayISO ? 'journal-cell-today' : ''} ${entry ? (entry.amount > 0 ? 'journal-cell-win' : entry.amount < 0 ? 'journal-cell-loss' : 'journal-cell-even') : ''}`}
                 onClick={() => openDay(day)}
+                disabled={loading || loadError || !userId}
+                aria-label={`${new Date(year, month, day).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}: ${entry ? `${fmtSigned(entry.amount)}${entry.note ? ', has note' : ''}. Edit entry` : 'Log profit or loss'}`}
+                aria-current={iso === todayISO ? 'date' : undefined}
               >
                 <span className="journal-cell-day">{day}</span>
-                {entry && <span className="journal-cell-amt">{fmtSigned(entry.amount)}</span>}
+                {entry ? <><span className="journal-cell-amt">{fmtSigned(entry.amount)}</span>{entry.note && <MessageSquare className="journal-cell-note" size={12} aria-hidden="true" />}</> : <span className="journal-cell-add" aria-hidden="true">+</span>}
               </button>
             )
           })}
         </div>
 
-        {loading && <div className="sig-empty">Loading…</div>}
-      </div>
+        <p className="journal-calendar-hint" role="status">{loading ? 'Loading your entries…' : loadError ? 'Could not load your entries. Change months or reload to retry.' : !userId ? 'Sign in to keep your personal trading journal.' : 'Select a day to log your P&L or add a note.'}</p>
+      </section>
 
-      {editingDate && (
-        <div className="journal-editor-backdrop" onClick={closeEditor}>
-          <div className="journal-editor" onClick={e => e.stopPropagation()}>
+      {!loading && !loadError && <section className="journal-entries" aria-labelledby="journal-entries-title">
+        <div className="journal-entries-heading"><h2 id="journal-entries-title">Your entries</h2><span>{monthLabel}</span></div>
+        {monthEntries.length === 0 ? <div className="journal-empty"><h3>A little reflection goes a long way.</h3><p>Log a day's result and what you learned. Your entries will appear here.</p></div> : <div>{monthEntries.map(entry => <button className="journal-entry-row" type="button" key={entry.entry_date} onClick={() => openDay(Number(entry.entry_date.slice(-2)))}>
+          <span className="journal-entry-date"><strong>{new Date(entry.entry_date + 'T00:00:00').getDate()}</strong><small>{new Date(entry.entry_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })}</small></span>
+          <span className="journal-entry-note">{entry.note || 'No note added'}</span>
+          <strong className={`journal-entry-amount ${entry.amount > 0 ? 'g' : entry.amount < 0 ? 'r' : ''}`}>{fmtSigned(entry.amount)}</strong><ArrowUpRight size={16} aria-hidden="true" />
+        </button>)}</div>}
+      </section>}
+
+      <dialog className="journal-editor" ref={editorRef} aria-labelledby="journal-editor-title" onCancel={e => { e.preventDefault(); closeEditor() }} onClick={e => { if (e.target === e.currentTarget) closeEditor() }}>
+        {editingDate && <form onSubmit={e => { e.preventDefault(); saveEntry() }}>
             <div className="journal-editor-head">
-              <div className="journal-editor-title">
+              <div className="journal-editor-title" id="journal-editor-title">
                 {new Date(editingDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
               </div>
-              <button type="button" className="journal-editor-close" onClick={closeEditor} aria-label="Close">
+              <button type="button" className="journal-editor-close" onClick={closeEditor} disabled={saving} aria-label="Close">
                 <X size={16} />
               </button>
             </div>
-            <div className="sig-filter-label" style={{ marginBottom: 6 }}>Profit / loss</div>
+            <label className="journal-input-label" htmlFor="journal-amount">Profit / loss ($)</label>
             <input
+              id="journal-amount"
               className="sig-watch-input"
               type="number"
+              step="any"
+              required
+              disabled={saving}
               placeholder="e.g. 240 or -85"
               value={editAmount}
               onChange={e => setEditAmount(e.target.value)}
               autoFocus
             />
-            <div className="sig-filter-label" style={{ margin: '14px 0 6px' }}>Note (optional)</div>
+            <label className="journal-input-label" htmlFor="journal-note">Note (optional)</label>
             <textarea
+              id="journal-note"
+              disabled={saving}
               className="sig-watch-input journal-note-input"
               placeholder="What happened today…"
               value={editNote}
               onChange={e => setEditNote(e.target.value)}
               rows={3}
             />
+            {editorError && <p className="journal-editor-error" role="alert">{editorError}</p>}
             <div className="journal-editor-actions">
               {entries.has(editingDate) && (
-                <button type="button" className="sig-btn secondary" style={{ borderColor: '#f87171', color: '#f87171' }} onClick={deleteEntry} disabled={saving}>
+                <button type="button" className="sig-btn secondary journal-delete-button" onClick={deleteEntry} disabled={saving}>
                   Delete
                 </button>
               )}
-              <button type="button" className="sig-btn" onClick={saveEntry} disabled={saving || editAmount.trim() === ''}>
+              <button type="submit" className="sig-btn" disabled={saving || editAmount.trim() === ''}>
                 {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+        </form>}
+      </dialog>
     </div>
   )
 }
