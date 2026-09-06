@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, Menu, X } from 'lucide-react'
+import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -146,6 +146,7 @@ function TabLoading() {
 const navItems = [
   { id: 'home',        label: 'Home',        path: '/',            Icon: HomeIcon },
   { id: 'signals',     label: 'Signals',     path: '/signals',     Icon: Zap },
+  { id: 'terminal',    label: 'Terminal',    path: '/terminal',    Icon: BarChart3 },
   { id: 'profits',     label: 'Profits',     path: '/profits',     Icon: TrendingUp },
   { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
 ]

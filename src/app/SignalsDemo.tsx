@@ -422,14 +422,13 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
     <div className="sig-page signals-page">
       <div className="app-section-header">
         <div>
-          <h1 className="app-section-title">Live signals</h1>
+          <h1 className="app-section-title">Signals</h1>
           <p className="app-section-sub">
-            {loading ? 'Loading live signals…'
+            {loading ? 'Loading signals…'
               : error ? 'Connection trouble — retrying…'
-              : <>{opportunities.length} live opportunities · capital-weighted conviction from top traders</>}
+              : <>{opportunities.length} opportunities · capital-weighted conviction from top traders</>}
           </p>
         </div>
-        {!error && !loading && <div className="sig-live">Live updates</div>}
       </div>
 
       <div className="sig-panel">
@@ -460,14 +459,14 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
         <div className="sig-head">
           {error && (
             <div style={{ color: '#ff3b5c', padding: '0 0 20px', fontSize: '0.875rem' }}>
-              Having trouble reaching live data — this usually resolves on its own. Check your internet connection if it continues.
+              Having trouble reaching signal data — this usually resolves on its own. Check your internet connection if it continues.
             </div>
           )}
 
           <div className="sig-seg">
             <button type="button" aria-pressed={tab === 'vetted'} className={tab === 'vetted' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('vetted')}>Expert Picks</button>
             <button type="button" aria-pressed={tab === 'wins'} className={tab === 'wins' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('wins')}>Recent Winners</button>
-            <button type="button" aria-pressed={tab === 'ticker'} className={tab === 'ticker' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('ticker')}>Live Ticker</button>
+            <button type="button" aria-pressed={tab === 'ticker'} className={tab === 'ticker' ? 'sig-seg-btn active' : 'sig-seg-btn'} onClick={() => setTab('ticker')}>Recent Trades</button>
           </div>
 
           <div className="sig-chips signals-categories" aria-label="Market categories">

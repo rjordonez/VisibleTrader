@@ -308,9 +308,23 @@
   justify-content: center;
   text-align: center;
   color: var(--text-dim);
+  padding: 32px;
+  box-sizing: border-box;
 }
+.terminal-empty-copy { max-width: 520px; }
+.terminal-empty-eyebrow { color: var(--blue); font-size: 12px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 12px; }
 .terminal-empty-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
 .terminal-empty-sub { font-size: 13px; max-width: 320px; }
+.terminal-featured-markets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: min(820px, 100%); margin-top: 28px; text-align: left; }
+.terminal-featured-market { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); text-decoration: none; transition: border-color .15s, background .15s, transform .15s; }
+.terminal-featured-market:hover { border-color: var(--blue); background: var(--surface-2); transform: translateY(-2px); }
+.terminal-featured-market-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 700; }
+.terminal-featured-market-meta { display: block; margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 11px; }
+.terminal-featured-market-stats { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 18px; }
+.terminal-featured-market-stats strong { font-size: 24px; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.terminal-featured-market-stats span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; }
+.terminal-featured-market-stats .g { color: var(--green); }
+.terminal-featured-market-stats .r { color: var(--red); }
 
 /* ── Market view: the main card (chart, activity, holders — all full-width,
    stacked, via MarketDetailContent, unmodified) + a narrower About panel. ── */
@@ -406,7 +420,40 @@
 .terminal-main .sig-chip { min-height: 36px; padding: 7px 11px; }
 .terminal-empty-title { font-size: 22px; letter-spacing: -0.03em; }
 
+/* Terminal hierarchy: one calm workspace with a clear market focus. */
+.terminal-topbar { height: 68px; padding: 0 28px; background: #101015; border-bottom: 1px solid #ffffff0a; }
+.terminal-logo { font-size: 17px; letter-spacing: -.03em; }
+.terminal-search input { background: #191920; border-color: #30303c; }
+.terminal-locked-inner { gap: 20px; padding: 20px; }
+.terminal-sidebar { width: 320px; padding: 16px 12px; background: #111116; }
+.terminal-sidebar-inner { width: 296px; min-width: 296px; }
+.terminal-sidebar-tabs { padding-right: 38px; margin-bottom: 14px; }
+.terminal-sidebar-tabs button { color: #9898aa; }
+.terminal-sidebar-tabs button.active { background: #292a41; color: #e5e6ff; }
+.terminal-sidebar-cats { padding: 0 8px 14px; }
+.terminal-sidebar-cats select { min-height: 42px; border-radius: 12px; background: #191920; font-size: 13px; }
+.terminal-sidebar-row { min-height: 64px; padding: 11px 10px; }
+.terminal-sidebar-row.active { background: #25263a; border-color: #4d507b; }
+.terminal-sidebar-title { font-size: 14px; line-height: 1.35; }
+.terminal-sidebar-sub { margin-top: 4px; color: #9696a8; }
+.terminal-sidebar-price { font-size: 15px; }
+.terminal-sidebar-change { margin-top: 4px; }
+.terminal-main .sig-panel { background: #111116; border-color: #ffffff0c; border-radius: 24px; }
+.terminal-main .sig-hero-top { padding: 24px 26px 0; }
+.terminal-main .sig-hero-q { font-size: clamp(25px, 3vw, 36px); font-weight: 750; }
+.terminal-main .sig-stats-row { gap: 10px; }
+.terminal-main .sig-stat-cell { background: #191920; border-color: #ffffff0c; padding: 18px; }
+.terminal-main .sig-stat-cell-label { font-size: 12px; }
+.terminal-main .sig-stat-cell-val { font-size: 28px; }
+.terminal-about { padding: 20px; border-radius: 20px; background: #111116; }
+.terminal-about-label { font-size: 11px; margin-bottom: 16px; }
+.terminal-timeframe-tile { border-radius: 11px; padding: 10px 4px; }
+.terminal-about-link { border-radius: 12px; padding: 11px; }
+
 @media (max-width: 720px) {
+  .terminal-topbar { height: 60px; padding: 0 16px; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; }
+  .terminal-logo { font-size: 14px; }
   .terminal-sidebar { position: fixed; inset: 72px 16px 16px; z-index: 5; width: auto; }
   .terminal-market-main { padding: 16px; }
+  .terminal-featured-markets { grid-template-columns: 1fr; max-width: 460px; }
 }
