@@ -143,10 +143,13 @@ function TabLoading() {
 // (see AlertsBell below) instead of a plain nav link, same reasoning as
 // the Terminal's own read-only Alerts tab: it's a notification surface,
 // not a page you navigate to browse.
+// `dock: false` keeps an item out of the mobile bottom dock (but still in
+// the sidebar). The Terminal is a desktop-only workspace — see Terminal.tsx,
+// which shows a "built for desktop" stub on narrow viewports.
 const navItems = [
   { id: 'home',        label: 'Home',        path: '/',            Icon: HomeIcon },
   { id: 'signals',     label: 'Signals',     path: '/signals',     Icon: Zap },
-  { id: 'terminal',    label: 'Terminal',    path: '/terminal',    Icon: BarChart3 },
+  { id: 'terminal',    label: 'Terminal',    path: '/terminal',    Icon: BarChart3, dock: false },
   { id: 'profits',     label: 'Profits',     path: '/profits',     Icon: TrendingUp },
   { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
 ]
@@ -360,7 +363,7 @@ export default function AppShell() {
         )}
       </main>
       <nav className="app-mobile-dock" aria-label="Main navigation">
-        {navItems.map(({ id, label, path, Icon }) => {
+        {navItems.filter(n => n.dock !== false).map(({ id, label, path, Icon }) => {
           const target = dashboardPath(path)
           const active = location.pathname === target
           return (
