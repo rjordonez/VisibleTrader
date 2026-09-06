@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, Link, useNavigate } from 'react-router-dom'
 import { supabase, isProdDb } from '../../lib/supabase'
-import { dashboardPath } from '../../lib/domains'
+import { dashboardPath, terminalPath } from '../../lib/domains'
 import { useSubscriptionGate } from '../../lib/subscriptionGate'
 import type { User } from '@supabase/supabase-js'
 import type { Opportunity } from '../types'
-import { onTabVisible, byCategory, PAGE_SIZE } from '../helpers'
+import { onTabVisible, byCategory, PAGE_SIZE, fmtAbbrev, fmtAbbrevSigned } from '../helpers'
 import { onOpportunitiesBatch, mergeOpportunities } from '../realtimeBroadcast'
 import TerminalSidebar from './TerminalSidebar'
 import TerminalMarketView from './TerminalMarketView'
@@ -13,11 +13,32 @@ import TerminalTraderView from './TerminalTraderView'
 import '../app.css'
 import './terminal.css'
 
-function TerminalEmptyState() {
+function TerminalEmptyState({ opportunities }: { opportunities: Opportunity[] }) {
   return (
     <div className="terminal-empty terminal-card">
-      <div className="terminal-empty-title">Pick a market</div>
-      <div className="terminal-empty-sub">Select something from the list on the left to see its price history and who's in it.</div>
+      <div className="terminal-empty-copy">
+        <div className="terminal-empty-eyebrow">Market workspace</div>
+        <div className="terminal-empty-title">What are traders watching?</div>
+        <div className="terminal-empty-sub">Choose a market to see its price history, tracked activity, and conviction.</div>
+      </div>
+      {opportunities.length > 0 && (
+        <div className="terminal-featured-markets" aria-label="Featured markets">
+          {opportunities.slice(0, 3).map(o => (
+            <Link
+              key={`${o.condition_id}::${o.outcome}`}
+              className="terminal-featured-market"
+              to={terminalPath(`/market/${encodeURIComponent(o.condition_id)}/${encodeURIComponent(o.outcome)}`)}
+            >
+              <span className="terminal-featured-market-title">{o.title}</span>
+              <span className="terminal-featured-market-meta">{o.outcome} · {o.wallet_count} tracked</span>
+              <span className="terminal-featured-market-stats">
+                <strong>{Math.round(o.latest_price * 100)}¢</strong>
+                <span className={o.total_profit >= 0 ? 'g' : 'r'}>{fmtAbbrevSigned(o.total_profit)} · {fmtAbbrev(o.cumulative_usd)} tracked</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -157,7 +178,7 @@ export default function Terminal() {
           />
           <div className="terminal-main">
             <Routes>
-              <Route index element={<TerminalEmptyState />} />
+              <Route index element={<TerminalEmptyState opportunities={filtered} />} />
               <Route path="market/:conditionId/:outcome" element={<TerminalMarketView opportunities={opportunities} />} />
               <Route path="trader/:wallet" element={<TerminalTraderView />} />
             </Routes>

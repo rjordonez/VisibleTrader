@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ResponsiveContainer, ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, ReferenceDot, ReferenceLine,
 } from 'recharts'
@@ -11,7 +11,7 @@ import { signalsTraderStatus } from './helpers'
 // to the biggest trades by $, which is also the more useful signal (a $50k
 // buy is worth calling out; a $3 one isn't) — the trader list below still
 // shows every single entry, this cap is chart-markers-only.
-const MAX_CHART_MARKERS = 150
+const MAX_CHART_MARKERS = 100
 
 interface ChartMarker { t: number; p: number; color: string; usd: number }
 
@@ -41,6 +41,11 @@ function niceTicks(min: number, max: number, count: number, clampMin = -Infinity
 
 export function PriceChart({ history, wallets, height = 220 }: { history: ChartPoint[]; wallets: WalletContribution[]; height?: number }) {
   const [hoverT, setHoverT] = useState<number | null>(null)
+  const hoverFrame = useRef<number | null>(null)
+
+  useEffect(() => () => {
+    if (hoverFrame.current !== null) cancelAnimationFrame(hoverFrame.current)
+  }, [])
 
   // Everything here only depends on history/wallets, never on hoverT — but
   // hovering the chart sets hoverT on basically every mousemove pixel, and
@@ -113,7 +118,6 @@ export function PriceChart({ history, wallets, height = 220 }: { history: ChartP
     const endpoint = sortedHistory[sortedHistory.length - 1]
 
     return { minT, maxT, priceOnLineAt, markers, domainMin, domainMax, yTicks, endpoint }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history, wallets])
 
   if (!chartData) return null
@@ -127,9 +131,18 @@ export function PriceChart({ history, wallets, height = 220 }: { history: ChartP
           onMouseMove={(state: { activeLabel?: string | number }) => {
             if (state.activeLabel == null) return
             const t = Number(state.activeLabel)
-            if (!Number.isNaN(t)) setHoverT(t)
+            if (Number.isNaN(t)) return
+            if (hoverFrame.current !== null) cancelAnimationFrame(hoverFrame.current)
+            hoverFrame.current = requestAnimationFrame(() => {
+              setHoverT(current => current === t ? current : t)
+              hoverFrame.current = null
+            })
           }}
-          onMouseLeave={() => setHoverT(null)}
+          onMouseLeave={() => {
+            if (hoverFrame.current !== null) cancelAnimationFrame(hoverFrame.current)
+            hoverFrame.current = null
+            setHoverT(null)
+          }}
         >
           <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" vertical={false} />
           <XAxis
