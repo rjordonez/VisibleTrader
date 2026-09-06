@@ -342,7 +342,7 @@ export default function AppShell() {
               <Route index element={<HomePage user={user} alerts={alerts} />} />
               <Route path="signals" element={<SignalsDemo category={category} onCategoryChange={setCategory} />} />
               <Route path="profits" element={<ProfitsPage />} />
-              <Route path="leaderboard" element={<LeaderboardPage />} />
+              <Route path="leaderboard" element={<LeaderboardPage {...alerts} />} />
               <Route path="alerts" element={<Navigate to={dashboardPath('/')} replace />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="journal" element={<JournalPage />} />

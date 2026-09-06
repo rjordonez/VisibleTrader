@@ -158,8 +158,8 @@ function SettingsPage() {
         </div>
       </div>
 
-      <div className="sig-panel" style={{ maxWidth: 560 }}>
-        <div style={{ marginBottom: 28, paddingBottom: 24, borderBottom: '1px solid var(--border)' }}>
+      <div className="sig-panel settings-panel">
+        <div className="settings-subscription">
           <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Subscription</div>
           {subLoading ? (
             <SkelBlock height={36} radius={6} />
@@ -180,7 +180,7 @@ function SettingsPage() {
               )}
               {subscription.status === 'trialing' && (
                 confirmingCancel ? (
-                  <div style={{ marginTop: 12, padding: 12, border: '1px solid var(--border)', borderRadius: 6 }}>
+                  <div className="settings-cancel-confirm">
                     <p style={{ fontSize: '0.8rem', marginBottom: 8 }}>
                       Cancel your trial now? You'll lose access immediately — this can't be undone.
                     </p>

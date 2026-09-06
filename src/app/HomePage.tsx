@@ -13,8 +13,31 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
   // Discovery is the landing experience: a new or returning user should
   // immediately see validated trader activity before opting into Following.
   const [tab, setTab] = useState<'following' | 'discover'>('discover')
+  const [sortMode, setSortMode] = useState<'compelling' | 'recent' | 'pnl' | 'winRate' | 'size'>('compelling')
   const feed = useHomeTrades(tab, alerts.watchedWallets.map(w => w.wallet))
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Your account'
+  const sortedTrades = [...feed.trades].sort((a, b) => {
+    const ar = feed.records.get(a.wallet?.toLowerCase() ?? '')
+    const br = feed.records.get(b.wallet?.toLowerCase() ?? '')
+    const aw = ar ? ar.won + ar.lost : 0
+    const bw = br ? br.won + br.lost : 0
+    const awr = aw ? ar!.won / aw : 0
+    const bwr = bw ? br!.won / bw : 0
+    if (sortMode === 'recent') return new Date(b.ts).getTime() - new Date(a.ts).getTime()
+    if (sortMode === 'pnl') return (br?.net_profit ?? 0) - (ar?.net_profit ?? 0)
+    if (sortMode === 'winRate') return bwr - awr
+    if (sortMode === 'size') return b.usd - a.usd
+    // A balanced score keeps recency and trade size useful while tempering
+    // small-sample win rates. P&L is log-scaled so one whale does not drown
+    // out every other credible trader.
+    const score = (r: typeof ar, wr: number, resolved: number, trade: typeof a) =>
+      Math.log10(Math.max(1, r?.net_profit ?? 0) + 1) * 0.45 +
+      Math.min(1, resolved / 50) * 0.2 +
+      wr * 0.2 +
+      Math.min(1, Math.max(0, (Date.now() - new Date(trade.ts).getTime()) / 86_400_000) < 1 ? 0.1 : 0) +
+      Math.log10(Math.max(100, trade.usd)) / 6 * 0.05
+    return score(br, bwr, bw, b) - score(ar, awr, aw, a)
+  })
   return (
     <div className="sig-page home-page">
       <header className="home-account">
@@ -33,12 +56,15 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
         <button type="button" aria-pressed={tab === 'discover'} className={tab === 'discover' ? 'active' : undefined} onClick={() => setTab('discover')}>Discover</button>
         <button type="button" aria-pressed={tab === 'following'} className={tab === 'following' ? 'active' : undefined} onClick={() => setTab('following')}>Following <span>{alerts.watchedWallets.length}</span></button>
       </div>
-      <p className="home-feed-description">{tab === 'discover' ? 'Recent trades from the top 100 profitable tracked traders.' : 'The latest moves from wallets you follow.'}</p>
+      <div className="home-feed-toolbar">
+        <p className="home-feed-description">{tab === 'discover' ? 'Recent trades from profitable tracked traders.' : 'The latest moves from wallets you follow.'}</p>
+        {tab === 'discover' && <label className="home-sort-label"><span>Sort by</span><select aria-label="Sort discover feed" value={sortMode} onChange={e => setSortMode(e.target.value as typeof sortMode)}><option value="compelling">Most compelling</option><option value="recent">Most recent</option><option value="pnl">Highest P&amp;L</option><option value="winRate">Highest win rate</option><option value="size">Biggest trades</option></select></label>}
+      </div>
       {feed.error && <p className="home-feed-message" role="status">Unable to refresh trades. {feed.trades.length > 0 ? 'Showing the last available activity. ' : ''}Retrying automatically.</p>}
       <section aria-label={tab === 'following' ? 'Following trades' : 'Discover trades'} aria-busy={feed.loading}>
         {feed.loading ? <div aria-label="Loading trades">{[0, 1, 2].map(i => <div key={i} className="home-trade-skeleton sig-skel" aria-hidden="true" />)}</div> : !feed.error && feed.trades.length === 0 ? (
           <div className="home-feed-empty"><h2>{tab === 'following' && alerts.watchedWallets.length === 0 ? 'Who are you watching?' : 'No recent trades here yet.'}</h2><p>{tab === 'following' ? 'Find a trader in Discover and follow them to bring their next trades here.' : 'Trades from profitable tracked wallets will appear here when available.'}</p>{tab === 'following' && <button type="button" onClick={() => setTab('discover')}>Discover traders <ArrowUpRight size={16} /></button>}</div>
-        ) : feed.trades.map(trade => {
+        ) : sortedTrades.map(trade => {
           const wallet = trade.wallet!
           const record = feed.records.get(wallet.toLowerCase())
           const name = traderLabel(wallet, trade.wallet_name || record?.wallet_name || null)

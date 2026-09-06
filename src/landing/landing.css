@@ -5,8 +5,8 @@
   --bg-3: #111827;
   --surface: #161b28;
   --border: rgba(255, 255, 255, 0.07);
-  --accent: #0284c7;
-  --accent-hover: #0ea5e9;
+  --accent: #5965ed;
+  --accent-hover: #707bff;
   /* Cool gray for text/secondary elements (badge labels, active-item
      text, small icons) that previously reused the accent — keeps the
      brand green reserved for real buttons/CTAs/section fills instead of
@@ -15,9 +15,9 @@
   --green: #10b981;
   --text-1: #f9fafb;
   --text-2: #d1d5db;
-  --text-3: #6b7280;
-  --radius: 12px;
-  --radius-sm: 8px;
+  --text-3: #92929f;
+  --radius: var(--ui-radius-card);
+  --radius-sm: var(--ui-radius-control);
 }
 
 .landing {
@@ -3738,4 +3738,33 @@
 
 @media (max-width: 720px) {
   .aff-benefits-grid { grid-template-columns: 1fr; }
+}
+
+/* Public pages use the product's type, controls, and restrained surfaces. */
+.landing :is(.btn-primary, .btn-ghost, .pricing-cta, .auth-submit, .auth-oauth-btn, .ep-btn, .cta-banner-btn) { min-height: 46px; border-radius: var(--ui-radius-control); font-size: 15px; font-weight: 700; }
+.landing :is(.auth-input, .ep-input, .calc-input, .blog-search) { min-height: 48px; border-radius: var(--ui-radius-control); font-size: 16px; }
+.landing :is(.pricing-card, .pricing-features-card, .calc-widget, .aff-step, .aff-form-card, .aff-benefit-card, .aff-mock) { border-radius: var(--ui-radius-card); }
+.landing .auth-card { max-width: 420px; border-radius: var(--ui-radius-dialog); background: var(--ui-surface); box-shadow: 0 16px 48px rgba(0,0,0,0.2); }
+.landing .auth-title { font-size: 32px; letter-spacing: -0.04em; }
+.landing .auth-label { font-size: 13px; }
+.landing :is(.pricing-title, .blog-title, .calc-title) { font-size: clamp(32px, 4vw, 44px); font-weight: 800; letter-spacing: -0.045em; }
+.landing .ep-headline { font-size: clamp(28px, 3vw, 38px); font-weight: 800; letter-spacing: -0.04em; }
+.landing :is(.section-sub, .pricing-sub, .blog-sub, .auth-sub) { font-size: 16px; line-height: 1.7; }
+.landing .pricing-card { padding: 28px; background-color: var(--ui-surface); }
+.landing .pricing-feature { font-size: 14px; line-height: 1.6; }
+.landing .calc-widget { padding: 24px; background: var(--ui-surface); }
+.landing .calc-result { border-radius: 16px; }
+.landing .calc-result-value { font-size: clamp(28px, 3vw, 38px); letter-spacing: -0.035em; overflow-wrap: anywhere; }
+.landing .calc-sidebar-item { min-height: 44px; border-radius: 12px; font-size: 14px; }
+.landing .faq-question { min-height: 56px; font-size: 17px; }
+.landing .faq-answer { font-size: 15px; line-height: 1.75; }
+.landing :is(.blog-tab, .nav-links a) { border-radius: 12px; min-height: 44px; }
+.landing :is(a, button, input, select, textarea, summary):focus-visible { outline: 2px solid #8590ff; outline-offset: 3px; }
+@media (max-width: 640px) {
+  .landing .auth-card { padding: 26px 22px; }
+  .landing .pricing-card, .landing .calc-widget { padding: 22px; }
+  .landing .faq-question { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
