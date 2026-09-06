@@ -2998,6 +2998,9 @@
 }
 
 .footer-col a {
+  display: inline-block;
+  padding: 0.5rem 0;
+  margin: -0.5rem 0;
   font-size: 0.875rem;
   color: var(--text-2);
   text-decoration: none;
@@ -3843,17 +3846,22 @@
 .career-meta-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); margin-bottom: 0.35rem; }
 .career-meta-value { font-size: 1rem; color: var(--text-1); font-weight: 600; }
 .career-main { min-width: 0; }
-.career-tabs { display: flex; gap: 1.75rem; border-bottom: 1px solid var(--border); margin-bottom: 1.75rem; }
+.career-tabs { position: relative; display: flex; gap: 1.75rem; border-bottom: 1px solid var(--border); margin-bottom: 1.75rem; }
 .career-tab {
   padding: 0 0 0.85rem;
   font-size: 1rem;
   font-weight: 700;
   color: var(--text-3);
   text-decoration: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
 }
-.career-tab.active { color: var(--accent-hover); border-bottom-color: var(--accent-hover); }
+.career-tab.active { color: var(--accent-hover); }
+.career-tab-indicator {
+  position: absolute;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent-hover);
+  transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1), width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
 .career-apply-btn {
   display: block;
   width: 100%;
@@ -3880,6 +3888,13 @@
 
 @media (max-width: 720px) {
   .career-layout { grid-template-columns: 1fr; }
-  .career-sidebar { flex-direction: row; flex-wrap: wrap; gap: 0 1.5rem; margin-bottom: 1rem; }
-  .career-meta { border-bottom: none; padding: 0.5rem 0; flex: 1 1 auto; }
+  .career-sidebar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem 1.5rem;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .career-meta { border-bottom: none; padding: 0; }
 }
