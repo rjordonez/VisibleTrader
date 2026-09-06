@@ -5,19 +5,20 @@ import PromoBanner from './components/PromoBanner'
 import './landing.css'
 
 export default function LandingLayout() {
-  // The rotating "someone just won" popup is a homepage sales-momentum
-  // device — out of place on a content page like the blog, so it's
-  // skipped there rather than gated per-route from inside the widget
-  // itself.
+  // The rotating "someone just won" popup and the $1-first-week countdown
+  // banner are both homepage sales-momentum devices — out of place on every
+  // other marketing page (blog, careers, affiliates, pricing, etc.), so
+  // both only show on the homepage itself rather than being gated per-route
+  // from inside the widgets.
   const { pathname } = useLocation()
-  const showProofWidget = !pathname.startsWith('/blog')
+  const isHomepage = pathname === '/'
 
   return (
     <div className="landing">
-      <PromoBanner />
+      {isHomepage && <PromoBanner />}
       <Navbar />
       <Outlet />
-      {showProofWidget && <ProofWidget />}
+      {isHomepage && <ProofWidget />}
     </div>
   )
 }

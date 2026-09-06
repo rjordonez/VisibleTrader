@@ -10,11 +10,12 @@ import './app/app.css'
 // open anon-select `true` policy — rather than going through the app's
 // normal auth'd Supabase client flows, since there's no session here at all.
 //
-// Daily/Weekly/Monthly range toggles were tried and pulled: "gained" mostly
-// reflected newly-appeared reels/videos counting their full view total
-// rather than real growth (worst right after TikTok started being tracked,
-// where day one counts 100% of it as "gained") — misleading enough to hold
-// off until there's a cleaner way to compute real per-window growth.
+// Ranks by all-time total views, not a rolling/daily delta — a "gained
+// since X" metric was tried twice and pulled both times for being
+// misleading (a newly-appeared reel/video counts its full view total as
+// "new" even though it existed before the window started). The only thing
+// that resets daily is the refresh countdown itself (pinned to 10am PST),
+// not the ranking metric.
 interface CreatorRow {
   creator: string
   views: number
@@ -42,6 +43,25 @@ function fmtViews(n: number) {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1) + 'M'
   if (n >= 1000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'k'
   return n.toLocaleString('en-US')
+}
+
+// "10am PST" means 10am America/Los_Angeles wall-clock time year-round
+// (PST or PDT, whichever is in effect) — computed via Intl rather than a
+// hardcoded UTC-8 offset so it stays correct across the DST transition.
+function laOffsetMinutes(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', timeZoneName: 'shortOffset' }).formatToParts(date)
+  const tz = parts.find(p => p.type === 'timeZoneName')?.value ?? 'GMT-8'
+  const match = tz.match(/GMT([+-]\d+)/)
+  return match ? parseInt(match[1], 10) * 60 : -480
+}
+
+function nextDailyReset(now: Date) {
+  const offsetMin = laOffsetMinutes(now)
+  const laShifted = new Date(now.getTime() + offsetMin * 60000)
+  const y = laShifted.getUTCFullYear(), m = laShifted.getUTCMonth(), d = laShifted.getUTCDate()
+  let nextMs = Date.UTC(y, m, d, 10, 0, 0) - offsetMin * 60000
+  if (nextMs <= now.getTime()) nextMs = Date.UTC(y, m, d + 1, 10, 0, 0) - offsetMin * 60000
+  return new Date(nextMs)
 }
 
 function SkelCreatorRow() {
@@ -258,17 +278,7 @@ export default function CreatorLeaderboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshots, platformFilter])
 
-  const lastScraped = activePlatforms
-    .map(p => snapshots[p].checkedAt)
-    .filter((x): x is string => !!x)
-    .sort()
-    .reverse()[0] ?? null
-
-  // Both scrapers run on their own schedules (IG hourly, TikTok on its own
-  // cadence) with no single shared "next run" timestamp exposed anywhere —
-  // 24h after the most recent successful scrape is a reasonable stand-in
-  // upper bound for "data this stale should refresh again by."
-  const nextRefreshMs = lastScraped ? Math.max(0, new Date(lastScraped).getTime() + 86400000 - now) : null
+  const nextResetMs = Math.max(0, nextDailyReset(new Date(now)).getTime() - now)
 
   return (
     <div className="sig-page" style={{ padding: '48px 20px' }}>
@@ -276,17 +286,17 @@ export default function CreatorLeaderboardPage() {
         <div className="app-section-header">
           <div>
             <h1 className="app-section-title">Creator Leaderboard</h1>
-            {(loading || error) && (
-              <p className="app-section-sub">{loading ? 'Loading…' : 'Connection trouble — retrying…'}</p>
-            )}
+            <p className="app-section-sub">
+              {loading ? 'Loading…' : error ? 'Connection trouble — retrying…' : 'Refreshes daily at 10am PST'}
+            </p>
           </div>
-          {nextRefreshMs !== null && !loading && !error && (
+          {!loading && !error && (
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>
                 Next refresh
               </div>
               <div style={{ fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text-dim)' }}>
-                {fmtCountdown(nextRefreshMs)}
+                {fmtCountdown(nextResetMs)}
               </div>
             </div>
           )}
