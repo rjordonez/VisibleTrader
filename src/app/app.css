@@ -6,7 +6,7 @@
    this is a real, visible step up (RGB ~20 vs ~11). */
 .app-shell {
   --shell-bg: #050505;
-  --sidebar-width: 220px;
+  --sidebar-width: 260px;
   display: flex;
   flex-direction: row;
   min-height: 100vh;
