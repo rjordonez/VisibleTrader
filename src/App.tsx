@@ -18,6 +18,7 @@ const EstimatePage = lazy(() => import('./landing/EstimatePage'))
 const CalculatorsPage = lazy(() => import('./landing/CalculatorsPage'))
 const BlogPage = lazy(() => import('./landing/BlogPage'))
 const CareersPage = lazy(() => import('./landing/CareersPage'))
+const CareerLayout = lazy(() => import('./landing/CareerLayout'))
 const CareerRolePage = lazy(() => import('./landing/CareerRolePage'))
 const CareerApplyPage = lazy(() => import('./landing/CareerApplyPage'))
 const AffiliatePage = lazy(() => import('./landing/AffiliatePage'))
@@ -81,8 +82,15 @@ function MarketingRoutes() {
         <Route path="/calculators" element={<CalculatorsPage />} />
         <Route path="/blog" element={<BlogPage />} />
         <Route path="/careers" element={<CareersPage />} />
-        <Route path="/careers/:slug" element={<CareerRolePage />} />
-        <Route path="/careers/:slug/apply" element={<CareerApplyPage />} />
+        {/* CareerLayout is the shared Overview/Application tab shell — it
+            must stay mounted across the two child routes (via Outlet) for
+            the sliding tab-underline animation to have a persistent DOM
+            node to animate from; two sibling routes each rendering their
+            own <CareerLayout> unmount/remount it on every tab switch. */}
+        <Route path="/careers/:slug" element={<CareerLayout />}>
+          <Route index element={<CareerRolePage />} />
+          <Route path="apply" element={<CareerApplyPage />} />
+        </Route>
         <Route path="/affiliates" element={<AffiliatePage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />

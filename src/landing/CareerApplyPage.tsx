@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import './landing.css'
-import Footer from './components/Footer'
-import CareerLayout from './CareerLayout'
+
+// Rendered inside CareerLayout's <Outlet> (see App.tsx's nested route) — no
+// layout chrome of its own.
 
 const MAX_RESUME_BYTES = 5 * 1024 * 1024 // 5MB
 const ACCEPTED_RESUME_TYPES = '.pdf,.doc,.docx'
@@ -76,22 +77,15 @@ export default function CareerApplyPage() {
 
   if (status === 'done') {
     return (
-      <>
-        <CareerLayout>
-          <div className="job-done">
-            <div className="job-done-title">Application received</div>
-            <div className="job-done-body">Thanks, {name.split(' ')[0] || 'there'}. We review every application by hand and will reach out within a few business days.</div>
-          </div>
-        </CareerLayout>
-        <Footer />
-      </>
+      <div className="job-done">
+        <div className="job-done-title">Application received</div>
+        <div className="job-done-body">Thanks, {name.split(' ')[0] || 'there'}. We review every application by hand and will reach out within a few business days.</div>
+      </div>
     )
   }
 
   return (
-    <>
-      <CareerLayout>
-        <form className="job-form" onSubmit={submit}>
+    <form className="job-form" onSubmit={submit}>
           <div className="job-field">
             <label className="job-label" htmlFor="job-name">Full Name<span className="job-required">*</span></label>
             <input id="job-name" className="job-input" type="text" placeholder="Type here..." required value={name} onChange={e => setName(e.target.value)} />
@@ -158,12 +152,9 @@ export default function CareerApplyPage() {
 
           {error && <div className="job-submit-error">{error}</div>}
 
-          <button type="submit" className="career-apply-btn" disabled={status === 'saving'}>
-            {status === 'saving' ? 'Submitting…' : 'Submit Application'}
-          </button>
-        </form>
-      </CareerLayout>
-      <Footer />
-    </>
+      <button type="submit" className="career-apply-btn" disabled={status === 'saving'}>
+        {status === 'saving' ? 'Submitting…' : 'Submit Application'}
+      </button>
+    </form>
   )
 }

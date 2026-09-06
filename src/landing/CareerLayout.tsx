@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, Outlet, useLocation } from 'react-router-dom'
+import Footer from './components/Footer'
 
 const META = [
   { label: 'Location', value: 'Remote' },
@@ -11,8 +12,12 @@ const META = [
 
 // Shared by CareerRolePage (Overview tab) and CareerApplyPage (Application
 // tab) — same left metadata rail and tab nav either way, only the right-side
-// content differs.
-export default function CareerLayout({ children }: { children: React.ReactNode }) {
+// content (rendered via Outlet) differs. Mounted once by the parent Route in
+// App.tsx and stays mounted across both child routes, which is what lets the
+// tab-underline actually slide between them instead of jumping — two
+// sibling routes each rendering their own <CareerLayout> would unmount and
+// remount it on every switch, leaving no persistent DOM node to animate.
+export default function CareerLayout() {
   const { pathname } = useLocation()
   const isApply = pathname.endsWith('/apply')
 
@@ -29,31 +34,34 @@ export default function CareerLayout({ children }: { children: React.ReactNode }
   }, [isApply])
 
   return (
-    <div className="blog-content career-detail">
-      <Link to="/careers" className="career-back">← All roles</Link>
-      <h1 className="blog-title" style={{ marginBottom: '2rem' }}>Growth Intern</h1>
+    <>
+      <div className="blog-content career-detail">
+        <Link to="/careers" className="career-back">← All roles</Link>
+        <h1 className="blog-title" style={{ marginBottom: '2rem' }}>Growth Intern</h1>
 
-      <div className="career-layout">
-        <aside className="career-sidebar">
-          {META.map(m => (
-            <div className="career-meta" key={m.label}>
-              <div className="career-meta-label">{m.label}</div>
-              <div className="career-meta-value">{m.value}</div>
+        <div className="career-layout">
+          <aside className="career-sidebar">
+            {META.map(m => (
+              <div className="career-meta" key={m.label}>
+                <div className="career-meta-label">{m.label}</div>
+                <div className="career-meta-value">{m.value}</div>
+              </div>
+            ))}
+          </aside>
+
+          <div className="career-main">
+            <div className="career-tabs">
+              <Link ref={overviewRef} to="/careers/growth-intern" className={`career-tab ${!isApply ? 'active' : ''}`}>Overview</Link>
+              <Link ref={applyRef} to="/careers/growth-intern/apply" className={`career-tab ${isApply ? 'active' : ''}`}>Application</Link>
+              {indicator && (
+                <div className="career-tab-indicator" style={{ left: indicator.left, width: indicator.width }} />
+              )}
             </div>
-          ))}
-        </aside>
-
-        <div className="career-main">
-          <div className="career-tabs">
-            <Link ref={overviewRef} to="/careers/growth-intern" className={`career-tab ${!isApply ? 'active' : ''}`}>Overview</Link>
-            <Link ref={applyRef} to="/careers/growth-intern/apply" className={`career-tab ${isApply ? 'active' : ''}`}>Application</Link>
-            {indicator && (
-              <div className="career-tab-indicator" style={{ left: indicator.left, width: indicator.width }} />
-            )}
+            <Outlet />
           </div>
-          {children}
         </div>
       </div>
-    </div>
+      <Footer />
+    </>
   )
 }
