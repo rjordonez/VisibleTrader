@@ -761,6 +761,7 @@
 @media (max-width: 700px) {
   .home-tile-row { flex-direction: column; }
   .home-tile-large { padding: 32px; }
+  .home-tile-hide-mobile { display: none; }
 }
 
 /* ── Journal (JournalPage.tsx) — manually-entered daily P&L calendar ── */
