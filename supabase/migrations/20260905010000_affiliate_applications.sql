@@ -10,6 +10,7 @@ alter table public.affiliate_applications enable row level security;
 -- Applications are private, unlike creator_stats' open leaderboard data —
 -- visitors can submit one but never read them back. Reviewed by hand via
 -- direct DB access, same as every other admin task in this project.
+drop policy if exists "anon can submit affiliate applications" on public.affiliate_applications;
 create policy "anon can submit affiliate applications"
     on public.affiliate_applications
     for insert
