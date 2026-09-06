@@ -1427,6 +1427,12 @@
    screen once the bell/avatar are accounted for, let alone mobile. */
 @media (max-width: 900px) { .gsearch-trigger span { display: none; } }
 
+@keyframes gsearch-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gsearch-pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 .gsearch-backdrop {
   position: fixed;
   inset: 0;
@@ -1435,6 +1441,7 @@
   display: flex;
   justify-content: center;
   padding: clamp(12px, 8vh, 90px) clamp(12px, 4vw, 24px) 24px;
+  animation: gsearch-fade-in 0.15s ease;
 }
 
 .gsearch-panel {
@@ -1448,6 +1455,7 @@
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  animation: gsearch-pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .gsearch-input-row {
