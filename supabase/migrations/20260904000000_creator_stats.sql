@@ -19,12 +19,14 @@ create index if not exists creator_stats_creator_checked_at_idx
 
 alter table public.creator_stats enable row level security;
 
+drop policy if exists "anon can insert creator stats" on public.creator_stats;
 create policy "anon can insert creator stats"
     on public.creator_stats
     for insert
     to anon
     with check (true);
 
+drop policy if exists "anon can select creator stats" on public.creator_stats;
 create policy "anon can select creator stats"
     on public.creator_stats
     for select
