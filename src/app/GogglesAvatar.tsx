@@ -8,7 +8,10 @@ import { avatarGradient } from './helpers'
 export default function GogglesAvatar({ id, className = '' }: { id: string | null; className?: string }) {
   return (
     <span className={`app-avatar app-avatar-goggles ${className}`} style={{ background: avatarGradient(id) }}>
-      <svg viewBox="0 0 159 75" className="app-avatar-goggles-mark" aria-hidden="true">
+      {/* viewBox padded past 0 0 159 75 so the 9px outline stroke (and its
+          drop-shadow) don't get clipped at the edges — see .app-avatar's
+          overflow:hidden. */}
+      <svg viewBox="-8 -8 175 91" className="app-avatar-goggles-mark" aria-hidden="true">
         <path
           d="M38.9914 32.498C32.5691 38.0021 25.1226 48.7343 15.1622 55.224C11.3094 57.7343 9.14352 61.0649 13.1785 63.2705C23.4997 68.912 48.6107 74.7065 54.5 60.5C60.5108 46.0005 72.503 38.9998 83.503 36.4998C89.2046 35.204 102.625 48.8099 114.497 60.4554C123.854 69.6348 137.961 69.3431 146.948 59.8007C151.248 55.2356 153.948 51.7871 155.55 49.3577C157.565 46.3 155.19 45.5609 151.553 45.9863C136.527 47.7437 104.491 45.8832 93.503 30.4998C83.503 16.5 56.4914 17.5001 38.9914 32.498Z"
           fill="#0C2557"
