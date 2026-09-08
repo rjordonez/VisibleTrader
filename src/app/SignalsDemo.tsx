@@ -22,7 +22,7 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
   const [tickerLoading, setTickerLoading] = useState(true)
   const [wins, setWins]                   = useState<WalletPosition[]>([])
   const [winsLoading, setWinsLoading]     = useState(true)
-  const [tab, setTab]                     = useState<'ticker' | 'wins' | 'vetted'>('ticker')
+  const [tab, setTab]                     = useState<'ticker' | 'wins' | 'vetted'>('vetted')
   const [filtersOpen, setFiltersOpen]     = useState(false)
   const [todayOnly, setTodayOnly]         = useState(false)
   const [sortMode, setSortMode]           = useState<'recent' | 'profit'>('profit')
