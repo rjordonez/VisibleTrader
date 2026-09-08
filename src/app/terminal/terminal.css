@@ -282,9 +282,12 @@
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  container-type: inline-size;
 }
-.terminal-main::-webkit-scrollbar { display: none; }
+.terminal-main::-webkit-scrollbar { width: 7px; }
+.terminal-main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
 
 /* TraderDetailPage's .sig-panel is capped at 1040px app-wide, but the
    Terminal's market view has no such wrapper and fills the full main
@@ -333,7 +336,7 @@
   grid-template-columns: 1fr 260px;
   gap: 16px;
   align-items: start;
-  height: 100%;
+  min-height: 100%;
 }
 @media (max-width: 960px) {
   .terminal-market { grid-template-columns: 1fr; }
@@ -342,10 +345,8 @@
    a panel, so it sits flush without its own background/border. */
 .terminal-market-main {
   min-width: 0;
-  padding: clamp(16px, 3vw, 24px) clamp(16px, 3vw, 24px) 24px 4px;
-  overflow-y: auto;
-  scrollbar-width: none;
-  max-height: 100%;
+  padding: 8px 8px 32px 4px;
+  overflow: visible;
 }
 .terminal-market-main::-webkit-scrollbar { display: none; }
 .terminal-market-side { min-width: 0; }
@@ -420,35 +421,122 @@
 .terminal-main .sig-chip { min-height: 36px; padding: 7px 11px; }
 .terminal-empty-title { font-size: 22px; letter-spacing: -0.03em; }
 
-/* Terminal hierarchy: one calm workspace with a clear market focus. */
-.terminal-topbar { height: 68px; padding: 0 28px; background: #101015; border-bottom: 1px solid #ffffff0a; }
-.terminal-logo { font-size: 17px; letter-spacing: -.03em; }
-.terminal-search input { background: #191920; border-color: #30303c; }
-.terminal-locked-inner { gap: 20px; padding: 20px; }
-.terminal-sidebar { width: 320px; padding: 16px 12px; background: #111116; }
-.terminal-sidebar-inner { width: 296px; min-width: 296px; }
-.terminal-sidebar-tabs { padding-right: 38px; margin-bottom: 14px; }
-.terminal-sidebar-tabs button { color: #9898aa; }
-.terminal-sidebar-tabs button.active { background: #292a41; color: #e5e6ff; }
-.terminal-sidebar-cats { padding: 0 8px 14px; }
-.terminal-sidebar-cats select { min-height: 42px; border-radius: 12px; background: #191920; font-size: 13px; }
-.terminal-sidebar-row { min-height: 64px; padding: 11px 10px; }
-.terminal-sidebar-row.active { background: #25263a; border-color: #4d507b; }
-.terminal-sidebar-title { font-size: 14px; line-height: 1.35; }
-.terminal-sidebar-sub { margin-top: 4px; color: #9696a8; }
-.terminal-sidebar-price { font-size: 15px; }
-.terminal-sidebar-change { margin-top: 4px; }
-.terminal-main .sig-panel { background: #111116; border-color: #ffffff0c; border-radius: 24px; }
-.terminal-main .sig-hero-top { padding: 24px 26px 0; }
-.terminal-main .sig-hero-q { font-size: clamp(25px, 3vw, 36px); font-weight: 750; }
-.terminal-main .sig-stats-row { gap: 10px; }
-.terminal-main .sig-stat-cell { background: #191920; border-color: #ffffff0c; padding: 18px; }
-.terminal-main .sig-stat-cell-label { font-size: 12px; }
-.terminal-main .sig-stat-cell-val { font-size: 28px; }
-.terminal-about { padding: 20px; border-radius: 20px; background: #111116; }
-.terminal-about-label { font-size: 11px; margin-bottom: 16px; }
-.terminal-timeframe-tile { border-radius: 11px; padding: 10px 4px; }
-.terminal-about-link { border-radius: 12px; padding: 11px; }
+/* Analytics workspace: slate controls on a continuous dark canvas. */
+.terminal-shell, .terminal-main .sig-page {
+  --bg: #0d1315;
+  --surface: #1d293a;
+  --surface-2: #131c22;
+  --border: #273446;
+  --text: #e8edf3;
+  --text-dim: #b4c0d0;
+  --text-faint: #8191a8;
+  --green: #29c65b;
+  --red: #ff4545;
+  --blue: #2876ee;
+}
+.terminal-topbar { height: 72px; padding: 0 32px; grid-template-columns: auto 1fr minmax(220px, 360px) auto; gap: 32px; background: var(--bg); }
+.terminal-logo { font-size: 20px; letter-spacing: -.04em; }
+.terminal-nav { display: flex; align-items: center; gap: 26px; }
+.terminal-nav a { color: var(--text-dim); font-size: 14px; font-weight: 700; text-decoration: none; }
+.terminal-nav a:hover { color: var(--text); }
+.terminal-search { position: relative; }
+.terminal-search > svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--text-faint); }
+.terminal-search input { background: var(--surface); border-color: var(--border); border-radius: 9px; padding-left: 40px; }
+.terminal-ticker { display: flex; flex-shrink: 0; margin: 8px 32px 12px; height: 40px; border-radius: 9px; background: #1b2232; overflow: hidden; }
+.terminal-ticker-label { display: flex; align-items: center; gap: 8px; padding: 0 14px; color: var(--text-dim); font-size: 12px; font-weight: 750; white-space: nowrap; background: var(--surface); }
+.terminal-ticker-items { flex: 1; min-width: 0; overflow: hidden; container-type: inline-size; }
+.terminal-ticker-track { display: flex; width: max-content; height: 100%; animation: terminal-ticker-scroll 65s linear infinite; }
+.terminal-ticker-group { display: flex; min-width: 100cqw; flex-shrink: 0; }
+.terminal-ticker-group a { flex-grow: 1; }
+.terminal-ticker:hover .terminal-ticker-track, .terminal-ticker-items.is-paused .terminal-ticker-track { animation-play-state: paused; }
+.terminal-ticker-items:focus-within { overflow-x: auto; }
+.terminal-ticker-items:focus-within .terminal-ticker-track { animation: none; }
+.terminal-ticker-toggle { display: grid; place-items: center; flex-shrink: 0; width: 36px; border: 0; border-left: 1px solid var(--border); background: var(--surface); color: var(--text-dim); cursor: pointer; }
+@keyframes terminal-ticker-scroll { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .terminal-ticker-track { animation: none; }
+  .terminal-ticker-items { overflow-x: auto; }
+  .terminal-ticker-group[aria-hidden] { display: none; }
+  .terminal-ticker-toggle { display: none; }
+}
+.terminal-ticker-items a { display: flex; align-items: center; gap: 18px; flex-shrink: 0; width: 240px; padding: 0 18px; border-right: 1px solid var(--border); color: var(--text-dim); text-decoration: none; font-size: 12px; }
+.terminal-ticker-items a:hover { background: var(--surface); }
+.terminal-ticker-items a span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.terminal-ticker-items strong { margin-left: auto; color: var(--text); white-space: nowrap; }
+.terminal-locked-inner { gap: 24px; padding: 20px 32px; }
+.terminal-card { border-radius: 10px; background: var(--bg); }
+.terminal-sidebar { border: 0; border-right: 1px solid var(--border); border-radius: 0; }
+.terminal-sidebar-tabs button.active { background: var(--surface); }
+.terminal-sidebar-row { min-height: 56px; border-radius: 7px; }
+.terminal-sidebar-row.active { background: var(--surface); border-color: var(--border); }
+.terminal-main .sig-page { min-height: 0; }
+.terminal-main .sig-panel { border: 0; border-radius: 0; background: transparent; }
+.terminal-main .sig-stat-cell { background: transparent; border-radius: 0; padding: 16px 0; }
+.terminal-main .sig-hero-q { font-size: 24px; line-height: 1.35; min-height: 0; letter-spacing: -.025em; }
+.terminal-market-main .sig-hero-top { gap: 12px; }
+.terminal-market-main .sig-hero-top > div:last-child { display: none; }
+.terminal-market-main .sig-out { display: block; font-size: 15px; margin-top: 8px; }
+.terminal-market-main .sig-card-meta { margin-top: 10px; }
+.terminal-market-main .sig-stats-row { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.terminal-market-main .sig-stat-cell { border: 0; border-right: 1px solid var(--border); padding: 14px 16px; }
+.terminal-market-main .sig-stat-cell:first-child { padding-left: 0; }
+.terminal-market-main .sig-stat-cell:last-child { border-right: 0; }
+.terminal-market-main .sig-stat-cell-val { font-size: 23px; }
+.terminal-market-main .sig-drill-label { font-size: 11px; }
+@container (max-width: 1050px) {
+  .terminal-market { grid-template-columns: minmax(0, 1fr); }
+  .terminal-market-side { border-top: 1px solid var(--border); }
+  .terminal-market .terminal-about { border: 0; padding: 20px 4px; position: static; }
+}
+@container (max-width: 600px) {
+  .terminal-market-main .sig-stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .terminal-market-main .sig-stat-cell { padding: 12px; }
+  .terminal-market-main .sig-hero-q { font-size: 20px; }
+}
+.terminal-about { border: 0; border-left: 1px solid var(--border); border-radius: 0; padding: 8px 0 20px 22px; }
+.terminal-about-label { font-size: 12px; color: var(--text-dim); }
+.terminal-about-row { padding: 16px 0; }
+.terminal-about-link { background: #216be7; color: white; border-color: #216be7; }
+.terminal-timeframes { gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.terminal-timeframe-tile { border: 0; border-right: 1px solid var(--border); border-radius: 0; padding: 12px 4px; background: transparent; }
+.terminal-timeframe-tile:last-child { border: 0; }
+.terminal-empty { border: 0; }
+.terminal-empty-title { font-size: 32px; }
+.terminal-empty-sub { max-width: 440px; line-height: 1.7; }
+.terminal-featured-market { border-radius: 9px; background: #131c22; }
+.terminal-main .terminal-follow { font: inherit; font-size: 13px; font-weight: 700; border: 1px solid var(--border); border-radius: 7px; padding: 10px 16px; background: var(--surface); color: var(--text); cursor: pointer; }
+.terminal-main .terminal-follow:disabled { opacity: .6; cursor: wait; }
+.terminal-trader-profile { display: grid; grid-template-columns: 300px minmax(0, 1fr); grid-template-rows: auto auto 1fr; column-gap: 32px; align-items: start; }
+.terminal-trader-profile > .app-section-header { grid-column: 1; grid-row: 1; margin-bottom: 12px; }
+.terminal-trader-profile .app-section-title { font-size: 27px; overflow-wrap: anywhere; }
+.terminal-trader-profile > .sig-panel, .terminal-trader-profile .search-dashboard-grid { display: contents; }
+.terminal-trader-profile .sig-stats-row { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; gap: 0; }
+.terminal-trader-profile .sig-stat-cell { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-bottom: 1px solid var(--border); }
+.terminal-trader-profile .sig-stat-cell-label { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text-dim); }
+.terminal-trader-profile .sig-stat-cell-val { font-size: 19px; font-variant-numeric: tabular-nums; }
+.terminal-trader-profile .sig-stat-cell:first-child { flex-direction: column-reverse; align-items: flex-start; padding: 12px 0 24px; gap: 4px; }
+.terminal-trader-profile .sig-stat-cell:first-child .sig-stat-cell-val { font-size: clamp(28px, 2.7vw, 40px); letter-spacing: -.045em; }
+.terminal-trader-profile .search-dashboard-main { grid-column: 2; grid-row: 1 / span 3; min-width: 0; padding-left: 28px; border-left: 1px solid var(--border); }
+.terminal-trader-profile .search-dashboard-main > .sig-stat-cell-label:first-child { padding: 16px 0 20px; border-bottom: 1px solid var(--border); font-size: 15px; color: var(--text); }
+.terminal-trader-profile .search-dashboard-side { grid-column: 1; grid-row: 3; gap: 24px; }
+.terminal-trader-profile .search-dashboard-side .sig-card { background: transparent; padding: 0; border: 0; border-radius: 0; }
+.terminal-main .sig-table-wrap { border-radius: 8px; }
+.terminal-main .sig-table th { background: var(--surface); }
+@media (max-width: 1200px) {
+  .terminal-topbar { gap: 20px; }
+  .terminal-nav { gap: 16px; }
+  .terminal-trader-profile { grid-template-columns: 240px minmax(0, 1fr); column-gap: 20px; }
+  .terminal-trader-profile .search-dashboard-main { padding-left: 20px; }
+  .terminal-market { grid-template-columns: minmax(0, 1fr); }
+  .terminal-about { border-left: 0; border-top: 1px solid var(--border); padding: 20px 0; }
+}
+@media (max-width: 1000px) {
+  .terminal-nav { display: none; }
+  .terminal-topbar { grid-template-columns: 1fr minmax(220px, 360px) auto; }
+  .terminal-trader-profile { display: block; }
+  .terminal-trader-profile .search-dashboard-main { border-left: 0; padding-left: 0; }
+  .terminal-trader-profile .search-dashboard-side { margin-top: 24px; }
+}
 
 @media (max-width: 720px) {
   .terminal-topbar { height: 60px; padding: 0 16px; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; }

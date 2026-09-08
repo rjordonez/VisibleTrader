@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, Link, useNavigate } from 'react-router-dom'
-import { BarChart3 } from 'lucide-react'
+import { BarChart3, Search, Activity, Pause, Play } from 'lucide-react'
 import { supabase, isProdDb } from '../../lib/supabase'
 import { dashboardPath, terminalPath } from '../../lib/domains'
 import { useSubscriptionGate } from '../../lib/subscriptionGate'
@@ -34,7 +34,7 @@ function TerminalEmptyState({ opportunities }: { opportunities: Opportunity[] })
               <span className="terminal-featured-market-title">{o.title}</span>
               <span className="terminal-featured-market-meta">{o.outcome} · {o.wallet_count} tracked</span>
               <span className="terminal-featured-market-stats">
-                <strong>{Math.round(o.latest_price * 100)}¢</strong>
+                <strong>{Math.round(o.latest_price * 100)}%</strong>
                 <span className={o.total_profit >= 0 ? 'g' : 'r'}>{fmtAbbrevSigned(o.total_profit)} · {fmtAbbrev(o.cumulative_usd)} tracked</span>
               </span>
             </Link>
@@ -57,8 +57,9 @@ export default function Terminal() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [tickerPaused, setTickerPaused] = useState(false)
   const [category, setCategory] = useState('all')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [user, setUser] = useState<User | null>(null)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -136,7 +137,7 @@ export default function Terminal() {
   const bySearch = q ? opportunities.filter(o => o.title.toLowerCase().includes(q)) : opportunities
   const byCat = byCategory(bySearch, category)
   // Not a hard filter — a resolved/settled market's price sits pinned at
-  // the very ends (0¢/100¢), so those are pushed toward the bottom of the
+  // the very ends (0%/100%), so those are pushed toward the bottom of the
   // list instead of dropped, keeping the still-live, actually-uncertain
   // ones up top without hiding anything. Stable sort, so it only reorders
   // across this one/decided split — the existing cumulative_usd order
@@ -166,9 +167,16 @@ export default function Terminal() {
     <div className="sig-page terminal-shell">
       <header className="terminal-topbar">
         <Link to={dashboardPath('/')} className="terminal-logo">VisibleTrader.com</Link>
+        <nav className="terminal-nav" aria-label="Terminal navigation">
+          <Link to={terminalPath('/')}>Markets</Link>
+          <Link to={dashboardPath('/leaderboard')}>Traders</Link>
+          <Link to={dashboardPath('/journal')}>Journal</Link>
+        </nav>
         <div className="terminal-search">
+          <Search size={18} aria-hidden="true" />
           <input
             type="text"
+            aria-label="Search markets"
             placeholder="Search markets…"
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -200,6 +208,28 @@ export default function Terminal() {
           </div>
         )}
       </header>
+
+      {filtered.length > 0 && !locked && (
+        <div className="terminal-ticker" aria-label="Tracked markets">
+          <span className="terminal-ticker-label"><Activity size={16} /> Tracked markets</span>
+          <div className={`terminal-ticker-items ${tickerPaused ? 'is-paused' : ''}`}>
+            <div className="terminal-ticker-track">
+              {[0, 1].map(copy => (
+                <div className="terminal-ticker-group" key={copy} aria-hidden={copy === 1 ? true : undefined}>
+                  {filtered.slice(0, 8).map(o => (
+                    <Link key={`${o.condition_id}::${o.outcome}`} tabIndex={copy === 1 ? -1 : undefined} to={terminalPath(`/market/${encodeURIComponent(o.condition_id)}/${encodeURIComponent(o.outcome)}`)} title={`${o.title} — ${o.outcome}`}>
+                      <span>{o.title}</span><strong>{Math.round(o.latest_price * 100)}%</strong>
+                    </Link>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+          <button type="button" className="terminal-ticker-toggle" onClick={() => setTickerPaused(v => !v)} aria-label={tickerPaused ? 'Play market ticker' : 'Pause market ticker'} aria-pressed={tickerPaused}>
+            {tickerPaused ? <Play size={14} /> : <Pause size={14} />}
+          </button>
+        </div>
+      )}
 
       <div className={`terminal-body ${locked ? 'terminal-body-locked' : ''}`}>
         <div className={locked ? 'search-locked-bg terminal-locked-inner' : 'terminal-locked-inner'}>

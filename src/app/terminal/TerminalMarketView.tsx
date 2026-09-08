@@ -136,7 +136,8 @@ export default function TerminalMarketView({ opportunities }: { opportunities: O
           key={`${opportunity.condition_id}::${opportunity.outcome}`}
           opportunity={opportunity}
           linkToTrader={w => terminalPath(`/trader/${w}`)}
-          chartHeight={400}
+          chartHeight={300}
+          priceUnit="%"
         />
       </div>
       <div className="terminal-market-side">
