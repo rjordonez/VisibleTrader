@@ -1,0 +1,1 @@
+-- Already applied in the linked Supabase project; retained to reconcile migration history.

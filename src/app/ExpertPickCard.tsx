@@ -129,10 +129,12 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
       </button>
       <PickChart history={history} outcome={o.outcome} price={o.latest_price} error={chartError} onRetry={retry} />
       <div className="expert-pick-chart-caption"><span>Polymarket</span><span>All time</span></div>
-      <div className="expert-pick-stats">
-        <span><Users size={14} /> {o.wallet_count} {o.wallet_count === 1 ? 'expert' : 'experts'}</span>
-        <span title="Total invested by tracked traders">{fmtFull(o.cumulative_usd)} invested</span>
-        <span className={o.total_profit >= 0 ? 'g' : 'r'} title="Combined profit of tracked traders">{fmtSigned(o.total_profit)} profit</span>
+      <div className="expert-pick-evidence">
+        <div className="expert-pick-stats">
+          <span title="Total invested by tracked traders"><strong>{fmtFull(o.cumulative_usd)}</strong><small>invested</small></span>
+          <span title="Number of tracked expert traders"><strong><Users size={14} /> {o.wallet_count}</strong><small>{o.wallet_count === 1 ? 'expert' : 'experts'}</small></span>
+          <span className={o.total_profit >= 0 ? 'g' : 'r'} title="Combined profit of tracked traders"><strong>{fmtSigned(o.total_profit)}</strong><small>tracked profit</small></span>
+        </div>
       </div>
       <button className={`expert-pick-bet ${direction === 'no' ? 'is-no' : direction === 'yes' ? 'is-yes' : 'is-other'}`} onClick={onOpen} aria-label={`View expert pick: ${label} — ${o.title}`}>
         <span>Bet {label}</span><ArrowUpRight size={18} />
