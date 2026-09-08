@@ -4,7 +4,7 @@ import { ArrowUpRight, Users } from 'lucide-react'
 import type { ChartPoint, Opportunity } from './types'
 import { categoryLabel, fetchMarketChart, fmtFull, fmtSigned } from './helpers'
 
-function PickChart({ history, outcome }: { history: ChartPoint[] | null; outcome: string }) {
+function PickChart({ history, outcome, error, onRetry }: { history: ChartPoint[] | null; outcome: string; error: boolean; onRetry: () => void }) {
   let line = ''
   if (history && history.length > 1) {
     const minT = history[0].t
@@ -24,7 +24,7 @@ function PickChart({ history, outcome }: { history: ChartPoint[] | null; outcome
           <polyline points={line} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
           {endpoint && <circle cx={endpoint[0]} cy={endpoint[1]} r="4" fill="currentColor" />}
         </svg>
-      ) : <span>{history === null ? 'Loading price history…' : 'Price history unavailable'}</span>}
+      ) : <span role="status">{history === null ? 'Loading price history…' : error ? 'Couldn’t load chart' : 'Not enough price history yet'}{history !== null && <button type="button" className="expert-chart-retry" onClick={onRetry}>Retry</button>}</span>}
     </div>
   )
 }
@@ -32,6 +32,10 @@ function PickChart({ history, outcome }: { history: ChartPoint[] | null; outcome
 export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opportunity; onOpen: () => void }) {
   const container = useRef<HTMLElement>(null)
   const [history, setHistory] = useState<ChartPoint[] | null>(null)
+
+  const [chartError, setChartError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const retry = () => { setHistory(null); setChartError(false); setAttempt(value => value + 1) }
 
   const [image, setImage] = useState<string | null>(null)
 
@@ -44,13 +48,14 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
       fetchMarketChart(o.condition_id, o.outcome).then(result => {
         if (!cancelled) {
           setHistory(result.history.filter(p => Number.isFinite(p.t) && Number.isFinite(p.p)).sort((a, b) => a.t - b.t))
-          setImage(result.image)
+          setChartError(result.error)
+          if (result.image) setImage(result.image)
         }
       })
     }, { rootMargin: '200px' })
     if (container.current) observer.observe(container.current)
     return () => { cancelled = true; observer.disconnect() }
-  }, [o.condition_id, o.outcome])
+  }, [o.condition_id, o.outcome, attempt])
 
   const outcome = o.outcome.trim()
   const direction = outcome.toLowerCase()
@@ -66,8 +71,8 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
         <MarketIcon conditionId={o.condition_id} outcome={o.outcome} category={o.category} className="expert-pick-icon" source={image} />
         <h3>{o.title}</h3>
       </button>
-      <div className="expert-pick-price"><span>{label} price</span><strong>{Math.round(o.latest_price * 100)}<small>¢</small></strong></div>
-      <PickChart history={history} outcome={o.outcome} />
+      <div className="expert-pick-price"><span>{label} chance</span><strong>{Number((o.latest_price * 100).toFixed(1))}<small>%</small></strong></div>
+      <PickChart history={history} outcome={o.outcome} error={chartError} onRetry={retry} />
       <div className="expert-pick-chart-caption"><span>Polymarket</span><span>All time</span></div>
       <div className="expert-pick-stats">
         <span><Users size={14} /> {o.wallet_count} {o.wallet_count === 1 ? 'expert' : 'experts'}</span>

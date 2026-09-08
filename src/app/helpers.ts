@@ -129,11 +129,11 @@ export const fetchWallets = (conditionId: string, outcome: string) =>
 
 export const fetchMarketChart = (conditionId: string, outcome: string) =>
   supabase.functions.invoke('price-chart', { body: { condition_id: conditionId, outcome } })
-    .then(({ data }) => {
-      const result = data as { history?: ChartPoint[]; image?: string | null } | null
-      return { history: result?.history || [], image: result?.image || null }
+    .then(({ data, error }) => {
+      const result = data as { history?: ChartPoint[]; image?: string | null; error?: string } | null
+      return { history: result?.history || [], image: result?.image || null, error: !!error || !!result?.error || !result }
     })
-    .catch(() => ({ history: [] as ChartPoint[], image: null }))
+    .catch(() => ({ history: [] as ChartPoint[], image: null, error: true }))
 
 export const fetchChart = (conditionId: string, outcome: string) =>
   fetchMarketChart(conditionId, outcome).then(result => result.history)

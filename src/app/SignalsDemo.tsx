@@ -80,10 +80,10 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
   // uses the current filter state without needing to tear down and
   // resubscribe on every slider tick.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const buildQueryRef = useRef<() => any>(() => supabase.from('opportunities_live').select('*'))
+  const buildQueryRef = useRef<() => any>(() => supabase.from('expert_picks_open').select('*'))
   useEffect(() => {
     buildQueryRef.current = () => {
-      let q = supabase.from('opportunities_live').select('*')
+      let q = supabase.from('expert_picks_open').select('*')
       if (category !== 'all') {
         q = category === 'other' ? q.or('category.eq.other,category.is.null') : q.eq('category', category)
       }

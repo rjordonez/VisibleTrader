@@ -113,3 +113,5 @@
 }
 
 .expert-pick-icon img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.expert-chart-retry { border: 1px solid var(--border); border-radius: 7px; padding: 6px 12px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
