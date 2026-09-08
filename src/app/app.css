@@ -496,6 +496,9 @@
   overflow: hidden;
 }
 .app-avatar-goggles-mark { width: 94%; height: auto; display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25)); }
+/* Goggles mark standing in for a letter initial inside a trader-avatar
+   circle (which already provides the coloured background + centering). */
+.avatar-goggles-mark { width: 82%; height: auto; display: block; }
 
 /* Only ever renders when VITE_USE_PROD_DB=true — a quiet but
    impossible-to-miss marker that this session is reading/writing real
