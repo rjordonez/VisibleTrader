@@ -29,6 +29,15 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
   const [newCount, setNewCount] = useState(0)
   const [scrolledDown, setScrolledDown] = useState(false)
 
+  // The blur-in stagger only exists for the first few seconds after mount.
+  // After that the class comes off, so the 30s refresh re-rendering the
+  // list can't restart (or backwards-fill to opacity:0) any card animation.
+  const [introDone, setIntroDone] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setIntroDone(true), 3200)
+    return () => clearTimeout(t)
+  }, [])
+
   useEffect(() => {
     const onScroll = () => setScrolledDown(window.scrollY > 500)
     onScroll()
@@ -67,13 +76,21 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
     if (sortMode === 'size') return b.usd - a.usd
     // A balanced score keeps recency and trade size useful while tempering
     // small-sample win rates. P&L is log-scaled so one whale does not drown
-    // out every other credible trader.
+    // out every other credible trader. A brand-new trade also gets a
+    // temporary boost that decays to 0 over ~5 minutes, so fresh activity
+    // visibly surfaces near the top on each refresh instead of being
+    // buried mid-list, then settles into its real rank.
+    const freshBoost = (trade: typeof a) => {
+      const ageMin = (Date.now() - new Date(trade.ts).getTime()) / 60_000
+      return ageMin >= 5 ? 0 : (1 - ageMin / 5) * 1.4
+    }
     const score = (r: typeof ar, wr: number, resolved: number, trade: typeof a) =>
       Math.log10(Math.max(1, r?.net_profit ?? 0) + 1) * 0.45 +
       Math.min(1, resolved / 50) * 0.2 +
       wr * 0.2 +
       Math.min(1, Math.max(0, (Date.now() - new Date(trade.ts).getTime()) / 86_400_000) < 1 ? 0.1 : 0) +
-      Math.log10(Math.max(100, trade.usd)) / 6 * 0.05
+      Math.log10(Math.max(100, trade.usd)) / 6 * 0.05 +
+      freshBoost(trade)
     return score(br, bwr, bw, b) - score(ar, awr, aw, a)
   })
   return (
@@ -109,7 +126,7 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
         {tab === 'discover' && <label className="home-sort-label"><span>Sort by</span><select aria-label="Sort discover feed" value={sortMode} onChange={e => setSortMode(e.target.value as typeof sortMode)}><option value="compelling">Most compelling</option><option value="recent">Most recent</option><option value="pnl">Highest P&amp;L</option><option value="winRate">Highest win rate</option><option value="size">Biggest trades</option></select></label>}
       </div>
       {feed.error && <p className="home-feed-message" role="status">Unable to refresh trades. {feed.trades.length > 0 ? 'Showing the last available activity. ' : ''}Retrying automatically.</p>}
-      <section aria-label={tab === 'following' ? 'Following trades' : 'Discover trades'} aria-busy={feed.loading}>
+      <section className={introDone ? undefined : 'home-feed-intro'} aria-label={tab === 'following' ? 'Following trades' : 'Discover trades'} aria-busy={feed.loading}>
         {feed.loading ? <div aria-label="Loading trades">{[0, 1, 2].map(i => <div key={i} className="home-trade-skeleton sig-skel" aria-hidden="true" />)}</div> : !feed.error && feed.trades.length === 0 ? (
           <div className="home-feed-empty"><h2>{tab === 'following' && alerts.watchedWallets.length === 0 ? 'Who are you watching?' : 'No recent trades here yet.'}</h2><p>{tab === 'following' ? 'Find a trader in Discover and follow them to bring their next trades here.' : 'Trades from profitable tracked wallets will appear here when available.'}</p>{tab === 'following' && <button type="button" onClick={() => changeTab('discover')}>Discover traders <ArrowUpRight size={16} /></button>}</div>
         ) : sortedTrades.map((trade, i) => {
