@@ -112,7 +112,7 @@ async function findSimilarTraders(
     .slice(0, 5)
 }
 
-function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220 }: {
+function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220, terminalLayout = false }: {
   wallet: string
   // Overridable so the Terminal (its own self-contained route tree, see
   // src/app/terminal/) can keep "jump to another wallet"/similar-traders
@@ -121,6 +121,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   linkToTrader?: (wallet: string) => string
   // Same reasoning as MarketDetailContent's identical prop — the Terminal
   // has a full page to work with, so it passes a taller value here too.
+  terminalLayout?: boolean
   chartHeight?: number
 }) {
   const [summary, setSummary] = useState<TraderSummary | null>(null)
@@ -322,20 +323,20 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     }, [])
 
   return (
-    <div className="sig-page">
+    <div className={`sig-page ${terminalLayout && summary ? 'terminal-trader-profile' : ''}`}>
       <div className="app-section-header">
         <div>
           <h1 className="app-section-title">{traderLabel(wallet, summary?.wallet_name ?? null)}</h1>
           <p className="app-section-sub">
             {summaryLoading ? 'Loading…' : error ? 'Connection trouble — retrying…' : (
               trackedWallets[wallet] ? (
-                <span className="sig-watch-remove" style={{ display: 'inline' }} onClick={() => untrackWallet(wallet)}>
+                <button type="button" className="sig-watch-remove terminal-follow" style={terminalLayout ? undefined : { border: 0, background: 'none', padding: 0, font: 'inherit', cursor: 'pointer' }} disabled={busyWallet === wallet} onClick={() => untrackWallet(wallet)}>
                   {busyWallet === wallet ? 'Removing…' : 'Unfollow'}
-                </span>
+                </button>
               ) : (
-                <span style={{ cursor: 'pointer', color: 'var(--blue)' }} onClick={() => trackWallet(wallet)}>
+                <button type="button" className="terminal-follow" style={terminalLayout ? undefined : { border: 0, background: 'none', padding: 0, font: 'inherit', cursor: 'pointer', color: 'var(--blue)' }} disabled={busyWallet === wallet} onClick={() => trackWallet(wallet)}>
                   {busyWallet === wallet ? 'Adding…' : '+ Follow this trader'}
-                </span>
+                </button>
               )
             )}
           </p>
@@ -401,7 +402,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                         <tr key={i}>
                           <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
                           <td className="num" data-label="Stake">{fmtFull(p.usd)}</td>
-                          <td className="num" data-label="Price">{Math.round(p.price * 100)}¢</td>
+                          <td className="num" data-label="Price">{Math.round(p.price * 100)}{terminalLayout ? '%' : '¢'}</td>
                           <td data-label="Result" style={{ color: p.resolved_win ? 'var(--green)' : 'var(--red)' }}>{p.resolved_win ? 'Won' : 'Lost'}</td>
                           <td className="num" data-label="Profit" style={{ color: p.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.profit)}</td>
                           <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(p.resolved_ts)}</td>
@@ -506,8 +507,8 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                               {livePositions.map((p, i) => (
                                 <tr key={i}>
                                   <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                                  <td className="num" data-label="Avg Price">{Math.round(p.avgPrice * 100)}¢</td>
-                                  <td className="num" data-label="Current Price">{Math.round(p.curPrice * 100)}¢</td>
+                                  <td className="num" data-label="Avg Price">{Math.round(p.avgPrice * 100)}{terminalLayout ? '%' : '¢'}</td>
+                                  <td className="num" data-label="Current Price">{Math.round(p.curPrice * 100)}{terminalLayout ? '%' : '¢'}</td>
                                   <td className="num" data-label="Unrealized P&L" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.cashPnl)}</td>
                                 </tr>
                               ))}
@@ -564,7 +565,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                                   <td>{t.title} <span style={{ color: 'var(--text-dim)' }}>— {t.outcome}</span></td>
                                   <td data-label="Side" style={{ color: t.side === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.side}</td>
                                   <td className="num" data-label="Size">{t.size.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                  <td className="num" data-label="Price">{Math.round(t.price * 100)}¢</td>
+                                  <td className="num" data-label="Price">{Math.round(t.price * 100)}{terminalLayout ? '%' : '¢'}</td>
                                   <td className="num" data-label="When" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(t.timestamp * 1000).toISOString())}</td>
                                 </tr>
                               ))}

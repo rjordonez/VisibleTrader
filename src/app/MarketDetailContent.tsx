@@ -36,7 +36,7 @@ function groupByWallet(wallets: WalletContribution[]): TraderGroup[] {
   )
 }
 
-function SingleEntryRow({ w, latestPrice, linkToTrader }: { w: WalletContribution; latestPrice: number; linkToTrader: (wallet: string) => string }) {
+function SingleEntryRow({ w, latestPrice, linkToTrader, priceUnit }: { w: WalletContribution; latestPrice: number; priceUnit: '¢' | '%'; linkToTrader: (wallet: string) => string }) {
   const st = signalsTraderStatus(w)
   const ret = walletReturn(w, latestPrice)
   return (
@@ -45,7 +45,7 @@ function SingleEntryRow({ w, latestPrice, linkToTrader }: { w: WalletContributio
         {traderLabel(w.wallet, w.wallet_name)}
       </Link>
       <div className="sig-drill-body">
-        <div className="sig-drill-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}</div>
+        <div className="sig-drill-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}{priceUnit} · {timeAgo(w.ts)}</div>
         <div className="sig-drill-meta">
           <div style={{ fontSize: 11.5, fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
             {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
@@ -57,11 +57,11 @@ function SingleEntryRow({ w, latestPrice, linkToTrader }: { w: WalletContributio
   )
 }
 
-function TraderGroupRow({ group, latestPrice, linkToTrader }: { group: TraderGroup; latestPrice: number; linkToTrader: (wallet: string) => string }) {
+function TraderGroupRow({ group, latestPrice, linkToTrader, priceUnit }: { group: TraderGroup; latestPrice: number; priceUnit: '¢' | '%'; linkToTrader: (wallet: string) => string }) {
   const [expanded, setExpanded] = useState(false)
   const { wallet, wallet_name, entries } = group
 
-  if (entries.length === 1) return <SingleEntryRow w={entries[0]} latestPrice={latestPrice} linkToTrader={linkToTrader} />
+  if (entries.length === 1) return <SingleEntryRow w={entries[0]} latestPrice={latestPrice} linkToTrader={linkToTrader} priceUnit={priceUnit} />
 
   const totalUsd = entries.reduce((s, e) => s + e.usd, 0)
   const avgPrice = entries.reduce((s, e) => s + e.usd * e.price, 0) / totalUsd
@@ -79,7 +79,7 @@ function TraderGroupRow({ group, latestPrice, linkToTrader }: { group: TraderGro
         </Link>
         <div className="sig-drill-body">
           <div className="sig-drill-detail">
-            {entries.length} buys · avg {Math.round(avgPrice * 100)}¢ · {fmtFull(totalUsd)} invested
+            {entries.length} buys · avg {Math.round(avgPrice * 100)}{priceUnit} · {fmtFull(totalUsd)} invested
           </div>
           <div className="sig-drill-meta">
             <div style={{ fontSize: 11.5, fontWeight: 700, color: totalProfit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
@@ -105,7 +105,7 @@ function TraderGroupRow({ group, latestPrice, linkToTrader }: { group: TraderGro
             const ret = walletReturn(w, latestPrice)
             return (
               <div key={i} className="sig-trader-txn-row">
-                <span className="sig-trader-txn-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}¢ · {timeAgo(w.ts)}</span>
+                <span className="sig-trader-txn-detail">{fmtFull(w.usd)} at {Math.round(w.price * 100)}{priceUnit} · {timeAgo(w.ts)}</span>
                 <span className="sig-trader-txn-meta">
                   <span style={{ fontWeight: 700, color: ret.profit >= 0 ? '#00d17a' : '#ff3b5c' }}>
                     {fmtSigned(ret.profit)}{!ret.realized ? ' (unrealized)' : ''}
@@ -170,7 +170,7 @@ function ActivitySummary({ wallets }: { wallets: WalletContribution[] }) {
 // full contributing-traders list. Used both inside SignalModal (a popup)
 // and full-width on the Terminal's market route — one implementation, two
 // homes, so neither surface can silently drift out of sync with the other.
-export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220 }: {
+export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220, priceUnit = '¢' }: {
   opportunity: Opportunity
   // Overridable so the Terminal keeps trader navigation inside its own
   // route tree instead of bouncing out to the main app — see
@@ -178,6 +178,7 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
   linkToTrader?: (wallet: string) => string
   // The Terminal has a full page to work with vs. the modal's fixed
   // 600px-tall popup, so it passes a taller value here.
+  priceUnit?: '¢' | '%'
   chartHeight?: number
 }) {
   const [wallets, setWallets] = useState<WalletContribution[]>([])
@@ -215,7 +216,7 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
       <div className="sig-stats-row" style={{ margin: '16px 0' }}>
         <div className="sig-stat-cell">
           <div className="sig-stat-cell-label">Price</div>
-          <div className="sig-stat-cell-val">{Math.round(o.latest_price * 100)}¢</div>
+          <div className="sig-stat-cell-val">{Math.round(o.latest_price * 100)}{priceUnit}</div>
         </div>
         <div className="sig-stat-cell">
           <div className="sig-stat-cell-label">Total Deployed</div>
@@ -261,7 +262,7 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
             <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
           )}
           {!walletsLoading && groups.map(g => (
-            <TraderGroupRow key={g.wallet} group={g} latestPrice={o.latest_price} linkToTrader={linkToTrader} />
+            <TraderGroupRow key={g.wallet} group={g} latestPrice={o.latest_price} linkToTrader={linkToTrader} priceUnit={priceUnit} />
           ))}
         </div>
       </div>
