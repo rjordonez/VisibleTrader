@@ -1988,6 +1988,8 @@
 .app-nav-item.active { background: #2b2b3c; color: #e3e5ff; font-weight: 500; }
 .app-sidebar-nav { gap: 4px; }
 .app-sidebar { background: #15151b; }
+/* Desktop rail is black; the mobile drawer (≤768px) keeps the softer grey above. */
+@media (min-width: 769px) { .app-sidebar { background: #000; } }
 .sig-btn, .sig-watch-input, .sig-load-more { min-height: 44px; border-radius: var(--ui-radius-control); font-size: 14px; padding: 10px 16px; }
 .sig-watch-input { font-size: 16px; min-width: 0; }
 .sig-chip { min-height: 44px; display: inline-flex; align-items: center; border-radius: 13px; padding: 9px 14px; font-size: 13px; font-family: inherit; }
