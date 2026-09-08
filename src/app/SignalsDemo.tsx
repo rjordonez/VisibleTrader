@@ -11,6 +11,7 @@ import {
 import { onOpportunitiesBatch } from './realtimeBroadcast'
 import { SignalModal } from './SignalModal'
 import { SkelLbRow } from './Skeleton'
+import { ExpertPickCard } from './ExpertPickCard'
 
 function SignalsDemo({ category, onCategoryChange }: { category: string; onCategoryChange: (category: string) => void }) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
@@ -683,51 +684,16 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
 
         {tab === 'vetted' && (
           <>
-          <div className="lb-table">
-            <div className="lb-head lb-4col">
-              <div>Traders</div>
-              <div>Market</div>
-              <div className="lb-col">Profit</div>
-              <div className="lb-col">Total</div>
-            </div>
-            {loading && Array.from({ length: 8 }).map((_, i) => <SkelLbRow key={i} />)}
+          <div className="expert-picks-grid" aria-busy={loading}>
+            {loading && Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="expert-pick-skeleton" aria-label="Loading pick" />
+            ))}
             {!loading && filteredOpportunities.length === 0 && (
               <div className="sig-empty">No signals match right now. Try adjusting your filters or check back soon.</div>
             )}
-            {!loading && filteredOpportunities.map(o => {
-              const key = `${o.condition_id}::${o.outcome}`
-              const ic = categoryIcon(o.category)
-              return (
-                <div key={key} className="lb-row lb-4col" role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setModalOpp(o) } }} onClick={() => setModalOpp(o)}>
-                  <div className="lb-trader">
-                    <div className="lb-avatar" style={{ background: ic.bg }}>{ic.emoji}</div>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="lb-name">
-                        {o.wallet_count > 1 ? `${o.wallet_count} expert traders agree` : '1 top trader'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="lb-market">
-                    <div className="sig-q">{o.title} <span className="sig-out">— {o.outcome}</span></div>
-                  </div>
-
-                  <div className="lb-stats">
-                    <div className="lb-col" data-label="Profit">
-                      <div className="lb-col-stack">
-                        <div className={o.total_profit >= 0 ? 'lb-val g' : 'lb-val r'}>{fmtSigned(o.total_profit)}</div>
-                      </div>
-                    </div>
-
-                    <div className="lb-col" data-label="Total">
-                      <div className="lb-col-stack">
-                        <div className="lb-val">{fmtFull(o.cumulative_usd)}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+            {!loading && filteredOpportunities.map(o => (
+              <ExpertPickCard key={`${o.condition_id}::${o.outcome}`} opportunity={o} onOpen={() => setModalOpp(o)} />
+            ))}
           </div>
           {!loading && hasMore && (
             <button className="sig-load-more" onClick={loadMore} disabled={loadingMore}>

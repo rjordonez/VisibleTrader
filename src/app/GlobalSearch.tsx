@@ -1,9 +1,10 @@
+import { MarketIcon } from './MarketIcon'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { dashboardPath, terminalPath } from '../lib/domains'
-import { traderLabel, avatarGradient, avatarInitial, categoryIcon, fmtAbbrev } from './helpers'
+import { traderLabel, avatarGradient, avatarInitial, fmtAbbrev } from './helpers'
 
 interface TraderResult {
   wallet: string
@@ -155,10 +156,10 @@ export default function GlobalSearch({ label = 'Search Traders or Markets' }: { 
               ) : (
                 <div className="gsearch-market-list">
                   {markets.map(m => {
-                    const ic = categoryIcon(m.category)
+
                     return (
                       <button type="button" key={`${m.condition_id}::${m.outcome}`} className="gsearch-market-row" onClick={() => goToMarket(m)}>
-                        <div className="gsearch-market-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
+                        <MarketIcon conditionId={m.condition_id} outcome={m.outcome} category={m.category} className="gsearch-market-icon" />
                         <div className="gsearch-market-title">
                           {m.title} <span className="sig-out">— {m.outcome}</span>
                         </div>

@@ -1,9 +1,10 @@
+import { MarketIcon } from './MarketIcon'
 import { useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { ArrowUpRight, Bell, X, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { dashboardPath } from '../lib/domains'
-import { avatarGradient, avatarInitial, categoryIcon, fmtFull, fmtSigned, marketUrl, timeAgo, traderLabel } from './helpers'
+import { avatarGradient, avatarInitial, fmtFull, fmtSigned, marketUrl, timeAgo, traderLabel } from './helpers'
 import AlertsPage from './AlertsPage'
 import type { useAlerts } from './useAlerts'
 import { useHomeTrades } from './useHomeTrades'
@@ -72,7 +73,7 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
           const resolved = record ? record.won + record.lost : 0
           const winRate = record && resolved > 0 ? record.won / resolved * 100 : null
           const url = marketUrl(trade.slug)
-          const category = categoryIcon(trade.category)
+
           return (
             <article className="home-trade" key={trade.id}>
               <div className="home-trade-top">
@@ -94,7 +95,7 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
               </> : <p className="home-record-context home-record-missing">No resolved performance available yet.</p>}
               <div className="home-trade-action"><span className={trade.side === 'BUY' ? 'positive' : 'negative'}>{trade.side === 'BUY' ? 'Bought' : 'Sold'}</span> <strong>{fmtFull(trade.usd)}</strong> <span>of {trade.outcome}</span></div>
               <div className="home-trade-market">
-                <span className="home-market-icon" style={{ background: category.bg }} aria-hidden="true">{category.emoji}</span>
+                <MarketIcon conditionId={trade.condition_id} outcome={trade.outcome} category={trade.category} className="home-market-icon" />
                 <div>{url ? <a href={url} target="_blank" rel="noopener noreferrer">{trade.title}<ArrowUpRight size={15} /></a> : <p>{trade.title}</p>}<span>{Math.round(trade.price * 100)}¢ {trade.side === 'BUY' ? 'entry' : 'sale price'}</span></div>
               </div>
             </article>

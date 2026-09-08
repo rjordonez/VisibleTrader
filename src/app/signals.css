@@ -75,3 +75,41 @@
 @media (prefers-reduced-motion: reduce) {
   .signals-page *, .signals-page *::before { animation: none !important; transition: none !important; }
 }
+
+/* Expert picks: title, market movement, then the tracked traders' position. */
+.expert-picks-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.expert-picks-grid > .sig-empty { grid-column: 1 / -1; }
+.expert-pick-card { display: flex; flex-direction: column; min-width: 0; padding: 22px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface-2); transition: border-color 150ms; }
+.expert-pick-card:hover { border-color: #515169; }
+.expert-pick-topline, .expert-pick-chart-caption { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--text-dim); font-size: 11px; }
+.expert-pick-topline a { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); text-decoration: none; }
+.expert-pick-topline a:hover { color: var(--text); }
+.expert-pick-title { display: flex; align-items: flex-start; gap: 12px; width: 100%; min-height: 110px; padding: 22px 0 16px; text-align: left; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; }
+.expert-pick-title h3 { margin: 0; font-size: 17px; line-height: 1.45; font-weight: 650; letter-spacing: -0.025em; overflow-wrap: anywhere; }
+.expert-pick-icon { display: grid; place-items: center; flex-shrink: 0; width: 52px; height: 52px; overflow: hidden; border-radius: 11px; font-size: 24px; }
+.expert-pick-price { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: auto; }
+.expert-pick-price > span { font-size: 12px; color: var(--text-dim); overflow-wrap: anywhere; }
+.expert-pick-price strong { color: #7b9eff; font-size: 30px; letter-spacing: -0.05em; font-variant-numeric: tabular-nums; }
+.expert-pick-price small { font-size: 19px; margin-left: 2px; }
+.expert-pick-chart { height: 104px; margin-top: 8px; color: #7196ff; }
+.expert-pick-chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.expert-pick-gridline { stroke: var(--border); stroke-dasharray: 2 4; }
+.expert-pick-chart > span { display: grid; place-items: center; height: 100%; color: var(--text-faint); font-size: 12px; }
+.expert-pick-chart-caption { margin: 4px 0 18px; }
+.expert-pick-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 0; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 11px; line-height: 1.5; }
+.expert-pick-stats > span { display: inline-flex; align-items: center; gap: 5px; }
+.expert-pick-bet { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; padding: 12px; border: 1px solid transparent; border-radius: 11px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; overflow-wrap: anywhere; transition: filter 150ms; }
+.expert-pick-bet.is-yes { background: #b9f5cc; color: #155b32; }
+.expert-pick-bet.is-no { background: #f5c4cb; color: #902b3e; }
+.expert-pick-bet.is-other { background: #d4d4ff; color: #353578; }
+.expert-pick-bet svg { flex-shrink: 0; }
+.expert-pick-bet:hover { filter: brightness(1.08); }
+.expert-pick-skeleton { height: 390px; border: 1px solid var(--border); border-radius: 18px; background: linear-gradient(145deg, var(--surface-2), var(--bg)); }
+@media (max-width: 1100px) { .expert-picks-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .expert-picks-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .expert-pick-card { padding: 20px; }
+  .expert-pick-title { min-height: 0; }
+}
+
+.expert-pick-icon img { display: block; width: 100%; height: 100%; object-fit: cover; }
