@@ -1,10 +1,11 @@
 import { MarketIcon } from './MarketIcon'
-import { useState, type CSSProperties } from 'react'
+import { useState, useEffect, useRef, type CSSProperties } from 'react'
 import type { User } from '@supabase/supabase-js'
-import { ArrowUpRight, Bell, X, Plus } from 'lucide-react'
+import { ArrowUpRight, ArrowUp, Bell, X, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { dashboardPath } from '../lib/domains'
 import { avatarGradient, fmtFull, fmtSigned, marketUrl, timeAgo, traderLabel } from './helpers'
+import { useLiveTradeCounter, RollingNumber } from '../lib/RollingCounter'
 import GogglesMark from './GogglesMark'
 import AlertsPage from './AlertsPage'
 import type { useAlerts } from './useAlerts'
@@ -18,6 +19,41 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
   const [sortMode, setSortMode] = useState<'compelling' | 'recent' | 'pnl' | 'winRate' | 'size'>('compelling')
   const feed = useHomeTrades(tab, alerts.watchedWallets.map(w => w.wallet))
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Your account'
+  const liveCount = useLiveTradeCounter()
+
+  // "N new trades ↑" pill. seenIds accumulates the feed items the reader
+  // has already seen — everything is folded in while they're at the top;
+  // once scrolled down, anything the 30s refresh adds beyond that shows
+  // as "new". Tapping the pill scrolls back up and marks all seen.
+  const seenIds = useRef(new Set<number>())
+  const [newCount, setNewCount] = useState(0)
+  const [scrolledDown, setScrolledDown] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => setScrolledDown(window.scrollY > 500)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    // Reacting to async feed data landing while in a given scroll state —
+    // a real "sync to an external source" effect, not derivable in render.
+    if (!scrolledDown) feed.trades.forEach(t => seenIds.current.add(t.id))
+    setNewCount(scrolledDown ? feed.trades.reduce((n, t) => n + (seenIds.current.has(t.id) ? 0 : 1), 0) : 0)
+  }, [feed.trades, scrolledDown])
+
+  const changeTab = (next: 'following' | 'discover') => {
+    seenIds.current.clear()
+    setNewCount(0)
+    setTab(next)
+  }
+
+  const jumpToNew = () => {
+    feed.trades.forEach(t => seenIds.current.add(t.id))
+    setNewCount(0)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
   const sortedTrades = [...feed.trades].sort((a, b) => {
     const ar = feed.records.get(a.wallet?.toLowerCase() ?? '')
     const br = feed.records.get(b.wallet?.toLowerCase() ?? '')
@@ -42,6 +78,11 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
   })
   return (
     <div className="sig-page home-page">
+      {scrolledDown && newCount > 0 && (
+        <button type="button" className="home-new-pill" onClick={jumpToNew}>
+          <ArrowUp size={14} /> {newCount} new trade{newCount === 1 ? '' : 's'}
+        </button>
+      )}
       <header className="home-account">
         <Link className="home-account-link" to={dashboardPath('/settings')} aria-label={`${displayName}, account settings`}>
           <span className="home-account-avatar">{String(displayName).slice(0, 1).toUpperCase()}</span>
@@ -54,9 +95,14 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
         <AlertsPage {...alerts} />
       </details>
 
+      <div className="home-live-strip">
+        <span className="home-live-dot" aria-hidden="true" />
+        <RollingNumber value={liveCount} /> <span>real trades tracked on-chain</span>
+      </div>
+
       <div className="home-feed-tabs" aria-label="Choose trade feed">
-        <button type="button" aria-pressed={tab === 'discover'} className={tab === 'discover' ? 'active' : undefined} onClick={() => setTab('discover')}>Discover</button>
-        <button type="button" aria-pressed={tab === 'following'} className={tab === 'following' ? 'active' : undefined} onClick={() => setTab('following')}>Following <span>{alerts.watchedWallets.length}</span></button>
+        <button type="button" aria-pressed={tab === 'discover'} className={tab === 'discover' ? 'active' : undefined} onClick={() => changeTab('discover')}>Discover</button>
+        <button type="button" aria-pressed={tab === 'following'} className={tab === 'following' ? 'active' : undefined} onClick={() => changeTab('following')}>Following <span>{alerts.watchedWallets.length}</span></button>
       </div>
       <div className="home-feed-toolbar">
         <p className="home-feed-description">{tab === 'discover' ? 'Recent trades from profitable tracked traders.' : 'The latest moves from wallets you follow.'}</p>
@@ -65,7 +111,7 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
       {feed.error && <p className="home-feed-message" role="status">Unable to refresh trades. {feed.trades.length > 0 ? 'Showing the last available activity. ' : ''}Retrying automatically.</p>}
       <section aria-label={tab === 'following' ? 'Following trades' : 'Discover trades'} aria-busy={feed.loading}>
         {feed.loading ? <div aria-label="Loading trades">{[0, 1, 2].map(i => <div key={i} className="home-trade-skeleton sig-skel" aria-hidden="true" />)}</div> : !feed.error && feed.trades.length === 0 ? (
-          <div className="home-feed-empty"><h2>{tab === 'following' && alerts.watchedWallets.length === 0 ? 'Who are you watching?' : 'No recent trades here yet.'}</h2><p>{tab === 'following' ? 'Find a trader in Discover and follow them to bring their next trades here.' : 'Trades from profitable tracked wallets will appear here when available.'}</p>{tab === 'following' && <button type="button" onClick={() => setTab('discover')}>Discover traders <ArrowUpRight size={16} /></button>}</div>
+          <div className="home-feed-empty"><h2>{tab === 'following' && alerts.watchedWallets.length === 0 ? 'Who are you watching?' : 'No recent trades here yet.'}</h2><p>{tab === 'following' ? 'Find a trader in Discover and follow them to bring their next trades here.' : 'Trades from profitable tracked wallets will appear here when available.'}</p>{tab === 'following' && <button type="button" onClick={() => changeTab('discover')}>Discover traders <ArrowUpRight size={16} /></button>}</div>
         ) : sortedTrades.map((trade, i) => {
           const wallet = trade.wallet!
           const record = feed.records.get(wallet.toLowerCase())
