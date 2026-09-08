@@ -1,5 +1,5 @@
 import { MarketIcon } from './MarketIcon'
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { ArrowUpRight, Bell, X, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -66,7 +66,7 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
       <section aria-label={tab === 'following' ? 'Following trades' : 'Discover trades'} aria-busy={feed.loading}>
         {feed.loading ? <div aria-label="Loading trades">{[0, 1, 2].map(i => <div key={i} className="home-trade-skeleton sig-skel" aria-hidden="true" />)}</div> : !feed.error && feed.trades.length === 0 ? (
           <div className="home-feed-empty"><h2>{tab === 'following' && alerts.watchedWallets.length === 0 ? 'Who are you watching?' : 'No recent trades here yet.'}</h2><p>{tab === 'following' ? 'Find a trader in Discover and follow them to bring their next trades here.' : 'Trades from profitable tracked wallets will appear here when available.'}</p>{tab === 'following' && <button type="button" onClick={() => setTab('discover')}>Discover traders <ArrowUpRight size={16} /></button>}</div>
-        ) : sortedTrades.map(trade => {
+        ) : sortedTrades.map((trade, i) => {
           const wallet = trade.wallet!
           const record = feed.records.get(wallet.toLowerCase())
           const name = traderLabel(wallet, trade.wallet_name || record?.wallet_name || null)
@@ -76,7 +76,7 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
           const url = marketUrl(trade.slug)
 
           return (
-            <article className="home-trade" key={trade.id}>
+            <article className="home-trade" key={trade.id} style={{ '--home-i': i } as CSSProperties}>
               <div className="home-trade-top">
                 <Link className="home-trader" to={dashboardPath(`/trader/${wallet}`)}>
                   <span className="home-trader-avatar" style={{ background: avatarGradient(wallet) }}><GogglesMark /></span>
