@@ -141,15 +141,15 @@
 }
 
 /* Feed intro: each card resolves from blurred + low to sharp, staggered
-   by its position so posts land one after another on load. The animation
-   runs once per <article> element — the 30s poll reuses the same keyed
-   DOM nodes, so only a fresh page load (or a brand-new incoming trade)
-   triggers it. */
+   by its position so posts land one after another. Scoped to
+   .home-feed-intro, which HomePage drops off the <section> ~3.2s after
+   mount — so the 30s refresh re-rendering the list can never restart (or
+   backwards-fill to opacity:0) a card animation. */
 @keyframes home-trade-in {
   from { opacity: 0; filter: blur(14px); transform: translateY(16px); }
   to   { opacity: 1; filter: blur(0); transform: none; }
 }
-.home-page section > .home-trade {
+.home-feed-intro > .home-trade {
   animation: home-trade-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
   /* stagger > animation duration so each card clears before the next
      starts — reads as one-by-one rather than all at once. */
