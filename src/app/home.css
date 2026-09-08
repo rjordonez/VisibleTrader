@@ -93,6 +93,22 @@
   .home-trader strong { font-size: 15px; }
   .home-follow-button { padding: 9px 10px; }
 }
+/* Feed intro: each card resolves from blurred + low to sharp, staggered
+   by its position so posts land one after another on load. The animation
+   runs once per <article> element — the 30s poll reuses the same keyed
+   DOM nodes, so only a fresh page load (or a brand-new incoming trade)
+   triggers it. */
+@keyframes home-trade-in {
+  from { opacity: 0; filter: blur(14px); transform: translateY(16px); }
+  to   { opacity: 1; filter: blur(0); transform: none; }
+}
+.home-page section > .home-trade {
+  animation: home-trade-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* stagger > animation duration so each card clears before the next
+     starts — reads as one-by-one rather than all at once. */
+  animation-delay: calc(min(var(--home-i, 0), 20) * 130ms);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .home-page * { animation: none !important; transition: none !important; }
 }
