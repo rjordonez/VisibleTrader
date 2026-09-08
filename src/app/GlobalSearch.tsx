@@ -1,7 +1,9 @@
-import { MarketIcon } from './MarketIcon'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
+import HoverLord from './HoverLord'
+import { MarketIcon } from './MarketIcon'
+import { navIconIds } from './nav-icons'
 import { supabase } from '../lib/supabase'
 import { dashboardPath, terminalPath } from '../lib/domains'
 import { traderLabel, avatarGradient, avatarInitial, fmtAbbrev } from './helpers'
@@ -100,10 +102,25 @@ export default function GlobalSearch({ label = 'Search Traders or Markets' }: { 
   const traders = isSearching ? traderResults : topTraders
   const markets = isSearching ? marketResults : trendingMarkets
 
+  // Same 1s dwell-then-play as the nav rows (see NavItem).
+  const [searchHover, setSearchHover] = useState(0)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(hoverTimer.current), [])
+
   return (
     <>
-      <button type="button" className="gsearch-trigger" onClick={() => setOpen(true)}>
-        <Search size={15} />
+      <button
+        type="button"
+        className="gsearch-trigger"
+        onClick={() => setOpen(true)}
+        onMouseEnter={() => {
+          if (navIconIds.has('search')) hoverTimer.current = setTimeout(() => setSearchHover(t => t + 1), 1000)
+        }}
+        onMouseLeave={() => clearTimeout(hoverTimer.current)}
+      >
+        <span className="app-nav-lord" aria-hidden="true">
+          <HoverLord iconId="search" size={18} color="#d1d5db" playToken={searchHover} fallback={<Search size={15} />} />
+        </span>
         <span>{label}</span>
       </button>
 

@@ -11,8 +11,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@lordicon/react": "^1.11.0",
     "@supabase/supabase-js": "^2.110.8",
     "@vercel/analytics": "^2.0.1",
+    "lottie-web": "^5.13.0",
     "lucide-react": "^1.20.0",
     "posthog-js": "^1.418.10",
     "react": "^19.2.6",

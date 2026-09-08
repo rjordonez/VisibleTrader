@@ -8,6 +8,7 @@ import type { User } from '@supabase/supabase-js'
 import type { Opportunity } from '../types'
 import { onTabVisible, byCategory, PAGE_SIZE, fmtAbbrev, fmtAbbrevSigned } from '../helpers'
 import { onOpportunitiesBatch, mergeOpportunities } from '../realtimeBroadcast'
+import GogglesAvatar from '../GogglesAvatar'
 import TerminalSidebar from './TerminalSidebar'
 import TerminalMarketView from './TerminalMarketView'
 import TerminalTraderView from './TerminalTraderView'
@@ -181,7 +182,7 @@ export default function Terminal() {
               onClick={() => setUserMenuOpen(o => !o)}
               aria-label="Account menu"
             >
-              <span className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</span>
+              <GogglesAvatar id={user.id} />
               {isProdDb && <span className="app-prod-dot" title="Connected to production data" />}
             </button>
             {userMenuOpen && (
