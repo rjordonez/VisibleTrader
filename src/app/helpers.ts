@@ -127,10 +127,16 @@ export const fetchWallets = (conditionId: string, outcome: string) =>
       .order('ts', { ascending: false })
   ).then(({ data }) => (data ?? []) as WalletContribution[]).catch(() => [] as WalletContribution[])
 
-export const fetchChart = (conditionId: string, outcome: string) =>
+export const fetchMarketChart = (conditionId: string, outcome: string) =>
   supabase.functions.invoke('price-chart', { body: { condition_id: conditionId, outcome } })
-    .then(({ data }) => (data as { history: ChartPoint[] } | null)?.history || [])
-    .catch(() => [] as ChartPoint[])
+    .then(({ data, error }) => {
+      const result = data as { history?: ChartPoint[]; image?: string | null; error?: string } | null
+      return { history: result?.history || [], image: result?.image || null, error: !!error || !!result?.error || !result }
+    })
+    .catch(() => ({ history: [] as ChartPoint[], image: null, error: true }))
+
+export const fetchChart = (conditionId: string, outcome: string) =>
+  fetchMarketChart(conditionId, outcome).then(result => result.history)
 
 export const CATEGORY_ICON: Record<string, { emoji: string; bg: string }> = {
   politics:  { emoji: '🏛️', bg: 'rgba(47,111,237,0.15)' },

@@ -13,19 +13,20 @@ const corsHeaders = {
 
 async function lookupMarket(slug: string): Promise<Record<string, unknown> | null> {
   const res = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`, { headers: UA })
-  const rows = res.ok ? await res.json() : []
+  if (!res.ok) throw new Error('Market lookup failed')
+  const rows = await res.json()
   if (rows.length) return rows[0]
   // gamma-api's default markets lookup only returns *open* markets — a
   // resolved market (very often exactly what ends up as the highest-
   // conviction signal, since resolved games accumulate the most historical
   // volume) returns empty here and needs the explicit closed=true lookup.
   const closedRes = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}&closed=true`, { headers: UA })
-  const closedRows = closedRes.ok ? await closedRes.json() : []
+  if (!closedRes.ok) throw new Error('Market lookup failed')
+  const closedRows = await closedRes.json()
   return closedRows[0] ?? null
 }
 
-async function resolveTokenId(slug: string, outcome: string): Promise<string | null> {
-  const m = await lookupMarket(slug)
+function resolveTokenId(m: Record<string, unknown> | null, outcome: string): string | null {
   if (!m) return null
   let outcomes = m.outcomes
   let tokenIds = m.clobTokenIds
@@ -42,9 +43,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { condition_id, outcome } = await req.json()
+    const { condition_id, outcome, image_only } = await req.json()
     if (!condition_id || !outcome) {
-      return new Response(JSON.stringify({ history: [] }), {
+      return new Response(JSON.stringify({ history: [], error: 'Market data could not be loaded' }), {
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
     }
@@ -60,7 +61,7 @@ Deno.serve(async (req) => {
     // below already covers that case, no separate check needed.
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return new Response(JSON.stringify({ history: [] }), {
+      return new Response(JSON.stringify({ history: [], error: 'Market data could not be loaded' }), {
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
     }
@@ -76,27 +77,50 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle()
 
-    const slug = data?.slug
+    let slug = data?.slug
+    // Discover includes recent trades that may not yet be an opportunity.
+    // Use the same caller-scoped database client and RLS for this lookup.
+    if (!slug && image_only) {
+      const { data: trade } = await supabase.from('ticker').select('slug')
+        .eq('condition_id', condition_id).limit(1).maybeSingle()
+      slug = trade?.slug
+    }
     if (!slug) {
-      return new Response(JSON.stringify({ history: [] }), {
+      return new Response(JSON.stringify({ history: [], error: 'Market data could not be loaded' }), {
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
     }
 
-    const tokenId = await resolveTokenId(slug, outcome)
+    const market = await lookupMarket(slug)
+    const image = [market?.icon, market?.image].find(value => typeof value === 'string' && value.startsWith('https://')) ?? null
+    if (image_only) {
+      return new Response(JSON.stringify({ image }), {
+        headers: { ...corsHeaders, 'content-type': 'application/json' },
+      })
+    }
+    const tokenId = resolveTokenId(market, outcome)
     if (!tokenId) {
-      return new Response(JSON.stringify({ history: [] }), {
+      return new Response(JSON.stringify({ history: [], image, error: 'Outcome lookup failed' }), {
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
     }
 
-    const histRes = await fetch(
-      `https://clob.polymarket.com/prices-history?market=${tokenId}&interval=max&fidelity=30`,
-      { headers: UA }
-    )
-    const histData = histRes.ok ? await histRes.json() : { history: [] }
+    // Preserve the thumbnail even when the price-history provider is unavailable.
+    let history = []
+    let error: string | null = null
+    try {
+      const histRes = await fetch(
+        `https://clob.polymarket.com/prices-history?market=${tokenId}&interval=max&fidelity=30`,
+        { headers: UA }
+      )
+      if (!histRes.ok) throw new Error('Price provider unavailable')
+      const histData = await histRes.json()
+      if (!Array.isArray(histData.history)) throw new Error('Invalid price history')
 
-    return new Response(JSON.stringify({ history: histData.history || [] }), {
+      history = histData.history || []
+    } catch { error = 'Price history request failed' }
+
+    return new Response(JSON.stringify({ history, image, error }), {
       headers: { ...corsHeaders, 'content-type': 'application/json' },
     })
   } catch (err) {

@@ -1,10 +1,11 @@
+import { MarketIcon } from '../MarketIcon'
 import { useState, useEffect } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import { Zap, Trophy, Bell, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { Opportunity } from '../types'
 import {
-  categoryIcon, categoryLabel, fmtAbbrev, fmtSigned, fmtAbbrevSigned, NAV_CATEGORIES,
+  categoryLabel, fmtAbbrev, fmtSigned, fmtAbbrevSigned, NAV_CATEGORIES,
   traderLabel, avatarGradient, avatarInitial, onTabVisible, WATCHED_WALLETS_KEY,
 } from '../helpers'
 import { terminalPath, dashboardPath } from '../../lib/domains'
@@ -174,7 +175,7 @@ export default function TerminalSidebar({ opportunities, loading, category, onCa
               <div className="terminal-sidebar-empty">No active markets right now.</div>
             )}
             {!loading && opportunities.map(o => {
-              const ic = categoryIcon(o.category)
+
               return (
                 <NavLink
                   key={`${o.condition_id}::${o.outcome}`}
@@ -189,7 +190,7 @@ export default function TerminalSidebar({ opportunities, loading, category, onCa
                   to={terminalPath(`/market/${encodeURIComponent(o.condition_id)}/${encodeURIComponent(o.outcome)}`)}
                   className={({ isActive }) => `terminal-sidebar-row ${isActive ? 'active' : ''}`}
                 >
-                  <div className="terminal-sidebar-icon" style={{ background: ic.bg }}>{ic.emoji}</div>
+                  <MarketIcon conditionId={o.condition_id} outcome={o.outcome} category={o.category} className="terminal-sidebar-icon" />
                   <div className="terminal-sidebar-mid">
                     <div className="terminal-sidebar-title">{o.title} <span className="sig-out">— {o.outcome}</span></div>
                     <div className="terminal-sidebar-sub">{o.wallet_count} tracked · {fmtAbbrev(o.cumulative_usd)}</div>

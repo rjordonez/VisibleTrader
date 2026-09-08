@@ -1,8 +1,9 @@
+import { MarketIcon } from './MarketIcon'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Opportunity, WalletContribution, ChartPoint } from './types'
 import {
-  fetchWallets, fetchChart, categoryIcon, signalsTag, signalsTraderStatus,
+  fetchWallets, fetchChart, signalsTag, signalsTraderStatus,
   walletReturn, fmtFull, fmtSigned, traderLabel, timeAgo,
 } from './helpers'
 import { dashboardPath } from '../lib/domains'
@@ -193,13 +194,13 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
 
   const groups = useMemo(() => groupByWallet(wallets), [wallets])
 
-  const ic = categoryIcon(o.category)
+
   const tag = signalsTag(o.tier, o.cumulative_usd)
 
   return (
     <>
       <div className="sig-hero-top">
-        <div className="sig-card-icon" style={{ background: ic.bg, width: 44, height: 44, fontSize: 20 }}>{ic.emoji}</div>
+        <MarketIcon conditionId={o.condition_id} outcome={o.outcome} category={o.category} className="sig-card-icon" style={{ width: 44, height: 44, fontSize: 20 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="sig-hero-q">{o.title} <span className="sig-out">— {o.outcome}</span></div>
           <div className="sig-card-meta">
