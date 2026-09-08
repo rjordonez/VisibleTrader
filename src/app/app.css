@@ -91,8 +91,8 @@
 .app-sidebar-bottom-user {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding-top: 1rem;
+  gap: 4px;
+  padding-top: 0.75rem;
   margin-top: 0.5rem;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -106,12 +106,15 @@
    768px query below — doesn't also hide search; it's centered separately
    there instead. Styled to match .app-nav-item rather than the default
    .gsearch-trigger pill, which was sized for the old horizontal top bar. */
-.app-sidebar-search { margin-bottom: 10px; }
+.app-sidebar-search { margin-bottom: 4px; }
 .app-sidebar-search .gsearch-trigger {
   width: 100%; max-width: none;
+  min-height: 38px;
   background: none; border: none;
   padding: 0.6rem 0.6rem;
-  border-radius: 8px;
+  border-radius: 11px;
+  font-size: 14px;
+  font-weight: 450;
   color: var(--text-2);
   transition: color 0.12s, background 0.12s;
 }
@@ -132,7 +135,7 @@
 .app-nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 0.6rem 0.6rem;
   border-radius: 8px;
   font-size: 0.85rem;
@@ -150,6 +153,8 @@
   color: var(--text-1);
   background: rgba(255, 255, 255, 0.04);
 }
+.app-nav-lord { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex-shrink: 0; opacity: 0.85; }
+.app-nav-item.active .app-nav-lord { opacity: 1; }
 
 .app-nav-item.active {
   color: var(--text-1);
@@ -350,8 +355,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border: none;
   background: none;
   border-radius: 50%;
@@ -362,17 +367,17 @@
 
 .app-bell-badge {
   position: absolute;
-  top: -2px;
-  right: -2px;
-  min-width: 16px;
-  height: 16px;
+  top: 0;
+  right: 0;
+  min-width: 18px;
+  height: 18px;
   padding: 0 4px;
   border-radius: 999px;
   background: var(--blue, #2f6fed);
   color: #fff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 16px;
+  line-height: 18px;
   text-align: center;
   border: 2px solid var(--shell-bg);
 }
@@ -477,8 +482,8 @@
 .app-avatar-chevron { flex-shrink: 0; opacity: 0.6; }
 
 .app-avatar {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: linear-gradient(135deg, #1e8f0d, #56ab4a);
   display: flex;
@@ -488,7 +493,9 @@
   font-weight: 700;
   color: #fff;
   flex-shrink: 0;
+  overflow: hidden;
 }
+.app-avatar-goggles-mark { width: 82%; height: auto; display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25)); }
 
 /* Only ever renders when VITE_USE_PROD_DB=true — a quiet but
    impossible-to-miss marker that this session is reading/writing real
@@ -1977,9 +1984,9 @@
 .app-section-header { align-items: center; margin-bottom: 30px; }
 .app-section-title { font-size: clamp(30px, 3vw, 40px); font-weight: 800; letter-spacing: -0.045em; line-height: 1.15; margin-bottom: 10px; }
 .app-section-sub { font-size: 14px; line-height: 1.6; color: var(--ui-muted); }
-.app-nav-item { min-height: 44px; border-radius: 13px; font-size: 15px; font-weight: 550; }
-.app-nav-item.active { background: #2b2b3c; color: #e3e5ff; font-weight: 700; }
-.app-sidebar-nav { gap: 5px; }
+.app-nav-item { min-height: 38px; border-radius: 11px; font-size: 14px; font-weight: 450; gap: 8px; }
+.app-nav-item.active { background: #2b2b3c; color: #e3e5ff; font-weight: 500; }
+.app-sidebar-nav { gap: 4px; }
 .app-sidebar { background: #15151b; }
 .sig-btn, .sig-watch-input, .sig-load-more { min-height: 44px; border-radius: var(--ui-radius-control); font-size: 14px; padding: 10px 16px; }
 .sig-watch-input { font-size: 16px; min-width: 0; }

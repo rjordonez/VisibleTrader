@@ -1,0 +1,20 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="pfp-bg" x1="40" y1="24" x2="472" y2="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2FE6A6"/>
+      <stop offset="0.55" stop-color="#12B981"/>
+      <stop offset="1" stop-color="#0A8F63"/>
+    </linearGradient>
+    <radialGradient id="pfp-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+      gradientTransform="translate(150 120) rotate(58) scale(360)">
+      <stop offset="0" stop-color="#BEFFE6" stop-opacity="0.85"/>
+      <stop offset="0.6" stop-color="#BEFFE6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#pfp-bg)"/>
+  <rect width="512" height="512" fill="url(#pfp-glow)"/>
+  <g transform="translate(43 156) scale(2.7)">
+    <path d="M38.9914 32.498C32.5691 38.0021 25.1226 48.7343 15.1622 55.224C11.3094 57.7343 9.14352 61.0649 13.1785 63.2705C23.4997 68.912 48.6107 74.7065 54.5 60.5C60.5108 46.0005 72.503 38.9998 83.503 36.4998C89.2046 35.204 102.625 48.8099 114.497 60.4554C123.854 69.6348 137.961 69.3431 146.948 59.8007C151.248 55.2356 153.948 51.7871 155.55 49.3577C157.565 46.3 155.19 45.5609 151.553 45.9863C136.527 47.7437 104.491 45.8832 93.503 30.4998C83.503 16.5 56.4914 17.5001 38.9914 32.498Z" fill="#6370FF"/>
+    <path d="M3 33V40C3 56.5685 16.4315 70 33 70H33.4905C44.2813 70 54.2408 64.2047 59.5726 54.8231L64.8179 45.5936C72.0889 32.7998 90.221 31.9744 98.6243 44.0547L108.965 58.92C113.794 65.8614 121.714 70 130.17 70C144.435 70 156 58.4353 156 44.1696V33C156 16.4315 142.569 3 126 3H33C16.4315 3 3 16.4315 3 33Z" fill="none" stroke="#FFFFFF" stroke-width="9"/>
+  </g>
+</svg>

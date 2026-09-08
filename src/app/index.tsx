@@ -6,6 +6,8 @@ import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
 import { useAlerts } from './useAlerts'
 import GlobalSearch from './GlobalSearch'
+import GogglesAvatar from './GogglesAvatar'
+import NavItem from './NavItem'
 import { timeAgo } from './helpers'
 import type { User } from '@supabase/supabase-js'
 import './app.css'
@@ -55,7 +57,7 @@ function UserMenu({ user, settingsPath, signOut, expanded = false }: {
         onClick={() => setOpen(o => !o)}
         aria-label="Account menu"
       >
-        <span className="app-avatar">{(user.email ?? '?')[0].toUpperCase()}</span>
+        <GogglesAvatar id={user.id} />
         {isProdDb && <span className="app-prod-dot" title="Connected to production data" />}
         {expanded && (
           <>
@@ -104,7 +106,7 @@ function AlertsBell({ alerts }: { alerts: ReturnType<typeof useAlerts> }) {
         onClick={() => setOpen(o => !o)}
         aria-label="Alerts"
       >
-        <Bell size={18} />
+        <Bell size={22} />
         {alerts.history.length > 0 && (
           <span className="app-bell-badge">{alerts.history.length > 9 ? '9+' : alerts.history.length}</span>
         )}
@@ -143,16 +145,18 @@ function TabLoading() {
 // (see AlertsBell below) instead of a plain nav link, same reasoning as
 // the Terminal's own read-only Alerts tab: it's a notification surface,
 // not a page you navigate to browse.
-// `dock: false` keeps an item out of the mobile bottom dock (but still in
-// the sidebar). The Terminal is a desktop-only workspace — see Terminal.tsx,
-// which shows a "built for desktop" stub on narrow viewports.
 const navItems = [
   { id: 'home',        label: 'Home',        path: '/',            Icon: HomeIcon },
   { id: 'signals',     label: 'Signals',     path: '/signals',     Icon: Zap },
-  { id: 'terminal',    label: 'Terminal',    path: '/terminal',    Icon: BarChart3, dock: false },
   { id: 'profits',     label: 'Profits',     path: '/profits',     Icon: TrendingUp },
   { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
 ]
+
+// Pinned near the bottom of the rail next to Help — the Terminal is a
+// desktop-only workspace (see Terminal.tsx's mobile stub), not a tab you
+// bounce between, so it sits apart from the main nav and stays out of the
+// mobile bottom dock entirely.
+const terminalNavItem = { id: 'terminal', label: 'Terminal', path: '/terminal', Icon: BarChart3 }
 
 // Own group, own section label — separate from the tracked-wallet pages
 // above since this is the user's own self-reported data, not anything the
@@ -281,15 +285,7 @@ export default function AppShell() {
             {navItems.map(({ id, label, path, Icon }) => {
               const target = dashboardPath(path)
               return (
-                <Link
-                  key={id}
-                  to={target}
-                  title={label}
-                  className={`app-nav-item ${location.pathname === target ? 'active' : ''}`}
-                >
-                  <Icon size={17} />
-                  <span className="app-nav-label">{label}</span>
-                </Link>
+                <NavItem key={id} id={id} label={label} to={target} Icon={Icon} active={location.pathname === target} />
               )
             })}
 
@@ -297,15 +293,7 @@ export default function AppShell() {
             {personalNavItems.map(({ id, label, path, Icon }) => {
               const target = dashboardPath(path)
               return (
-                <Link
-                  key={id}
-                  to={target}
-                  title={label}
-                  className={`app-nav-item ${location.pathname === target ? 'active' : ''}`}
-                >
-                  <Icon size={17} />
-                  <span className="app-nav-label">{label}</span>
-                </Link>
+                <NavItem key={id} id={id} label={label} to={target} Icon={Icon} active={location.pathname === target} />
               )
             })}
           </nav>
@@ -316,6 +304,13 @@ export default function AppShell() {
               closed flag. */}
           {user && (
             <div className="app-sidebar-bottom-user">
+              <NavItem
+                id={terminalNavItem.id}
+                label={terminalNavItem.label}
+                to={dashboardPath(terminalNavItem.path)}
+                Icon={terminalNavItem.Icon}
+                active={location.pathname === dashboardPath(terminalNavItem.path)}
+              />
               <a
                 href="mailto:visibletradehq@gmail.com"
                 title="Help"
@@ -363,7 +358,7 @@ export default function AppShell() {
         )}
       </main>
       <nav className="app-mobile-dock" aria-label="Main navigation">
-        {navItems.filter(n => n.dock !== false).map(({ id, label, path, Icon }) => {
+        {navItems.map(({ id, label, path, Icon }) => {
           const target = dashboardPath(path)
           const active = location.pathname === target
           return (
