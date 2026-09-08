@@ -1,5 +1,5 @@
 import { MarketIcon } from './MarketIcon'
-import { useState, useEffect, useRef, type CSSProperties } from 'react'
+import { useState, useEffect, type CSSProperties } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { ArrowUpRight, ArrowUp, Bell, X, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -10,6 +10,7 @@ import GogglesMark from './GogglesMark'
 import AlertsPage from './AlertsPage'
 import type { useAlerts } from './useAlerts'
 import { useHomeTrades } from './useHomeTrades'
+import type { TickerTrade } from './types'
 import './home.css'
 
 function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<typeof useAlerts> }) {
@@ -21,13 +22,13 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Your account'
   const liveCount = useLiveTradeCounter()
 
-  // "N new trades ↑" pill. seenIds accumulates the feed items the reader
-  // has already seen — everything is folded in while they're at the top;
-  // once scrolled down, anything the 30s refresh adds beyond that shows
-  // as "new". Tapping the pill scrolls back up and marks all seen.
-  const seenIds = useRef(new Set<number>())
-  const [newCount, setNewCount] = useState(0)
+  // Twitter-style feed freeze: while the reader is at the top the list is
+  // live; once scrolled down it's pinned to `displayed` so the 30s refresh
+  // can't reshuffle cards under them. Anything the refresh adds beyond
+  // `displayed` is counted; tapping the pill (or scrolling back to top)
+  // merges it in.
   const [scrolledDown, setScrolledDown] = useState(false)
+  const [displayed, setDisplayed] = useState<TickerTrade[]>([])
 
   // The blur-in stagger only exists for the first few seconds after mount.
   // After that the class comes off, so the 30s refresh re-rendering the
@@ -46,24 +47,28 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
   }, [])
 
   useEffect(() => {
-    // Reacting to async feed data landing while in a given scroll state —
-    // a real "sync to an external source" effect, not derivable in render.
-    if (!scrolledDown) feed.trades.forEach(t => seenIds.current.add(t.id))
-    setNewCount(scrolledDown ? feed.trades.reduce((n, t) => n + (seenIds.current.has(t.id) ? 0 : 1), 0) : 0)
-  }, [feed.trades, scrolledDown])
+    // Sync the shown list to the live feed only while at the top (or
+    // before it's first populated). Scrolled down it stays pinned, so the
+    // 30s refresh can't reshuffle cards under the reader.
+    if (scrolledDown && displayed.length > 0) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDisplayed(feed.trades)
+  }, [feed.trades, scrolledDown, displayed])
+
+  const newCount = scrolledDown
+    ? feed.trades.reduce((n, t) => n + (displayed.some(d => d.id === t.id) ? 0 : 1), 0)
+    : 0
 
   const changeTab = (next: 'following' | 'discover') => {
-    seenIds.current.clear()
-    setNewCount(0)
+    setDisplayed([])
     setTab(next)
   }
 
   const jumpToNew = () => {
-    feed.trades.forEach(t => seenIds.current.add(t.id))
-    setNewCount(0)
+    setDisplayed(feed.trades)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
-  const sortedTrades = [...feed.trades].sort((a, b) => {
+  const sortedTrades = [...displayed].sort((a, b) => {
     const ar = feed.records.get(a.wallet?.toLowerCase() ?? '')
     const br = feed.records.get(b.wallet?.toLowerCase() ?? '')
     const aw = ar ? ar.won + ar.lost : 0
@@ -127,7 +132,7 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
       </div>
       {feed.error && <p className="home-feed-message" role="status">Unable to refresh trades. {feed.trades.length > 0 ? 'Showing the last available activity. ' : ''}Retrying automatically.</p>}
       <section className={introDone ? undefined : 'home-feed-intro'} aria-label={tab === 'following' ? 'Following trades' : 'Discover trades'} aria-busy={feed.loading}>
-        {feed.loading ? <div aria-label="Loading trades">{[0, 1, 2].map(i => <div key={i} className="home-trade-skeleton sig-skel" aria-hidden="true" />)}</div> : !feed.error && feed.trades.length === 0 ? (
+        {(feed.loading || (displayed.length === 0 && feed.trades.length > 0)) ? <div aria-label="Loading trades">{[0, 1, 2].map(i => <div key={i} className="home-trade-skeleton sig-skel" aria-hidden="true" />)}</div> : !feed.error && feed.trades.length === 0 ? (
           <div className="home-feed-empty"><h2>{tab === 'following' && alerts.watchedWallets.length === 0 ? 'Who are you watching?' : 'No recent trades here yet.'}</h2><p>{tab === 'following' ? 'Find a trader in Discover and follow them to bring their next trades here.' : 'Trades from profitable tracked wallets will appear here when available.'}</p>{tab === 'following' && <button type="button" onClick={() => changeTab('discover')}>Discover traders <ArrowUpRight size={16} /></button>}</div>
         ) : sortedTrades.map((trade, i) => {
           const wallet = trade.wallet!
