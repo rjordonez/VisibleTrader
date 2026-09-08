@@ -197,7 +197,7 @@ export default function TerminalSidebar({ opportunities, loading, category, onCa
                     <div className="terminal-sidebar-sub">{o.wallet_count} tracked · {fmtAbbrev(o.cumulative_usd)}</div>
                   </div>
                   <div className="terminal-sidebar-trailing">
-                    <div className="terminal-sidebar-price">{Math.round(o.latest_price * 100)}¢</div>
+                    <div className="terminal-sidebar-price">{Math.round(o.latest_price * 100)}%</div>
                     <div className={`terminal-sidebar-change ${o.total_profit >= 0 ? 'g' : 'r'}`}>
                       {o.total_profit >= 0 ? '▲' : '▼'} {fmtAbbrevSigned(o.total_profit)}
                     </div>
