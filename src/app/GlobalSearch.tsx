@@ -6,7 +6,8 @@ import { MarketIcon } from './MarketIcon'
 import { navIconIds } from './nav-icons'
 import { supabase } from '../lib/supabase'
 import { dashboardPath, terminalPath } from '../lib/domains'
-import { traderLabel, avatarGradient, avatarInitial, fmtAbbrev } from './helpers'
+import { traderLabel, avatarGradient, fmtAbbrev } from './helpers'
+import GogglesMark from './GogglesMark'
 
 interface TraderResult {
   wallet: string
@@ -153,7 +154,7 @@ export default function GlobalSearch({ label = 'Search Traders or Markets' }: { 
                     return (
                       <button type="button" key={t.wallet} className="gsearch-trader-card" onClick={() => goToTrader(t.wallet)}>
                         <div className="gsearch-trader-avatar" style={{ background: avatarGradient(t.wallet) }}>
-                          {avatarInitial(t.wallet, t.wallet_name)}
+                          <GogglesMark />
                         </div>
                         <div style={{ minWidth: 0 }}>
                           <div className="gsearch-trader-name">{traderLabel(t.wallet, t.wallet_name)}</div>

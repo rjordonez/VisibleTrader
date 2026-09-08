@@ -6,8 +6,9 @@ import { supabase } from '../../lib/supabase'
 import type { Opportunity } from '../types'
 import {
   categoryLabel, fmtAbbrev, fmtSigned, fmtAbbrevSigned, NAV_CATEGORIES,
-  traderLabel, avatarGradient, avatarInitial, onTabVisible, WATCHED_WALLETS_KEY,
+  traderLabel, avatarGradient, onTabVisible, WATCHED_WALLETS_KEY,
 } from '../helpers'
+import GogglesMark from '../GogglesMark'
 import { terminalPath, dashboardPath } from '../../lib/domains'
 
 type SidebarTab = 'markets' | 'leaderboard' | 'alerts'
@@ -53,7 +54,7 @@ function LeaderboardTab() {
         >
           <div className="terminal-sidebar-rank">{i + 1}</div>
           <div className="terminal-sidebar-icon" style={{ background: avatarGradient(r.wallet) }}>
-            {avatarInitial(r.wallet, r.wallet_name)}
+            <GogglesMark />
           </div>
           <div className="terminal-sidebar-mid">
             <div className="terminal-sidebar-title">{traderLabel(r.wallet, r.wallet_name)}</div>
@@ -87,7 +88,7 @@ function AlertsTab() {
       {watched.map(w => (
         <div key={w.wallet} className="terminal-sidebar-row">
           <div className="terminal-sidebar-icon" style={{ background: avatarGradient(w.wallet) }}>
-            {avatarInitial(w.wallet, null)}
+            <GogglesMark />
           </div>
           <div className="terminal-sidebar-mid">
             <div className="terminal-sidebar-title">{traderLabel(w.wallet, null)}</div>

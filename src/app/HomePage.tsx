@@ -4,7 +4,8 @@ import type { User } from '@supabase/supabase-js'
 import { ArrowUpRight, Bell, X, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { dashboardPath } from '../lib/domains'
-import { avatarGradient, avatarInitial, fmtFull, fmtSigned, marketUrl, timeAgo, traderLabel } from './helpers'
+import { avatarGradient, fmtFull, fmtSigned, marketUrl, timeAgo, traderLabel } from './helpers'
+import GogglesMark from './GogglesMark'
 import AlertsPage from './AlertsPage'
 import type { useAlerts } from './useAlerts'
 import { useHomeTrades } from './useHomeTrades'
@@ -78,7 +79,7 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
             <article className="home-trade" key={trade.id}>
               <div className="home-trade-top">
                 <Link className="home-trader" to={dashboardPath(`/trader/${wallet}`)}>
-                  <span className="home-trader-avatar" style={{ background: avatarGradient(wallet) }}>{avatarInitial(wallet, name)}</span>
+                  <span className="home-trader-avatar" style={{ background: avatarGradient(wallet) }}><GogglesMark /></span>
                   <span><strong>{name}</strong><time dateTime={trade.ts}>{timeAgo(trade.ts)}</time></span>
                 </Link>
                 <button className={`home-follow-button ${watched ? 'is-following' : ''}`} type="button" aria-pressed={!!watched} aria-label={`${watched ? 'Unfollow' : 'Follow'} ${name}`} onClick={() => watched ? alerts.removeWallet(watched.wallet) : alerts.addWallet(wallet)}>{watched ? <X size={15} /> : <Plus size={15} />}{watched ? 'Unfollow' : 'Follow'}</button>

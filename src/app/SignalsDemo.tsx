@@ -8,6 +8,7 @@ import {
   categoryIcon, categoryLabel, fmtFull, fmtSigned, isToday,
   profileUrl, traderLabel, timeAgo, avatarGradient, avatarInitial,
 } from './helpers'
+import GogglesMark from './GogglesMark'
 import { onOpportunitiesBatch } from './realtimeBroadcast'
 import { SignalModal } from './SignalModal'
 import { SkelLbRow } from './Skeleton'
@@ -591,7 +592,7 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
               return (
                 <div key={t.id} className="lb-row lb-4col">
                   <div className="lb-trader">
-                    <div className="lb-avatar" style={{ background: avatarGradient(t.wallet) }}>{avatarInitial(t.wallet, t.wallet_name)}</div>
+                    <div className="lb-avatar" style={{ background: avatarGradient(t.wallet) }}><GogglesMark /></div>
                     <div style={{ minWidth: 0 }}>
                       {t.wallet ? (
                         <a href={profileUrl(t.wallet)!} target="_blank" rel="noopener noreferrer" className="lb-name">
@@ -647,7 +648,7 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
               return (
                 <div key={key} className="lb-row lb-4col">
                   <div className="lb-trader">
-                    <div className="lb-avatar" style={{ background: avatarGradient(w.wallet) }}>{avatarInitial(w.wallet, w.wallet_name)}</div>
+                    <div className="lb-avatar" style={{ background: avatarGradient(w.wallet) }}><GogglesMark /></div>
                     <div style={{ minWidth: 0 }}>
                       <a href={profileUrl(w.wallet)!} target="_blank" rel="noopener noreferrer" className="lb-name">
                         {traderLabel(w.wallet, w.wallet_name)}
