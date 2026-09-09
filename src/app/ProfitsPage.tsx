@@ -80,6 +80,11 @@ function ProfitsPage() {
 
       <ProfitBot />
 
+      <div className="profits-raw-divider">
+        <h2>Every tracked trader</h2>
+        <p>The raw, unfiltered feed the bot is built on. Following all of it nets about break-even.</p>
+      </div>
+
       {error && <p className="profits-notice" role="status">Unable to refresh results. {summary ? 'Showing the last available data. ' : ''}Retrying automatically.</p>}
       {loading ? <div aria-label="Loading profits" aria-busy="true"><div className="profits-overview-skeleton sig-skel" />{[0, 1, 2, 3].map(i => <div className="profits-row-skeleton sig-skel" key={i} />)}</div> : summary && summary.resolved_n > 0 ? <>
         <section className="profits-overview" aria-labelledby="profits-net-title">
