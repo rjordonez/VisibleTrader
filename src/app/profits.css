@@ -65,3 +65,63 @@
   .profits-result-value { grid-column: 2; grid-row: 1; }
   .profits-result-value > strong { font-size: 18px; }
 }
+
+/* ── Profit Bot (ProfitBot.tsx) — rules-based strategy picks at the top of
+   the Profits page. ── */
+.pbot {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-2);
+  padding: 20px;
+  margin-bottom: 28px;
+}
+.pbot-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pbot-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px;
+  background: color-mix(in srgb, var(--green) 16%, transparent);
+  color: var(--green); font-size: 11px; font-weight: 750; letter-spacing: 0.02em;
+}
+.pbot-head h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+.pbot-rules { margin: 8px 0 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.6; }
+
+.pbot-perf {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px; margin: 18px 0; padding: 0;
+  background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+}
+.pbot-perf > div { background: var(--surface-2); padding: 12px 14px; }
+.pbot-perf dt { font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.4; }
+.pbot-perf dd { margin: 6px 0 0; font-size: 19px; font-weight: 750; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+
+.pbot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.pbot-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 16px;
+  padding: 14px 0; border-top: 1px solid var(--border);
+}
+.pbot-row:first-child { border-top: 0; }
+.pbot-market { min-width: 0; }
+.pbot-market h3 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.pbot-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 5px; font-size: 11px; color: var(--text-dim); }
+.pbot-side { font-weight: 700; color: var(--text); }
+.pbot-prices { display: flex; gap: 18px; }
+.pbot-price { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; }
+.pbot-price strong { font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.pbot-price span { font-size: 10.5px; color: var(--text-dim); white-space: nowrap; }
+.pbot-go {
+  display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0;
+  border: 1px solid var(--border); border-radius: 9px; color: var(--text-dim); text-decoration: none;
+}
+.pbot-go:hover { color: var(--text); border-color: color-mix(in srgb, var(--text) 25%, transparent); }
+.pbot-row-skel { height: 56px; border-radius: 10px; margin: 8px 0; }
+.pbot-foot { margin: 16px 0 0; font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+
+@media (max-width: 700px) {
+  .pbot { padding: 16px; }
+  .pbot-perf { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pbot-perf dd { font-size: 17px; }
+  .pbot-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 12px; }
+  .pbot-prices { grid-column: 1 / -1; justify-content: flex-start; gap: 20px; }
+  .pbot-price { align-items: flex-start; text-align: left; }
+  .pbot-go { grid-column: 2; grid-row: 1; }
+}
