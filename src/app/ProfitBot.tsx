@@ -223,7 +223,7 @@ export default function ProfitBot() {
                   ? Number(b.total_profit) - Number(a.total_profit)
                   : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
                 .map(o => (
-                  <ExpertPickCard key={`${o.condition_id}::${o.outcome}`} opportunity={o} onOpen={() => setModalOpp(o)} payoutCta />
+                  <ExpertPickCard key={`${o.condition_id}::${o.outcome}`} opportunity={o} onOpen={() => setModalOpp(o)} />
                 ))}
             </div>
           )
