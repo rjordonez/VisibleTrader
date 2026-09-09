@@ -17,6 +17,15 @@
 }
 .expert-pick-endpoint-price small { font-size: 20px; margin-left: 1px; }
 .expert-pick-hover-time { position: absolute; top: -9px; left: 0; color: var(--text-dim); font-size: 10px; pointer-events: none; }
+/* HTML dot (not an SVG circle) so it stays round when the viewBox is
+   stretched non-uniformly to fill a wide/tall container. */
+.expert-pick-endpoint-dot {
+  position: absolute; width: 9px; height: 9px; border-radius: 50%;
+  background: #7b9eff; transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 5px rgba(123, 158, 255, 0.16);
+  pointer-events: none;
+}
+.expert-pick-endpoint-dot.is-hover { box-shadow: 0 0 0 4px rgba(123, 158, 255, 0.22); }
 .expert-pick-gridline { stroke: var(--border); stroke-dasharray: 2 4; }
 .expert-pick-chart-skeleton { color: var(--border); opacity: .72; animation: expert-pick-skeleton-pulse 1.5s ease-in-out infinite; }
 .expert-pick-chart-skeleton line { stroke: currentColor; stroke-dasharray: 2 4; }
