@@ -328,7 +328,9 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         <div>
           <h1 className="app-section-title">{traderLabel(wallet, summary?.wallet_name ?? null)}</h1>
           <p className="app-section-sub">
-            {summaryLoading ? 'Loading…' : error ? 'Connection trouble — retrying…' : (
+            {summaryLoading ? (
+              <span className="sig-skel" style={{ display: 'inline-block', width: 140, height: 12, borderRadius: 4, verticalAlign: 'middle' }} />
+            ) : error ? 'Connection trouble — retrying…' : (
               trackedWallets[wallet] ? (
                 <button type="button" className="sig-watch-remove terminal-follow" style={terminalLayout ? undefined : { border: 0, background: 'none', padding: 0, font: 'inherit', cursor: 'pointer' }} disabled={busyWallet === wallet} onClick={() => untrackWallet(wallet)}>
                   {busyWallet === wallet ? 'Removing…' : 'Unfollow'}
