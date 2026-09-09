@@ -53,7 +53,8 @@ export default function ProfitBot() {
 
   useEffect(() => {
     let cancelled = false
-    const load = async () => {
+    let retry: ReturnType<typeof setTimeout> | undefined
+    const load = async (attempt = 0) => {
       const [pi, re, pe, da] = await Promise.all([
         supabase.rpc('profit_bot_picks'),
         supabase.rpc('profit_bot_resolved'),
@@ -62,6 +63,12 @@ export default function ProfitBot() {
       ])
       if (cancelled) return
       if (pi.error || re.error || pe.error || da.error) {
+        // Transient DB errors happen; back off and retry a few times before
+        // giving up so a blip doesn't need a page reload.
+        if (attempt < 4) {
+          retry = setTimeout(() => void load(attempt + 1), 1500 * (attempt + 1))
+          return
+        }
         setError(true)
       } else {
         setPicks((pi.data ?? []) as Opportunity[])
@@ -74,7 +81,7 @@ export default function ProfitBot() {
     }
     void load()
     const t = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 60000)
-    return () => { cancelled = true; clearInterval(t) }
+    return () => { cancelled = true; clearInterval(t); clearTimeout(retry) }
   }, [])
 
   const cumulative = daily.reduce<{ d: string; cum: number }[]>((acc, day) => {
@@ -115,8 +122,7 @@ export default function ProfitBot() {
         {helpOpen && (
           <div className="pbot-help" id="pbot-help">
             <p>
-              Following every tracked trader nets about break-even. Half the roster loses money and
-              cancels out the rest. Profit Bot only acts where the edge has held:
+              Profit Bot only acts where the edge has held:
             </p>
             <ul>
               <li><strong>Proven traders.</strong> The ~110 wallets (of ~470 tracked) that are net-positive with a 52%+ win rate over 20+ resolved bets.</li>

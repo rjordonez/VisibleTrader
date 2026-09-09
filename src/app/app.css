@@ -2081,9 +2081,11 @@
 .sig-drill-row { font-size: 14px; padding-block: 10px; }
 .sig-drill-label { font-size: 12px; }
 .sig-stats-row { gap: 12px; background: none; border: 0; border-radius: 0; overflow: visible; }
-.sig-stat-cell { min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: var(--ui-radius-card); }
+.sig-stat-cell { min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: var(--ui-radius-card); overflow: hidden; }
 .sig-stat-cell-label { font-size: 12px; text-transform: none; letter-spacing: 0; line-height: 1.5; }
-.sig-stat-cell-val { font-size: clamp(26px, 2.5vw, 34px); font-weight: 750; letter-spacing: -0.035em; overflow-wrap: anywhere; }
+/* Numbers stay on one line and scale down to fit rather than breaking a
+   dollar figure across lines (e.g. "+$691,83" / "6"). */
+.sig-stat-cell-val { font-size: clamp(19px, 2.1vw, 30px); font-weight: 750; letter-spacing: -0.035em; overflow-wrap: normal; word-break: normal; white-space: nowrap; }
 .profits-chart-net { font-size: 36px; letter-spacing: -0.04em; }
 .sig-table-wrap { border-radius: var(--ui-radius-card); }
 .sig-table { font-size: 14px; }
