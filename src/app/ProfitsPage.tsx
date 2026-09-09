@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { onTabVisible, fmtSigned, fmtFull, traderLabel, timeAgo, avatarGradient, avatarInitial } from './helpers'
 import { CumulativeChart } from './PriceChart'
+import ProfitBot from './ProfitBot'
 import './profits.css'
 
 interface ProfitsSummary { resolved_n: number; won: number; lost: number; deployed: number; net_profit: number }
@@ -76,6 +77,9 @@ function ProfitsPage() {
         <div><h1 className="app-section-title">Profits</h1><p className="app-section-sub">Resolved results from tracked traders.</p></div>
         <span className="profits-period">All tracked history</span>
       </header>
+
+      <ProfitBot />
+
       {error && <p className="profits-notice" role="status">Unable to refresh results. {summary ? 'Showing the last available data. ' : ''}Retrying automatically.</p>}
       {loading ? <div aria-label="Loading profits" aria-busy="true"><div className="profits-overview-skeleton sig-skel" />{[0, 1, 2, 3].map(i => <div className="profits-row-skeleton sig-skel" key={i} />)}</div> : summary && summary.resolved_n > 0 ? <>
         <section className="profits-overview" aria-labelledby="profits-net-title">
