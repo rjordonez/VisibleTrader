@@ -137,8 +137,52 @@ function AlertsBell({ alerts }: { alerts: ReturnType<typeof useAlerts> }) {
   )
 }
 
-function TabLoading() {
-  return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3, #6b7280)', fontSize: '0.875rem' }}>Loading…</div>
+// Fallback while a tab's code chunk downloads. Shaped like the page that's
+// about to mount (which then shows its own data-loading skeleton), so the
+// hand-off reads as one continuous load instead of a "Loading…" flash
+// between the two.
+function TabSkeleton() {
+  const { pathname } = useLocation()
+  const path = pathname.replace(/^\/app/, '') || '/'
+  const isSettings = path.startsWith('/settings')
+  const isDetail = path.startsWith('/profits') || path.startsWith('/trader')
+
+  return (
+    <div className="sig-page" aria-busy="true" aria-label="Loading">
+      <div className="app-section-header">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="sig-skel" style={{ height: 22, width: 170, borderRadius: 6, marginBottom: 8 }} />
+          <div className="sig-skel" style={{ height: 12, width: 240, borderRadius: 5 }} />
+        </div>
+        <div className="sig-skel" style={{ height: 34, width: 130, borderRadius: 8 }} />
+      </div>
+
+      {isSettings ? (
+        <div style={{ display: 'grid', gap: 16, maxWidth: 560 }}>
+          {[0, 1, 2, 3].map(i => <div key={i} className="sig-skel" style={{ height: 64, borderRadius: 10 }} />)}
+        </div>
+      ) : isDetail ? (
+        <>
+          <div className="sig-stats-row">
+            {[0, 1, 2, 3].map(i => (
+              <div className="sig-stat-cell" key={i}>
+                <div className="sig-skel" style={{ height: 10, width: 70, marginBottom: 10 }} />
+                <div className="sig-skel" style={{ height: 20, width: 90 }} />
+              </div>
+            ))}
+          </div>
+          <div className="sig-skel" style={{ height: 260, borderRadius: 12, margin: '16px 0 20px' }} />
+          <div style={{ display: 'grid', gap: 8 }}>
+            {[0, 1, 2, 3, 4].map(i => <div key={i} className="sig-skel" style={{ height: 44, borderRadius: 8 }} />)}
+          </div>
+        </>
+      ) : (
+        <div style={{ display: 'grid', gap: 14 }}>
+          {[0, 1, 2, 3, 4].map(i => <div key={i} className="sig-skel" style={{ height: 128, borderRadius: 14 }} />)}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // Alerts intentionally isn't in here — it's reachable via the header bell
@@ -336,7 +380,7 @@ export default function AppShell() {
 
       <main className={`app-main ${locked ? 'app-main-locked' : ''}`}>
         <div className={locked ? 'search-locked-bg' : undefined}>
-          <Suspense fallback={<TabLoading />}>
+          <Suspense fallback={<TabSkeleton />}>
             <Routes>
               <Route index element={<HomePage user={user} alerts={alerts} />} />
               <Route path="signals" element={<SignalsDemo category={category} onCategoryChange={setCategory} />} />
