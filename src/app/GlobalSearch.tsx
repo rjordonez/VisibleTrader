@@ -29,7 +29,20 @@ interface MarketResult {
 // the real <input>, not this button, same as the reference. Default state
 // (empty query) shows real "Top Traders"/"Trending Markets" suggestions
 // instead of nothing, so the modal never opens onto a blank screen.
-export default function GlobalSearch({ label = 'Search Traders or Markets' }: { label?: string }) {
+export default function GlobalSearch({
+  label = 'Search Traders or Markets',
+  traderPath = w => dashboardPath(`/trader/${w}`),
+  marketPath = m => terminalPath(`/market/${encodeURIComponent(m.condition_id)}/${encodeURIComponent(m.outcome)}`),
+  onOpen,
+}: {
+  label?: string
+  // Overridable so the Terminal can keep results inside its own route tree
+  // (terminalPath) instead of bouncing out to the main app.
+  traderPath?: (wallet: string) => string
+  marketPath?: (m: { condition_id: string; outcome: string }) => string
+  // Fired when the modal opens — the mobile drawer uses it to close itself.
+  onOpen?: () => void
+}) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -91,12 +104,12 @@ export default function GlobalSearch({ label = 'Search Traders or Markets' }: { 
 
   const goToTrader = (wallet: string) => {
     close()
-    navigate(dashboardPath(`/trader/${wallet}`))
+    navigate(traderPath(wallet))
   }
 
   const goToMarket = (m: MarketResult) => {
     close()
-    navigate(terminalPath(`/market/${encodeURIComponent(m.condition_id)}/${encodeURIComponent(m.outcome)}`))
+    navigate(marketPath(m))
   }
 
   const isSearching = query.trim().length > 0
@@ -113,7 +126,7 @@ export default function GlobalSearch({ label = 'Search Traders or Markets' }: { 
       <button
         type="button"
         className="gsearch-trigger"
-        onClick={() => setOpen(true)}
+        onClick={() => { setOpen(true); onOpen?.() }}
         onMouseEnter={() => {
           if (navIconIds.has('search')) hoverTimer.current = setTimeout(() => setSearchHover(t => t + 1), 1000)
         }}

@@ -280,7 +280,7 @@ export default function AppShell() {
               <X size={18} />
             </button>
           </div>
-          {user && <div className="app-sidebar-search"><GlobalSearch label="Search" /></div>}
+          {user && <div className="app-sidebar-search"><GlobalSearch label="Search" onOpen={() => setMobileNavOpen(false)} /></div>}
           <nav className="app-sidebar-nav">
             {navItems.map(({ id, label, path, Icon }) => {
               const target = dashboardPath(path)
