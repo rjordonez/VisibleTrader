@@ -209,25 +209,38 @@ export default function Terminal() {
         )}
       </header>
 
-      {filtered.length > 0 && !locked && (
+      {/* Rendered as soon as we're loading (not just once data lands) so the
+          40px bar reserves its space up front and the market list below
+          doesn't jump down when the real ticker fills in. */}
+      {!locked && (loading || filtered.length > 0) && (
         <div className="terminal-ticker" aria-label="Tracked markets">
           <span className="terminal-ticker-label"><Activity size={16} /> Tracked markets</span>
-          <div className={`terminal-ticker-items ${tickerPaused ? 'is-paused' : ''}`}>
-            <div className="terminal-ticker-track">
-              {[0, 1].map(copy => (
-                <div className="terminal-ticker-group" key={copy} aria-hidden={copy === 1 ? true : undefined}>
-                  {filtered.slice(0, 8).map(o => (
-                    <Link key={`${o.condition_id}::${o.outcome}`} tabIndex={copy === 1 ? -1 : undefined} to={terminalPath(`/market/${encodeURIComponent(o.condition_id)}/${encodeURIComponent(o.outcome)}`)} title={`${o.title} — ${o.outcome}`}>
-                      <span>{o.title}</span><strong>{Math.round(o.latest_price * 100)}%</strong>
-                    </Link>
+          {filtered.length > 0 ? (
+            <>
+              <div className={`terminal-ticker-items ${tickerPaused ? 'is-paused' : ''}`}>
+                <div className="terminal-ticker-track">
+                  {[0, 1].map(copy => (
+                    <div className="terminal-ticker-group" key={copy} aria-hidden={copy === 1 ? true : undefined}>
+                      {filtered.slice(0, 8).map(o => (
+                        <Link key={`${o.condition_id}::${o.outcome}`} tabIndex={copy === 1 ? -1 : undefined} to={terminalPath(`/market/${encodeURIComponent(o.condition_id)}/${encodeURIComponent(o.outcome)}`)} title={`${o.title} — ${o.outcome}`}>
+                          <span>{o.title}</span><strong>{Math.round(o.latest_price * 100)}%</strong>
+                        </Link>
+                      ))}
+                    </div>
                   ))}
                 </div>
+              </div>
+              <button type="button" className="terminal-ticker-toggle" onClick={() => setTickerPaused(v => !v)} aria-label={tickerPaused ? 'Play market ticker' : 'Pause market ticker'} aria-pressed={tickerPaused}>
+                {tickerPaused ? <Play size={14} /> : <Pause size={14} />}
+              </button>
+            </>
+          ) : (
+            <div className="terminal-ticker-items terminal-ticker-skel" aria-hidden="true">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <span key={i} className="terminal-ticker-skel-cell" />
               ))}
             </div>
-          </div>
-          <button type="button" className="terminal-ticker-toggle" onClick={() => setTickerPaused(v => !v)} aria-label={tickerPaused ? 'Play market ticker' : 'Pause market ticker'} aria-pressed={tickerPaused}>
-            {tickerPaused ? <Play size={14} /> : <Pause size={14} />}
-          </button>
+          )}
         </div>
       )}
 
