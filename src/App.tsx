@@ -44,7 +44,7 @@ const ReferralRedirect = lazy(() => import('./ReferralRedirect'))
 function PageLoading() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#06070f', color: '#6b7280', fontFamily: 'Inter, system-ui, sans-serif', fontSize: '0.875rem' }}>
-      Loading…
+      Loading...
     </div>
   )
 }

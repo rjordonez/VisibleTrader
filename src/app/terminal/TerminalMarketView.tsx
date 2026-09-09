@@ -90,10 +90,49 @@ function AboutMarketPanel({ opportunity }: { opportunity: Opportunity }) {
   )
 }
 
+// Shown while a market opened by direct link is being fetched (it wasn't in
+// the sidebar's top-PAGE_SIZE window). Mirrors the real two-column market
+// layout below so the panel doesn't jump when the data lands, instead of a
+// big centered "Loading…".
+function MarketViewSkeleton() {
+  return (
+    <div className="terminal-market" aria-busy="true" aria-label="Loading market">
+      <div className="terminal-market-main">
+        <div className="sig-hero-top">
+          <div className="sig-skel" style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="sig-skel" style={{ height: 20, width: '70%', borderRadius: 5, marginBottom: 10 }} />
+            <div className="sig-skel" style={{ height: 12, width: '40%', borderRadius: 5 }} />
+          </div>
+        </div>
+        <div className="sig-stats-row" style={{ margin: '16px 0' }}>
+          {[0, 1, 2, 3].map(i => (
+            <div className="sig-stat-cell" key={i}>
+              <div className="sig-skel" style={{ height: 10, width: 60, marginBottom: 10 }} />
+              <div className="sig-skel" style={{ height: 20, width: 84 }} />
+            </div>
+          ))}
+        </div>
+        <div className="sig-skel" style={{ height: 11, width: 90, borderRadius: 4, marginBottom: 12 }} />
+        <div className="sig-skel" style={{ height: 300, borderRadius: 12, marginBottom: 20 }} />
+        <div style={{ display: 'grid', gap: 8 }}>
+          {[0, 1, 2, 3, 4].map(i => <div key={i} className="sig-skel" style={{ height: 40, borderRadius: 8 }} />)}
+        </div>
+      </div>
+      <div className="terminal-market-side">
+        <div className="sig-skel" style={{ height: 320, borderRadius: 14 }} />
+      </div>
+    </div>
+  )
+}
+
 export default function TerminalMarketView({ opportunities }: { opportunities: Opportunity[] }) {
   const { conditionId, outcome } = useParams<{ conditionId: string; outcome: string }>()
   const [fallback, setFallback] = useState<Opportunity | null>(null)
-  const [fallbackLoading, setFallbackLoading] = useState(false)
+  // Whether the direct-lookup below has actually run to completion. Starts
+  // false so the very first render (before the effect fires) shows the
+  // skeleton, not a "Market not found" flash.
+  const [fallbackDone, setFallbackDone] = useState(false)
 
   const cached = opportunities.find(o => o.condition_id === conditionId && o.outcome === outcome) ?? null
 
@@ -101,9 +140,9 @@ export default function TerminalMarketView({ opportunities }: { opportunities: O
   // direct link to a market outside that window (e.g. shared, bookmarked,
   // or just further down the list) wouldn't resolve without this fallback.
   useEffect(() => {
-    if (cached || !conditionId || !outcome) { setFallback(null); return }
+    if (cached || !conditionId || !outcome) { setFallback(null); setFallbackDone(true); return }
     let cancelled = false
-    setFallbackLoading(true)
+    setFallbackDone(false)
     Promise.resolve(
       supabase.from('opportunities_live').select('*')
         .eq('condition_id', conditionId).eq('outcome', outcome)
@@ -111,7 +150,7 @@ export default function TerminalMarketView({ opportunities }: { opportunities: O
     ).then(({ data }) => {
       if (!cancelled) setFallback((data as Opportunity | null) ?? null)
     }).finally(() => {
-      if (!cancelled) setFallbackLoading(false)
+      if (!cancelled) setFallbackDone(true)
     })
     return () => { cancelled = true }
   }, [cached, conditionId, outcome])
@@ -119,12 +158,13 @@ export default function TerminalMarketView({ opportunities }: { opportunities: O
   const opportunity = cached ?? fallback
 
   if (!opportunity) {
+    // Only call it "not found" once the lookup has finished — until then
+    // (including the first render, before the effect runs) show the skeleton.
+    if (!fallbackDone) return <MarketViewSkeleton />
     return (
       <div className="terminal-empty terminal-card">
-        <div className="terminal-empty-title">{fallbackLoading ? 'Loading…' : 'Market not found'}</div>
-        {!fallbackLoading && (
-          <div className="terminal-empty-sub">This market isn't in the tracked-wallet dataset (or the link is stale).</div>
-        )}
+        <div className="terminal-empty-title">Market not found</div>
+        <div className="terminal-empty-sub">This market isn't in the tracked-wallet dataset (or the link is stale).</div>
       </div>
     )
   }

@@ -26,9 +26,13 @@
   pointer-events: none;
 }
 .expert-pick-endpoint-dot.is-hover { box-shadow: 0 0 0 4px rgba(123, 158, 255, 0.22); }
-.expert-pick-gridline { stroke: var(--border); stroke-dasharray: 2 4; }
+/* Thinner than the 2px price line and dimmer, so the grid stays in the
+   background. vector-effect (also set as an attr in PickChart.tsx) keeps
+   the 1px stroke and dash pattern from scaling up with the stretched
+   viewBox. */
+.expert-pick-gridline { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 4; opacity: .5; vector-effect: non-scaling-stroke; }
 .expert-pick-chart-skeleton { color: var(--border); opacity: .72; animation: expert-pick-skeleton-pulse 1.5s ease-in-out infinite; }
-.expert-pick-chart-skeleton line { stroke: currentColor; stroke-dasharray: 2 4; }
+.expert-pick-chart-skeleton line { stroke: currentColor; stroke-width: 1; stroke-dasharray: 2 4; vector-effect: non-scaling-stroke; }
 @keyframes expert-pick-skeleton-pulse { 0%, 100% { opacity: .42; } 50% { opacity: .8; } }
 .expert-pick-chart svg,
 .expert-pick-chart polyline,

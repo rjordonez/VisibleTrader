@@ -78,7 +78,7 @@ export function PickChart({ history, outcome, price, error, onRetry, height = VB
               else setHoverIndex(index => Math.max(0, Math.min(points.length - 1, (index ?? points.length - 1) + (event.key === 'ArrowLeft' ? -1 : 1))))
             }}>
             <defs><clipPath id={clipId}><rect className="expert-pick-reveal" x="0" y="0" width="320" height="104" /></clipPath></defs>
-            {gridYs.map(y => <line key={y} x1="0" x2="320" y1={y} y2={y} className="expert-pick-gridline" />)}
+            {gridYs.map(y => <line key={y} x1="0" x2="320" y1={y} y2={y} className="expert-pick-gridline" vectorEffect="non-scaling-stroke" />)}
             <g clipPath={`url(#${clipId})`}>
               <polyline points={line} fill="none" stroke={selected ? 'var(--text-faint)' : 'currentColor'} opacity={selected ? 0.25 : 1} strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
             {selected && <>
@@ -89,7 +89,7 @@ export function PickChart({ history, outcome, price, error, onRetry, height = VB
           </svg>
         ) : history === null ? (
           <svg className="expert-pick-chart-skeleton" viewBox="0 0 320 104" aria-label="Loading price chart" role="img" preserveAspectRatio="none">
-            {gridYs.map(y => <line key={y} x1="0" x2="320" y1={y} y2={y} />)}
+            {gridYs.map(y => <line key={y} x1="0" x2="320" y1={y} y2={y} vectorEffect="non-scaling-stroke" />)}
           </svg>
         ) : <span role="status">{error ? 'Couldn’t load chart' : 'Not enough price history yet'}<button type="button" className="expert-chart-retry" onClick={onRetry}>Retry</button></span>}
       </div>
