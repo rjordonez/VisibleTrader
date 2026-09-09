@@ -138,6 +138,7 @@ export default function TerminalMarketView({ opportunities }: { opportunities: O
           linkToTrader={w => terminalPath(`/trader/${w}`)}
           chartHeight={300}
           priceUnit="%"
+          chartVariant="minimal"
         />
       </div>
       <div className="terminal-market-side">

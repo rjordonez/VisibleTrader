@@ -1,0 +1,35 @@
+/* PickChart — the hand-drawn SVG price chart used on the Signals "vetted"
+   cards (ExpertPickCard) and, via MarketDetailContent's `minimal` variant,
+   on the Terminal market page. Lives in its own file (moved out of
+   signals.css) so both surfaces load exactly these styles and neither can
+   drift from the other. */
+.expert-pick-chart { position: relative; height: 104px; margin-top: auto; padding-top: 8px; box-sizing: content-box; color: #7196ff; }
+.expert-pick-plot { height: 104px; margin-right: 88px; }
+.expert-pick-plot > span { display: grid; place-items: center; height: 100%; color: var(--text-faint); font-size: 12px; }
+.expert-pick-plot svg { cursor: crosshair; touch-action: pan-y; }
+.expert-pick-plot svg:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+.expert-pick-chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.expert-pick-endpoint-price {
+  position: absolute; right: 0; width: 76px; transform: translateY(-50%);
+  color: #7b9eff; font-size: 27px; line-height: 1; letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  pointer-events: none; text-shadow: 0 0 4px var(--surface-2), 0 0 8px var(--surface-2);
+}
+.expert-pick-endpoint-price small { font-size: 20px; margin-left: 1px; }
+.expert-pick-hover-time { position: absolute; top: -9px; left: 0; color: var(--text-dim); font-size: 10px; pointer-events: none; }
+.expert-pick-gridline { stroke: var(--border); stroke-dasharray: 2 4; }
+.expert-pick-chart-skeleton { color: var(--border); opacity: .72; animation: expert-pick-skeleton-pulse 1.5s ease-in-out infinite; }
+.expert-pick-chart-skeleton line { stroke: currentColor; stroke-dasharray: 2 4; }
+@keyframes expert-pick-skeleton-pulse { 0%, 100% { opacity: .42; } 50% { opacity: .8; } }
+.expert-pick-chart svg,
+.expert-pick-chart polyline,
+.expert-pick-chart circle,
+.expert-pick-chart line { animation: none !important; transition: none !important; }
+.expert-pick-reveal { animation: expert-pick-chart-reveal 1100ms cubic-bezier(.2,.7,.2,1) both; }
+@keyframes expert-pick-chart-reveal { from { width: 0; } to { width: 320px; } }
+.expert-pick-chart-caption { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 4px 0 18px; color: var(--text-dim); font-size: 11px; }
+.expert-chart-retry { border: 1px solid var(--border); border-radius: 7px; padding: 6px 12px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) {
+  .expert-pick-reveal { animation: none; }
+  .expert-pick-chart-skeleton { animation: none; }
+}
