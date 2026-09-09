@@ -11,7 +11,7 @@ import './signals.css'
 // The whole Profits page. Reads the profit_bot_* RPCs (see
 // supabase/migrations/20260909060000_profit_bot.sql and follow-ups): a
 // rules-based strategy over the tracked-trader data — act on a side only
-// when 3+ proven wallets (net-positive, >=52% win rate, >=20 resolved) are
+// when 5+ proven wallets (net-positive, >=52% win rate, >=20 resolved) are
 // on it at 40-80c entry with >=$100 size.
 interface BotResolved {
   condition_id: string
@@ -120,7 +120,7 @@ export default function ProfitBot() {
             </p>
             <ul>
               <li><strong>Proven traders.</strong> The ~110 wallets (of ~470 tracked) that are net-positive with a 52%+ win rate over 20+ resolved bets.</li>
-              <li><strong>Consensus.</strong> 3 or more of them on the same side of one market. Two isn&rsquo;t a signal.</li>
+              <li><strong>Consensus.</strong> 5 or more of them on the same side of one market. Three or four isn&rsquo;t enough. At five the win rate jumps to ~74%.</li>
               <li><strong>Priced 40 to 80&cent;.</strong> Skips penny longshots and near-certain 90&cent;+ scalps.</li>
               <li><strong>Real size.</strong> The trader put at least $100 behind the position.</li>
             </ul>
