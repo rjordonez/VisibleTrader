@@ -46,13 +46,15 @@
   justify-self: start;
 }
 
-.terminal-search { justify-self: center; width: 100%; max-width: 520px; }
-/* GlobalSearch's trigger, restyled to read as the terminal search bar. */
+.terminal-search { justify-self: center; width: 100%; max-width: 520px; display: flex; }
+/* GlobalSearch's trigger, restyled to read as the terminal search bar and
+   fill the centered column (its base rule caps width at 220px). */
 .terminal-search .gsearch-trigger {
-  width: 100%; box-sizing: border-box;
+  flex: 1; width: 100%; max-width: none; box-sizing: border-box;
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-  padding: 8px 12px; color: var(--text-faint); font-size: 13px;
+  padding: 9px 12px; color: var(--text-faint); font-size: 13px;
 }
+.terminal-search .gsearch-trigger span:not(.app-nav-lord) { display: inline; }
 .terminal-search .gsearch-trigger:hover { border-color: color-mix(in srgb, var(--text) 22%, transparent); color: var(--text-dim); }
 .terminal-search .gsearch-trigger .app-nav-lord { width: 16px; height: 16px; opacity: 1; }
 
