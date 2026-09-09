@@ -8,7 +8,12 @@ import './pick-chart.css'
 // Terminal market page (MarketDetailContent's `minimal` chart variant).
 // `history` is null while loading, [] (or <2 points) when there's nothing
 // to draw.
-export function PickChart({ history, outcome, price, error, onRetry }: { history: ChartPoint[] | null; outcome: string; price: number; error: boolean; onRetry: () => void }) {
+// The SVG's viewBox stays 320x104 and stretches to the container via
+// preserveAspectRatio="none"; `height` just makes that container taller
+// (the Terminal passes a bigger value than the Signals cards' default).
+const VB_HEIGHT = 104
+
+export function PickChart({ history, outcome, price, error, onRetry, height = VB_HEIGHT }: { history: ChartPoint[] | null; outcome: string; price: number; error: boolean; onRetry: () => void; height?: number }) {
   const clipId = `expert-chart-reveal-${useId().replace(/:/g, '')}`
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const points = useMemo(() => {
@@ -28,8 +33,8 @@ export function PickChart({ history, outcome, price, error, onRetry }: { history
   const selectedTime = selected ? new Date(selected.t * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : undefined
 
   return (
-    <div className="expert-pick-chart">
-      <div className="expert-pick-plot">
+    <div className="expert-pick-chart" style={height === VB_HEIGHT ? undefined : { height }}>
+      <div className="expert-pick-plot" style={height === VB_HEIGHT ? undefined : { height }}>
         {endpoint ? (
           <svg viewBox="0 0 320 104" role="slider" tabIndex={0}
             aria-label={`${outcome} price history. Use arrow keys to explore.`}
@@ -79,7 +84,7 @@ export function PickChart({ history, outcome, price, error, onRetry }: { history
         ) : <span role="status">{error ? 'Couldn’t load chart' : 'Not enough price history yet'}<button type="button" className="expert-chart-retry" onClick={onRetry}>Retry</button></span>}
       </div>
       <strong className="expert-pick-endpoint-price" style={{
-        top: `${8 + (selected?.y ?? endpoint?.y ?? 52)}px`,
+        top: `${8 + (selected?.y ?? endpoint?.y ?? 52) / VB_HEIGHT * height}px`,
         ...(selected ? { left: `calc((100% - 88px) * ${selected.x / 320} + 12px)`, right: 'auto' } : {}),
       }} aria-label={`${outcome} chance: ${displayedPrice}%`}>
         {visiblePrice}<small>%</small>
