@@ -77,16 +77,25 @@
   color: var(--green); font-size: 11px; font-weight: 750; letter-spacing: 0.02em;
 }
 
-/* Strategy explainer */
-.pbot-explain { margin: 4px 0 28px; }
+/* Strategy explainer — four compact rule cards, not a prose list */
+.pbot-explain { margin: 8px 0 28px; }
 .pbot-explain h2 { margin: 0 0 10px; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
-.pbot-explain > p { margin: 0 0 14px; font-size: 13px; color: var(--text-dim); line-height: 1.65; max-width: 62ch; }
-.pbot-rules-list { margin: 0; padding-left: 1.15em; display: flex; flex-direction: column; gap: 8px; }
-.pbot-rules-list li { font-size: 13px; color: var(--text-dim); line-height: 1.6; max-width: 62ch; }
-.pbot-rules-list strong { color: var(--text); font-weight: 650; }
-.pbot-explain-foot { margin: 16px 0 0 !important; font-size: 11.5px !important; color: var(--text-faint) !important; }
+.pbot-explain > p { margin: 0 0 16px; font-size: 13px; color: var(--text-dim); line-height: 1.65; max-width: 64ch; }
+.pbot-rule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pbot-rule {
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2);
+  padding: 14px 16px;
+}
+.pbot-rule-n {
+  display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px;
+  background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green);
+  font-size: 11px; font-weight: 800;
+}
+.pbot-rule h3 { margin: 9px 0 4px; font-size: 13.5px; font-weight: 650; color: var(--text); letter-spacing: -0.01em; }
+.pbot-rule p { margin: 0; font-size: 12px; color: var(--text-dim); line-height: 1.55; }
+.pbot-explain-foot { margin: 16px 0 0; font-size: 11.5px; color: var(--text-faint); line-height: 1.6; }
 
-/* Picks-for-today block */
+/* Picks block */
 .pbot {
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -94,15 +103,20 @@
   padding: 20px;
   margin-bottom: 28px;
 }
+.pbot-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .pbot-head h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
-.pbot-rules { margin: 8px 0 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.6; }
+.pbot-rules { margin: 8px 0 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.6; max-width: 52ch; }
 
 .pbot-list { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; }
 .pbot-row {
   display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 16px;
   padding: 14px 0; border-top: 1px solid var(--border);
 }
+.pbot-row.is-resolved { grid-template-columns: minmax(0, 1fr) auto; }
 .pbot-row:first-child { border-top: 0; }
+.pbot-result { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; white-space: nowrap; }
+.pbot-result > strong { font-size: 18px; font-weight: 750; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.pbot-result > span { font-size: 11px; color: var(--text-dim); }
 .pbot-market { min-width: 0; }
 .pbot-market h3 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
 .pbot-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 5px; font-size: 11px; color: var(--text-dim); }
@@ -125,8 +139,10 @@
 
 @media (max-width: 700px) {
   .pbot { padding: 16px; }
+  .pbot-rule-grid { grid-template-columns: minmax(0, 1fr); }
   .pbot-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 12px; }
   .pbot-prices { grid-column: 1 / -1; justify-content: flex-start; gap: 20px; }
   .pbot-price { align-items: flex-start; text-align: left; }
   .pbot-go { grid-column: 2; grid-row: 1; }
+  .pbot-row.is-resolved .pbot-result { align-items: flex-end; }
 }
