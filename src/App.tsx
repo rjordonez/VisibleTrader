@@ -41,10 +41,41 @@ const SearchPage = lazy(() => import('./SearchPage'))
 const CreatorLeaderboardPage = lazy(() => import('./CreatorLeaderboardPage'))
 const ReferralRedirect = lazy(() => import('./ReferralRedirect'))
 
+// Shown while the first route chunk downloads. On the app host it's a
+// silhouette of the shell (sidebar + top bar + content) so the cold load
+// reads as one continuous skeleton straight into each tab's own skeleton,
+// with no "Loading…" flash. Self-contained styles — app.css ships with the
+// shell chunk that hasn't loaded yet. Marketing just gets a quiet screen.
 function PageLoading() {
+  if (!isAppHost) return <div style={{ minHeight: '100vh', background: '#06070f' }} />
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#06070f', color: '#6b7280', fontFamily: 'Inter, system-ui, sans-serif', fontSize: '0.875rem' }}>
-      Loading…
+    <div className="boot">
+      <style>{`
+        .boot { min-height: 100vh; background: #06070f; }
+        .boot-skel { background: rgba(255,255,255,0.06); border-radius: 8px; animation: boot-pulse 1.4s ease-in-out infinite; }
+        @keyframes boot-pulse { 0%, 100% { opacity: .5 } 50% { opacity: 1 } }
+        .boot-side { position: fixed; top: 0; bottom: 0; left: 0; width: 260px; padding: 20px 16px; box-sizing: border-box; background: #070709; border-right: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 10px; }
+        .boot-main { margin-left: 260px; padding: clamp(1.25rem, 4vw, 2rem) clamp(1rem, 4vw, 2.5rem); }
+        .boot-topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+        @media (max-width: 768px) { .boot-side { display: none } .boot-main { margin-left: 0 } }
+        @media (prefers-reduced-motion: reduce) { .boot-skel { animation: none } }
+      `}</style>
+      <div className="boot-side">
+        <div className="boot-skel" style={{ height: 30, width: 120, marginBottom: 14 }} />
+        {Array.from({ length: 7 }).map((_, i) => <div key={i} className="boot-skel" style={{ height: 30 }} />)}
+      </div>
+      <div className="boot-main">
+        <div className="boot-topbar">
+          <div className="boot-skel" style={{ height: 34, flex: 1, maxWidth: 420 }} />
+          <div className="boot-skel" style={{ height: 34, width: 34, borderRadius: '50%', marginLeft: 'auto' }} />
+          <div className="boot-skel" style={{ height: 34, width: 34, borderRadius: '50%' }} />
+        </div>
+        <div className="boot-skel" style={{ height: 22, width: 170, marginBottom: 10 }} />
+        <div className="boot-skel" style={{ height: 12, width: 240, marginBottom: 28 }} />
+        <div style={{ display: 'grid', gap: 14 }}>
+          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="boot-skel" style={{ height: 120, borderRadius: 14 }} />)}
+        </div>
+      </div>
     </div>
   )
 }
