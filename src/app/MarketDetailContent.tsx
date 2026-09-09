@@ -8,6 +8,7 @@ import {
 } from './helpers'
 import { dashboardPath } from '../lib/domains'
 import { PriceChart } from './PriceChart'
+import { PickChart } from './PickChart'
 import { SkelBlock, SkelDrillRows } from './Skeleton'
 
 interface TraderGroup {
@@ -170,7 +171,7 @@ function ActivitySummary({ wallets }: { wallets: WalletContribution[] }) {
 // full contributing-traders list. Used both inside SignalModal (a popup)
 // and full-width on the Terminal's market route — one implementation, two
 // homes, so neither surface can silently drift out of sync with the other.
-export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220, priceUnit = '¢' }: {
+export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220, priceUnit = '¢', chartVariant = 'markers' }: {
   opportunity: Opportunity
   // Overridable so the Terminal keeps trader navigation inside its own
   // route tree instead of bouncing out to the main app — see
@@ -180,6 +181,10 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
   // 600px-tall popup, so it passes a taller value here.
   priceUnit?: '¢' | '%'
   chartHeight?: number
+  // 'markers' = the recharts chart with a per-trade buy-in dot and hover
+  // scrub (the modal). 'minimal' = the same PickChart the Signals vetted
+  // cards use — a clean reveal-animated line, no dots (the Terminal).
+  chartVariant?: 'markers' | 'minimal'
 }) {
   const [wallets, setWallets] = useState<WalletContribution[]>([])
   const [walletsLoading, setWalletsLoading] = useState(true)
@@ -232,16 +237,32 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
         </div>
       </div>
 
-      <div className="sig-drill-label">Price history — dots mark each trader's buy-in</div>
-      <div style={{ minHeight: chartHeight, marginBottom: 16 }}>
-        {chartLoading && <SkelBlock height={chartHeight} />}
-        {!chartLoading && chartHistory.length < 2 && (
-          <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No price history available for this market.</div>
-        )}
-        {!chartLoading && chartHistory.length >= 2 && (
-          <PriceChart history={chartHistory} wallets={wallets} height={chartHeight} />
-        )}
-      </div>
+      <div className="sig-drill-label">{chartVariant === 'minimal' ? 'Price history' : "Price history — dots mark each trader's buy-in"}</div>
+      {chartVariant === 'minimal' ? (
+        <div style={{ marginBottom: 16 }}>
+          <PickChart
+            history={chartLoading ? null : [...chartHistory].filter(p => Number.isFinite(p.t) && Number.isFinite(p.p)).sort((a, b) => a.t - b.t)}
+            outcome={o.outcome}
+            price={o.latest_price}
+            error={false}
+            onRetry={() => {
+              setChartLoading(true)
+              fetchChart(o.condition_id, o.outcome).then(setChartHistory).finally(() => setChartLoading(false))
+            }}
+          />
+          <div className="expert-pick-chart-caption"><span>Polymarket</span><span>All time</span></div>
+        </div>
+      ) : (
+        <div style={{ minHeight: chartHeight, marginBottom: 16 }}>
+          {chartLoading && <SkelBlock height={chartHeight} />}
+          {!chartLoading && chartHistory.length < 2 && (
+            <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No price history available for this market.</div>
+          )}
+          {!chartLoading && chartHistory.length >= 2 && (
+            <PriceChart history={chartHistory} wallets={wallets} height={chartHeight} />
+          )}
+        </div>
+      )}
 
       {!walletsLoading && wallets.length > 0 && (
         <>
