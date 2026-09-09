@@ -1635,6 +1635,11 @@
   background: var(--surface);
   padding: 16px;
 }
+/* No outer container box — used by AlertGraphic, whose ios-notif card is
+   already its own visual panel. Zero the stack's bleed margins that were
+   sized against the padding this removes. */
+.onboarding-mini-card-bare { border: 0; background: none; padding: 0; }
+.onboarding-mini-card-bare .ios-notif-stack { margin-left: 0; margin-right: 0; }
 
 /* Same markup/classes as the landing page's FeatureShowcase "Alerts" and
    "Vetted Picks" cards (see OnboardingPage.tsx's AlertGraphic/VettedGraphic)
@@ -1690,6 +1695,78 @@
   font-size: 0.75rem; font-weight: 700; color: var(--green);
   background: rgba(16,185,129,0.12); padding: 2px 8px; border-radius: 6px;
 }
+
+/* RecentSignalGraphic — the signal slide's card: real consensus signal up
+   top, then the payoff sized in the user's own bet size x frequency. */
+.onboarding-signal-card { gap: 0; }
+.onboarding-signal-market {
+  font-size: 0.9375rem; font-weight: 650; color: var(--text); letter-spacing: -0.02em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.onboarding-signal-age { margin-top: 6px; font-size: 0.75rem; color: var(--text-dim); }
+.onboarding-signal-math { margin-top: 16px; font-size: 0.8125rem; color: var(--text-dim); }
+.onboarding-signal-math strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.onboarding-signal-payoff { margin-top: 4px; font-size: 0.9375rem; color: var(--text); }
+.onboarding-signal-payoff strong {
+  display: inline-block;
+  color: var(--green); font-weight: 750; font-variant-numeric: tabular-nums;
+}
+
+/* Every step fades its parts in staggered, so the motion reads as one
+   consistent, expected pattern across questions and slides. */
+@keyframes onboarding-slide-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes onboarding-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Questions: headline, then each option one after another. */
+.onboarding-question > .onboarding-q { animation: onboarding-slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.onboarding-question .onboarding-option { animation: onboarding-slide-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.onboarding-question .onboarding-option:nth-child(1) { animation-delay: 0.14s; }
+.onboarding-question .onboarding-option:nth-child(2) { animation-delay: 0.22s; }
+.onboarding-question .onboarding-option:nth-child(3) { animation-delay: 0.30s; }
+.onboarding-question .onboarding-option:nth-child(4) { animation-delay: 0.38s; }
+
+/* Slides: graphic, title, each body sentence, then the live counter come
+   in staggered, and the CTA is held back (is-locked) and fades in last so
+   the slide can't be tapped through before it's read. */
+.onboarding-slide > .onboarding-mini-card { animation: onboarding-slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.onboarding-slide > .onboarding-slide-title { animation: onboarding-slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.14s both; }
+.onboarding-slide-line { animation: onboarding-fade-in 0.45s ease both; }
+.onboarding-slide > .onboarding-slide-live { animation: onboarding-slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 1.1s both; }
+.onboarding-slide-cta { transition: opacity 0.4s ease, transform 0.4s ease; }
+.onboarding-slide-cta.is-locked { opacity: 0; transform: translateY(6px); pointer-events: none; }
+
+/* Payoff moment: ~2s in, the signal slide washes green and the weekly
+   number pops. */
+@keyframes onboarding-go-green {
+  to {
+    background: rgba(0, 209, 122, 0.12);
+    border-color: rgba(0, 209, 122, 0.45);
+    box-shadow: 0 0 0 1px rgba(0, 209, 122, 0.22), 0 12px 34px -12px rgba(0, 209, 122, 0.4);
+  }
+}
+@keyframes onboarding-green-wash {
+  to { background: radial-gradient(120% 130% at 50% 0%, rgba(0, 209, 122, 0.12), transparent 72%); }
+}
+@keyframes onboarding-payoff-pop {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.13); }
+}
+.onboarding-slide-signal {
+  border-radius: 16px; margin: -8px -12px 0; padding: 8px 12px 0;
+  animation: onboarding-green-wash 0.7s ease 1.4s both;
+}
+.onboarding-slide-signal > .onboarding-mini-card {
+  animation:
+    onboarding-slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both,
+    onboarding-go-green 0.7s cubic-bezier(0.22, 1, 0.36, 1) 1.4s both;
+}
+.onboarding-slide-signal .onboarding-signal-payoff strong {
+  animation: onboarding-payoff-pop 0.5s ease 1.6s both;
+}
+/* Phase two — the explainer copy holds until the card has finished its
+   green moment (~2.1s), then comes in. */
+.onboarding-slide-signal > .onboarding-slide-title { animation-delay: 2.2s; }
+.onboarding-slide-signal > .onboarding-slide-live { animation-delay: 3.3s; }
 
 /* ── Public trader search page (SearchPage.tsx) ──
    Deliberately its own visual language, not a copy of LookupPage's plain

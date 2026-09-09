@@ -1,9 +1,37 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from './lib/supabase'
 import posthog from './lib/posthog'
 import { useLiveTradeCounter, RollingNumber } from './lib/RollingCounter'
 import { getReferralCode } from './lib/domains'
+import { fmtAbbrev } from './app/helpers'
 import './app/app.css'
+
+// Eases a number from its current shown value up to `target` over ~1.2s
+// (ease-out cubic, same curve as useLiveTradeCounter's reveal). Feeding the
+// intermediate values to <RollingNumber> makes the profit figure visibly
+// spin up when the slide appears instead of just being there.
+function useCountUp(target: number, ms = 1200) {
+  const [n, setN] = useState(0)
+  const fromRef = useRef(0)
+  useEffect(() => {
+    if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      fromRef.current = target
+      setN(target)
+      return
+    }
+    const from = fromRef.current
+    const start = performance.now()
+    let raf = requestAnimationFrame(function tick(now) {
+      const t = Math.min(1, (now - start) / ms)
+      const v = Math.round(from + (target - from) * (1 - Math.pow(1 - t, 3)))
+      fromRef.current = v
+      setN(v)
+      if (t < 1) raf = requestAnimationFrame(tick)
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [target, ms])
+  return n
+}
 
 // Shown by ProtectedRoute for a signed-in user who hasn't been through
 // this yet (user_metadata.onboarding_completed unset) — before the
@@ -12,11 +40,10 @@ import './app/app.css'
 // renders in place of the real app, not a page of the app itself (which
 // lives under src/app instead).
 //
-// First 3 questions match the marketing site's /estimate quiz
+// The first two questions match the marketing site's /estimate quiz
 // (EstimatePage.tsx) — duplicated rather than imported since that page's
 // quiz-progression state isn't meant to be reused as a shared component.
-// The 4th (feature_interest) is onboarding-only, used to tailor which
-// tile/page we could point a user at first.
+// The third (bet_size) is onboarding-only.
 const questions = [
   {
     key: 'interest',
@@ -24,34 +51,50 @@ const questions = [
     options: ['Sports', 'Politics', 'Crypto', 'Everything'],
   },
   {
-    key: 'signal_priority',
-    q: 'What matters most when following a signal?',
-    options: ['Win rate track record', 'How fast it moves', 'Position size', 'All of it'],
-  },
-  {
     key: 'experience',
     q: 'How familiar are you with Polymarket?',
     options: ['Brand new', "I've placed a few bets", 'Active trader', 'I trade daily'],
   },
   {
-    key: 'feature_interest',
-    q: 'What are you here for?',
-    options: ['Live signals & alerts', 'Browsing markets (Terminal)', 'Leaderboard of top traders', 'Tracking my own P&L'],
+    key: 'bet_size',
+    q: "What's your typical bet size?",
+    options: ['Under $50', '$50 to $500', '$500 to $5,000', '$5,000+'],
+  },
+  {
+    key: 'trade_frequency',
+    q: 'How often do you trade?',
+    options: ['A few times a month', 'A few times a week', 'About once a day', 'Multiple times a day'],
   },
 ]
+
+// Representative per-trade dollar amount and trades-per-week for each
+// answer above — used to turn "you could have made" into a number in the
+// user's own terms on the signal slide.
+const BET_SIZE_USD: Record<string, number> = {
+  'Under $50': 50,
+  '$50 to $500': 250,
+  '$500 to $5,000': 2_500,
+  '$5,000+': 5_000,
+}
+const TRADES_PER_WEEK: Record<string, number> = {
+  'A few times a month': 1,
+  'A few times a week': 4,
+  'About once a day': 7,
+  'Multiple times a day': 20,
+}
 
 // Two value-prop slides shown after the questions, before the paywall —
 // each pairs with a real FeatureShowcase mock below (see those components'
 // comments) instead of an invented graphic.
 const slides = [
   {
-    title: 'Copy trade the winners',
-    body: 'The best traders on Polymarket have a real edge: information, timing, conviction. We track every position they take, the moment they take it, so their edge becomes yours too.',
+    title: 'When experts agree, that’s a signal',
+    body: 'When several independently-vetted top traders land on the same side of a market at once, that’s not coincidence. That’s conviction. We surface that consensus and what it’s worth.',
     cta: 'Continue',
   },
   {
-    title: 'When experts agree, that’s a signal',
-    body: 'When several independently-vetted top traders land on the same side of a market at once, that’s not coincidence. That’s conviction. We surface consensus the instant it forms.',
+    title: 'Copy trade the winners',
+    body: 'The best traders on Polymarket have a real edge: information, timing, conviction. We track every position they take, the moment they take it, so their edge becomes yours too.',
     cta: 'Get started',
   },
 ]
@@ -62,7 +105,7 @@ const slides = [
 // into app.css since this file and landing.css load in separate bundles.
 function AlertGraphic() {
   return (
-    <div className="onboarding-mini-card">
+    <div className="onboarding-mini-card onboarding-mini-card-bare">
       <div className="ios-notif-stack">
         <div className="ios-notif-behind ios-notif-behind-2" />
         <div className="ios-notif-behind ios-notif-behind-1" />
@@ -84,23 +127,87 @@ function AlertGraphic() {
   )
 }
 
-// Same markup/classes as FeatureShowcase's "Vetted Picks" card.
-function VettedGraphic() {
+// A real signal: several vetted experts on the same side of a live market,
+// already in profit. Pulls the biggest current winner, filtered to the
+// category the user just said they care about (Q1). Falls back to a
+// representative static example if the query is slow or empty.
+// Deliberately shows no timestamp — the point is what consensus is worth,
+// not that any particular one just landed this second.
+type SignalCard = { title: string; wallet_count: number; total_profit: number }
+
+const CATEGORY_BY_INTEREST: Record<string, string> = { Sports: 'sports', Politics: 'politics', Crypto: 'crypto' }
+
+const FALLBACK_BY_INTEREST: Record<string, SignalCard> = {
+  Sports: { title: 'Will Arsenal FC win their next match?', wallet_count: 14, total_profit: 480_000 },
+  Politics: { title: 'Will the Fed cut rates in September?', wallet_count: 7, total_profit: 142_000 },
+  Crypto: { title: 'Will Bitcoin close above $120k this month?', wallet_count: 9, total_profit: 64_000 },
+}
+const DEFAULT_SIGNAL = FALLBACK_BY_INTEREST.Politics
+
+function RecentSignalGraphic({ interest, betSize, frequency }: { interest?: string; betSize?: string; frequency?: string }) {
+  const [signal, setSignal] = useState<SignalCard>(() => (interest && FALLBACK_BY_INTEREST[interest]) || DEFAULT_SIGNAL)
+
+  useEffect(() => {
+    let cancelled = false
+    const category = interest ? CATEGORY_BY_INTEREST[interest] : undefined
+    let query = supabase.from('opportunities_live')
+      .select('title, wallet_count, total_profit')
+      .gte('wallet_count', 4)
+      .gt('total_profit', 0)
+    if (category) query = query.eq('category', category)
+    // Biggest current winner (in that category) — no timestamp shown, so it
+    // doesn't matter that it isn't the freshest one.
+    Promise.resolve(
+      query.order('total_profit', { ascending: false }).limit(1).maybeSingle()
+    ).then(({ data }) => {
+      if (cancelled || !data) return
+      setSignal({
+        title: data.title as string,
+        wallet_count: data.wallet_count as number,
+        total_profit: data.total_profit as number,
+      })
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [interest])
+
+  const perTrade = BET_SIZE_USD[betSize ?? ''] ?? 250
+  const perWeek = TRADES_PER_WEEK[frequency ?? ''] ?? 4
+  const weekly = useCountUp(perTrade * perWeek)
+
   return (
-    <div className="onboarding-mini-card">
-      <div className="showcase-vp-row">
-        <span className="showcase-vp-market">Diamondbacks vs. Nationals</span>
-        <span className="showcase-vp-badge">9 wallets · $91.9k</span>
+    <div className="onboarding-mini-card onboarding-signal-card">
+      <div className="onboarding-signal-market">{signal.title}</div>
+      <div className="onboarding-signal-age">
+        {signal.wallet_count} independently-vetted experts agreed. They&rsquo;re up {fmtAbbrev(signal.total_profit)}.
       </div>
-      <div className="showcase-vp-row">
-        <span className="showcase-vp-market">CF América win market</span>
-        <span className="showcase-vp-badge">6 wallets · $21.2k</span>
+      <div className="onboarding-signal-math">
+        Your size: <strong>${perTrade.toLocaleString('en-US')}</strong> a bet, <strong>{perWeek}x</strong> a week
       </div>
-      <div className="showcase-vp-row">
-        <span className="showcase-vp-market">US x Iran ceasefire</span>
-        <span className="showcase-vp-badge">5 wallets · $2.2k</span>
+      <div className="onboarding-signal-payoff">
+        That&rsquo;s <strong>$<RollingNumber value={weekly} />/week</strong> riding consensus like this
       </div>
     </div>
+  )
+}
+
+// The slide CTA, held back ~2.2s so people actually read the slide instead
+// of tapping straight through. Its own component so it remounts (and the
+// timer restarts) with the keyed .onboarding-slide on every step; the
+// setState lives in a timeout callback, not the effect body.
+function SlideCta({ label, saving, onClick, delayMs = 2200 }: { label: string; saving: boolean; onClick: () => void; delayMs?: number }) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), delayMs)
+    return () => clearTimeout(t)
+  }, [delayMs])
+  return (
+    <button
+      className={`onboarding-option onboarding-slide-cta ${ready ? '' : 'is-locked'}`}
+      disabled={saving || !ready}
+      onClick={onClick}
+    >
+      {label}
+    </button>
   )
 }
 
@@ -212,7 +319,7 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
         </div>
 
         {isQuestion && current && (
-          <>
+          <div className="onboarding-question" key={step}>
             <h1 className="onboarding-q">{current.q}</h1>
             <div className="onboarding-options">
               {current.options.map(opt => (
@@ -224,22 +331,39 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
                 </button>
               ))}
             </div>
-          </>
+          </div>
         )}
 
-        {slide && (
-          <>
-            {step === questions.length ? <AlertGraphic /> : <VettedGraphic />}
+        {slide && (() => {
+          // On the signal slide the card lands first (entrance + count-up +
+          // green wash, ~2s); only then does the explainer copy start. The
+          // other slide keeps the quicker stagger.
+          const isSignalSlide = step === questions.length
+          const lineBaseMs = isSignalSlide ? 2400 : 320
+          return (
+          <div className={`onboarding-slide ${isSignalSlide ? 'onboarding-slide-signal' : ''}`} key={step}>
+            {isSignalSlide
+              ? <RecentSignalGraphic interest={answers.interest} betSize={answers.bet_size} frequency={answers.trade_frequency} />
+              : <AlertGraphic />}
             <h1 className="onboarding-q onboarding-slide-title">{slide.title}</h1>
-            <p className="onboarding-slide-body">{slide.body}</p>
-            <div className="sig-live" style={{ marginBottom: 16 }}>
+            <p className="onboarding-slide-body">
+              {slide.body.split('. ').map((sentence, i, arr) => (
+                <span
+                  key={i}
+                  className="onboarding-slide-line"
+                  style={{ animationDelay: `${lineBaseMs + i * 260}ms` }}
+                >
+                  {sentence}{i < arr.length - 1 ? '. ' : ''}
+                </span>
+              ))}
+            </p>
+            <div className="sig-live onboarding-slide-live" style={{ marginBottom: 16 }}>
               <RollingNumber value={tradesAnalyzed} /> trades analyzed and counting
             </div>
-            <button className="onboarding-option onboarding-slide-cta" disabled={saving} onClick={advanceSlide}>
-              {slide.cta}
-            </button>
-          </>
-        )}
+            <SlideCta label={slide.cta} saving={saving} onClick={advanceSlide} delayMs={isSignalSlide ? 3600 : 2200} />
+          </div>
+          )
+        })()}
       </div>
     </div>
   )
