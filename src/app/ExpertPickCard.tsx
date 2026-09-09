@@ -6,7 +6,13 @@ import { categoryLabel, fetchMarketChart, fmtFull, fmtSigned } from './helpers'
 import { PickChart } from './PickChart'
 import './expert-pick-card.css'
 
-export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opportunity; onOpen: () => void }) {
+export function ExpertPickCard({ opportunity: o, onOpen, payoutCta = false }: {
+  opportunity: Opportunity
+  onOpen: () => void
+  // Profit Bot swaps the "Bet YES/NO" CTA for what a flat $100 on this side
+  // pays out at the current price.
+  payoutCta?: boolean
+}) {
   const container = useRef<HTMLElement>(null)
   const [history, setHistory] = useState<ChartPoint[] | null>(null)
 
@@ -37,6 +43,8 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
   const outcome = o.outcome.trim()
   const direction = outcome.toLowerCase()
   const label = direction === 'yes' || direction === 'no' ? direction.toUpperCase() : outcome
+  const priceOk = o.latest_price > 0 && o.latest_price < 1
+  const payout = priceOk ? Math.round(100 / o.latest_price) : 0
 
   return (
     <article ref={container} className="expert-pick-card">
@@ -58,7 +66,10 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
         </div>
       </div>
       <button className={`expert-pick-bet ${direction === 'no' ? 'is-no' : direction === 'yes' ? 'is-yes' : 'is-other'}`} onClick={onOpen} aria-label={`View expert pick: ${label} — ${o.title}`}>
-        <span>Bet {label}</span><ArrowUpRight size={18} />
+        {payoutCta && priceOk
+          ? <span>$100 &rarr; ${payout.toLocaleString('en-US')}</span>
+          : <span>Bet {label}</span>}
+        <ArrowUpRight size={18} />
       </button>
     </article>
   )
