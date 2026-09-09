@@ -198,47 +198,52 @@ export default function ProfitBot() {
           </label>
         </header>
 
-        <div className="profits-list-head" aria-hidden="true">
-          <span>Market &amp; side</span>
-          <span>Avg entry</span>
-          <span>{view === 'ongoing' ? 'Move' : 'Result ($100)'}</span>
-        </div>
+        {view === 'resolved' && (
+          <div className="profits-list-head" aria-hidden="true">
+            <span>Market &amp; side</span>
+            <span>Avg entry</span>
+            <span>Result ($100)</span>
+          </div>
+        )}
 
         {view === 'ongoing' ? (
           picks.length === 0 ? (
             <p className="profits-notice">No markets meet the bar right now. This updates as tracked traders move.</p>
           ) : (
-            <ol className="profits-result-list">
+            <div className="pbot-cards">
               {picks.map(p => {
                 const url = marketUrl(p.event_slug || p.slug)
                 const entryC = Math.round(p.avg_entry * 100)
                 const nowC = Math.round(p.latest_price * 100)
                 const drift = nowC - entryC
+                const side = p.outcome.trim().toLowerCase()
+                const sideCls = side === 'yes' ? 'is-yes' : side === 'no' ? 'is-no' : 'is-other'
                 return (
-                  <li className="profits-result-row" key={`${p.condition_id}:${p.outcome}`}>
-                    <div className="profits-position">
-                      <h3>
-                        {url
-                          ? <a href={url} target="_blank" rel="noopener noreferrer">{p.title} <ArrowUpRight size={13} aria-hidden="true" /></a>
-                          : p.title}
-                      </h3>
-                      <div className="profits-trader-line">
-                        <span>{p.outcome}</span>
-                        <span>· {p.experts} proven traders</span>
-                        <span>· {categoryLabel(p.category ?? 'other')}</span>
-                        <span>· {fmtFull(p.combined_stake)} in</span>
-                        <span>· last buy {timeAgo(p.last_entry)}</span>
+                  <article className="pbot-card" key={`${p.condition_id}:${p.outcome}`}>
+                    <div className="pbot-card-top">
+                      <span>{categoryLabel(p.category ?? 'other')}</span>
+                      {url && (
+                        <a href={url} target="_blank" rel="noopener noreferrer">
+                          View market <ArrowUpRight size={13} aria-hidden="true" />
+                        </a>
+                      )}
+                    </div>
+                    <h3 className="pbot-card-title">{p.title}</h3>
+                    <div className={`pbot-card-side ${sideCls}`}>{p.outcome}</div>
+                    <div className="pbot-card-meta">
+                      {p.experts} proven traders &middot; {fmtFull(p.combined_stake)} in &middot; last buy {timeAgo(p.last_entry)}
+                    </div>
+                    <div className="pbot-card-prices">
+                      <div><strong>{entryC}&cent;</strong><span>avg entry</span></div>
+                      <div className="pbot-card-move">
+                        <strong className={drift >= 0 ? 'is-positive' : 'is-negative'}>{drift >= 0 ? '+' : ''}{drift}&cent;</strong>
+                        <span>now {nowC}&cent;</span>
                       </div>
                     </div>
-                    <div className="profits-entry"><strong>{entryC}&cent;</strong><span>avg entry</span></div>
-                    <div className="profits-result-value">
-                      <strong className={drift >= 0 ? 'is-positive' : 'is-negative'}>{drift >= 0 ? '+' : ''}{drift}&cent;</strong>
-                      <span>now {nowC}&cent;</span>
-                    </div>
-                  </li>
+                  </article>
                 )
               })}
-            </ol>
+            </div>
           )
         ) : (
           resolved.length === 0 ? (
