@@ -1,14 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
-import { Routes, Route, Link, useNavigate } from 'react-router-dom'
-import { BarChart3, Search, Activity, Pause, Play } from 'lucide-react'
-import { supabase, isProdDb } from '../../lib/supabase'
+import { useState, useEffect } from 'react'
+import { Routes, Route, Link } from 'react-router-dom'
+import { BarChart3, Activity, Pause, Play, X } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
 import { dashboardPath, terminalPath } from '../../lib/domains'
 import { useSubscriptionGate } from '../../lib/subscriptionGate'
-import type { User } from '@supabase/supabase-js'
 import type { Opportunity } from '../types'
 import { onTabVisible, byCategory, PAGE_SIZE, fmtAbbrev, fmtAbbrevSigned } from '../helpers'
 import { onOpportunitiesBatch, mergeOpportunities } from '../realtimeBroadcast'
-import GogglesAvatar from '../GogglesAvatar'
+import GlobalSearch from '../GlobalSearch'
 import TerminalSidebar from './TerminalSidebar'
 import TerminalMarketView from './TerminalMarketView'
 import TerminalTraderView from './TerminalTraderView'
@@ -52,17 +51,12 @@ function TerminalEmptyState({ opportunities }: { opportunities: Opportunity[] })
 // (--bg/--surface-2/--border/--green/--red/--blue etc) already used by the
 // rest of the Signals surface, so this doesn't redefine them.
 export default function Terminal() {
-  const navigate = useNavigate()
   const { locked } = useSubscriptionGate()
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
   const [tickerPaused, setTickerPaused] = useState(false)
   const [category, setCategory] = useState('all')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
-  const [user, setUser] = useState<User | null>(null)
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const userMenuRef = useRef<HTMLDivElement>(null)
   // The Terminal is a desktop-only surface — its side-by-side sidebar +
   // market panels and wide charts don't collapse to a phone. On a narrow
   // viewport we show a stub instead (the nav link stays visible so people
@@ -77,26 +71,6 @@ export default function Terminal() {
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
   }, [])
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null))
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null))
-    return () => sub.subscription.unsubscribe()
-  }, [])
-
-  useEffect(() => {
-    if (!userMenuOpen) return
-    const onClickOutside = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setUserMenuOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [userMenuOpen])
-
-  const signOut = async () => {
-    await supabase.auth.signOut()
-    navigate('/login')
-  }
 
   useEffect(() => {
     if (isMobile) return
@@ -133,9 +107,7 @@ export default function Terminal() {
     }
   }, [isMobile])
 
-  const q = search.trim().toLowerCase()
-  const bySearch = q ? opportunities.filter(o => o.title.toLowerCase().includes(q)) : opportunities
-  const byCat = byCategory(bySearch, category)
+  const byCat = byCategory(opportunities, category)
   // Not a hard filter — a resolved/settled market's price sits pinned at
   // the very ends (0%/100%), so those are pushed toward the bottom of the
   // list instead of dropped, keeping the still-live, actually-uncertain
@@ -167,46 +139,16 @@ export default function Terminal() {
     <div className="sig-page terminal-shell">
       <header className="terminal-topbar">
         <Link to={dashboardPath('/')} className="terminal-logo">VisibleTrader.com</Link>
-        <nav className="terminal-nav" aria-label="Terminal navigation">
-          <Link to={terminalPath('/')}>Markets</Link>
-          <Link to={dashboardPath('/leaderboard')}>Traders</Link>
-          <Link to={dashboardPath('/journal')}>Journal</Link>
-        </nav>
         <div className="terminal-search">
-          <Search size={18} aria-hidden="true" />
-          <input
-            type="text"
-            aria-label="Search markets"
-            placeholder="Search markets…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+          <GlobalSearch
+            label="Search markets or traders"
+            marketPath={m => terminalPath(`/market/${encodeURIComponent(m.condition_id)}/${encodeURIComponent(m.outcome)}`)}
+            traderPath={w => terminalPath(`/trader/${w}`)}
           />
         </div>
-        {user && (
-          <div className="app-user-menu terminal-user-menu" ref={userMenuRef}>
-            <button
-              type="button"
-              className="app-avatar-btn"
-              onClick={() => setUserMenuOpen(o => !o)}
-              aria-label="Account menu"
-            >
-              <GogglesAvatar id={user.id} />
-              {isProdDb && <span className="app-prod-dot" title="Connected to production data" />}
-            </button>
-            {userMenuOpen && (
-              <div className="app-user-dropdown">
-                <Link
-                  to={dashboardPath('/settings')}
-                  className="app-user-dropdown-item"
-                  onClick={() => setUserMenuOpen(false)}
-                >
-                  Settings
-                </Link>
-                <button className="app-user-dropdown-item danger" onClick={signOut}>Sign out</button>
-              </div>
-            )}
-          </div>
-        )}
+        <Link to={dashboardPath('/')} className="terminal-exit" aria-label="Exit terminal">
+          <X size={22} aria-hidden="true" />
+        </Link>
       </header>
 
       {/* Rendered as soon as we're loading (not just once data lands) so the

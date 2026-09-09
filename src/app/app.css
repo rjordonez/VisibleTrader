@@ -1399,6 +1399,7 @@
   background: rgba(0, 0, 0, 0.6);
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   padding: clamp(12px, 8vh, 90px) clamp(12px, 4vw, 24px) 24px;
   animation: gsearch-fade-in 0.15s ease;
 }
@@ -1406,10 +1407,12 @@
 .gsearch-panel {
   width: 100%;
   max-width: 720px;
-  max-height: 100%;
+  /* Hug the content — cap so a long result list scrolls internally rather
+     than the panel growing to fill the screen. */
+  max-height: min(560px, calc(100vh - 140px));
   display: flex;
   flex-direction: column;
-  background: var(--surface-2, #14161d);
+  background: #0c0c0e;
   border: 1px solid var(--border, rgba(255,255,255,0.08));
   border-radius: 14px;
   overflow: hidden;
@@ -1529,6 +1532,23 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .gsearch-market-usd { flex-shrink: 0; font-size: 13px; font-weight: 700; color: var(--text-faint, #5a6169); }
+
+/* Mobile: sit near the top, use the whole width, let long titles wrap to
+   two lines instead of a hard ellipsis. */
+@media (max-width: 640px) {
+  .gsearch-backdrop { padding: 10px 10px 16px; align-items: stretch; }
+  .gsearch-panel { max-height: calc(100dvh - 26px); border-radius: 12px; }
+  .gsearch-input-row { padding: 13px 14px; }
+  .gsearch-body { padding: 14px 14px 18px; }
+  .gsearch-trader-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .gsearch-market-row { align-items: flex-start; }
+  .gsearch-market-icon { margin-top: 1px; }
+  .gsearch-market-title {
+    white-space: normal;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    line-height: 1.4;
+  }
+}
 
 /* ── Onboarding gate (OnboardingPage.tsx) ── */
 .onboarding-root {
