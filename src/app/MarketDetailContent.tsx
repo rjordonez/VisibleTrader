@@ -244,6 +244,7 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
             history={chartLoading ? null : [...chartHistory].filter(p => Number.isFinite(p.t) && Number.isFinite(p.p)).sort((a, b) => a.t - b.t)}
             outcome={o.outcome}
             price={o.latest_price}
+            height={chartHeight}
             error={false}
             onRetry={() => {
               setChartLoading(true)
