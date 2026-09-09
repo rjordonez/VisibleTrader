@@ -76,39 +76,5 @@
   .signals-page *, .signals-page *::before { animation: none !important; transition: none !important; }
 }
 
-/* Expert picks: title, market movement, then the tracked traders' position. */
-.expert-picks-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
-.expert-picks-grid > .sig-empty { grid-column: 1 / -1; }
-.expert-pick-card { display: flex; flex-direction: column; min-width: 0; padding: 22px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface-2); transition: border-color 150ms; }
-.expert-pick-card:hover { border-color: #515169; }
-.expert-pick-topline { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--text-dim); font-size: 11px; }
-.expert-pick-topline a { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); text-decoration: none; }
-.expert-pick-topline a:hover { color: var(--text); }
-.expert-pick-title { display: flex; align-items: flex-start; gap: 12px; width: 100%; min-height: 110px; padding: 22px 0 16px; text-align: left; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; }
-.expert-pick-title h3 { margin: 0; font-size: 17px; line-height: 1.45; font-weight: 650; letter-spacing: -0.025em; overflow-wrap: anywhere; }
-.expert-pick-icon { display: grid; place-items: center; flex-shrink: 0; width: 52px; height: 52px; overflow: hidden; border-radius: 11px; font-size: 24px; }
-/* .expert-pick-chart / -plot / -endpoint-price / -gridline / -reveal /
-   -chart-caption / .expert-chart-retry now live in pick-chart.css so the
-   Terminal market page can reuse the chart. */
-.expert-pick-evidence { margin-top: 18px; padding: 16px 0 14px; border-top: 1px solid var(--border); }
-.expert-pick-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.expert-pick-stats > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
-.expert-pick-stats strong { display: flex; align-items: center; gap: 4px; color: var(--text); font-size: 17px; line-height: 1.1; letter-spacing: -.035em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.expert-pick-stats small { color: var(--text-dim); font-size: 10px; line-height: 1.2; }
-.expert-pick-stats .g strong { color: var(--green); }
-.expert-pick-stats .r strong { color: var(--red); }
-.expert-pick-bet { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; padding: 12px; border: 1px solid transparent; border-radius: 11px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; overflow-wrap: anywhere; transition: filter 150ms; }
-.expert-pick-bet.is-yes { background: #b9f5cc; color: #155b32; }
-.expert-pick-bet.is-no { background: #f5c4cb; color: #902b3e; }
-.expert-pick-bet.is-other { background: #d4d4ff; color: #353578; }
-.expert-pick-bet svg { flex-shrink: 0; }
-.expert-pick-bet:hover { filter: brightness(1.08); }
-.expert-pick-skeleton { height: 390px; border: 1px solid var(--border); border-radius: 18px; background: linear-gradient(145deg, var(--surface-2), var(--bg)); }
-@media (max-width: 1100px) { .expert-picks-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 640px) {
-  .expert-picks-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-  .expert-pick-card { padding: 20px; }
-  .expert-pick-title { min-height: 0; }
-}
-
-.expert-pick-icon img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* Expert picks card styles now live in expert-pick-card.css (imported by
+   ExpertPickCard.tsx) so the card works off the Signals route too. */

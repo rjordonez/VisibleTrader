@@ -4,6 +4,7 @@ import { ArrowUpRight, Users } from 'lucide-react'
 import type { ChartPoint, Opportunity } from './types'
 import { categoryLabel, fetchMarketChart, fmtFull, fmtSigned } from './helpers'
 import { PickChart } from './PickChart'
+import './expert-pick-card.css'
 
 export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opportunity; onOpen: () => void }) {
   const container = useRef<HTMLElement>(null)

@@ -93,42 +93,12 @@
 .pbot-help strong { color: var(--text); font-weight: 650; }
 .pbot-help-foot { margin: 12px 0 0 !important; font-size: 11px !important; color: var(--text-faint) !important; }
 
-/* Ongoing picks as cards (like the Signals vetted-picks grid) */
-.pbot-cards {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;
-  margin-top: 4px;
+/* Ongoing picks reuse .expert-picks-grid / ExpertPickCard. Header controls: */
+.pbot-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pbot-sort { display: inline-flex; border: 1px solid #30303d; border-radius: 12px; overflow: hidden; }
+.pbot-sort button {
+  padding: 10px 14px; min-height: 44px; border: 0; background: transparent;
+  color: var(--text-dim); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
 }
-.pbot-card {
-  display: flex; flex-direction: column; min-width: 0;
-  border: 1px solid var(--border); border-radius: 16px; background: var(--surface-2);
-  padding: 18px;
-}
-.pbot-card-top {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  font-size: 11px; color: var(--text-dim);
-}
-.pbot-card-top a { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); text-decoration: none; }
-.pbot-card-top a:hover { color: var(--text); }
-.pbot-card-title {
-  margin: 12px 0 10px; font-size: 15px; font-weight: 650; line-height: 1.4;
-  letter-spacing: -0.02em; overflow-wrap: anywhere;
-}
-.pbot-card-side {
-  align-self: flex-start; font-size: 11px; font-weight: 750; letter-spacing: 0.02em;
-  padding: 3px 9px; border-radius: 7px;
-  background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text);
-}
-.pbot-card-side.is-yes { background: rgba(0, 209, 122, 0.14); color: var(--green); }
-.pbot-card-side.is-no { background: rgba(255, 59, 92, 0.14); color: var(--red); }
-.pbot-card-meta { margin: 12px 0 16px; font-size: 11.5px; color: var(--text-dim); line-height: 1.55; }
-.pbot-card-prices {
-  display: flex; justify-content: space-between; gap: 12px;
-  margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border);
-}
-.pbot-card-prices > div { display: flex; flex-direction: column; gap: 3px; }
-.pbot-card-prices strong { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-.pbot-card-prices span { font-size: 10.5px; color: var(--text-dim); }
-.pbot-card-move { align-items: flex-end; text-align: right; }
-
-@media (max-width: 1000px) { .pbot-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 640px) { .pbot-cards { grid-template-columns: minmax(0, 1fr); } }
+.pbot-sort button + button { border-left: 1px solid #30303d; }
+.pbot-sort button.is-on { background: #17171e; color: #e2e3ef; }

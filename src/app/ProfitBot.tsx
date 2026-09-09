@@ -1,27 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Bot, ArrowUpRight, ChevronDown, HelpCircle, X } from 'lucide-react'
+import { Bot, ChevronDown, HelpCircle, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { fmtFull, fmtSigned, timeAgo, marketUrl, categoryLabel } from './helpers'
+import { fmtSigned, timeAgo, categoryLabel } from './helpers'
 import { CumulativeChart } from './PriceChart'
+import { ExpertPickCard } from './ExpertPickCard'
+import { SignalModal } from './SignalModal'
+import type { Opportunity } from './types'
+import './signals.css'
 
 // The whole Profits page. Reads the profit_bot_* RPCs (see
 // supabase/migrations/20260909060000_profit_bot.sql and follow-ups): a
 // rules-based strategy over the tracked-trader data — act on a side only
 // when 3+ proven wallets (net-positive, >=52% win rate, >=20 resolved) are
 // on it at 40-80c entry with >=$100 size.
-interface BotPick {
-  condition_id: string
-  outcome: string
-  title: string
-  slug: string
-  event_slug: string | null
-  category: string | null
-  experts: number
-  avg_entry: number
-  latest_price: number
-  combined_stake: number
-  last_entry: string
-}
 interface BotResolved {
   condition_id: string
   outcome: string
@@ -49,14 +40,16 @@ interface BotDay {
 }
 
 export default function ProfitBot() {
-  const [picks, setPicks] = useState<BotPick[]>([])
+  const [picks, setPicks] = useState<Opportunity[]>([])
   const [resolved, setResolved] = useState<BotResolved[]>([])
   const [perf, setPerf] = useState<BotPerf | null>(null)
   const [daily, setDaily] = useState<BotDay[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [view, setView] = useState<'ongoing' | 'resolved'>('ongoing')
+  const [sort, setSort] = useState<'recent' | 'profitable'>('recent')
   const [helpOpen, setHelpOpen] = useState(false)
+  const [modalOpp, setModalOpp] = useState<Opportunity | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -71,7 +64,7 @@ export default function ProfitBot() {
       if (pi.error || re.error || pe.error || da.error) {
         setError(true)
       } else {
-        setPicks((pi.data ?? []) as BotPick[])
+        setPicks((pi.data ?? []) as Opportunity[])
         setResolved((re.data ?? []) as BotResolved[])
         setPerf(((pe.data ?? [])[0] ?? null) as BotPerf | null)
         setDaily((da.data ?? []) as BotDay[])
@@ -185,17 +178,25 @@ export default function ProfitBot() {
             <h2 id="pbot-picks-title">{view === 'ongoing' ? 'Picks for today' : 'Resolved picks'}</h2>
             <p>
               {view === 'ongoing'
-                ? 'Open markets where the rules are satisfied right now, freshest first.'
+                ? 'Open markets where the rules are satisfied right now.'
                 : 'How the bot’s picks have settled, most recent first. Flat $100 per pick.'}
             </p>
           </div>
-          <label className="profits-filter">
-            <select aria-label="Pick status" value={view} onChange={e => setView(e.target.value as 'ongoing' | 'resolved')}>
-              <option value="ongoing">Ongoing</option>
-              <option value="resolved">Resolved</option>
-            </select>
-            <ChevronDown size={15} aria-hidden="true" />
-          </label>
+          <div className="pbot-controls">
+            {view === 'ongoing' && (
+              <div className="pbot-sort" role="group" aria-label="Sort picks">
+                <button type="button" className={sort === 'recent' ? 'is-on' : ''} onClick={() => setSort('recent')}>Most recent</button>
+                <button type="button" className={sort === 'profitable' ? 'is-on' : ''} onClick={() => setSort('profitable')}>Most profitable</button>
+              </div>
+            )}
+            <label className="profits-filter">
+              <select aria-label="Pick status" value={view} onChange={e => setView(e.target.value as 'ongoing' | 'resolved')}>
+                <option value="ongoing">Ongoing</option>
+                <option value="resolved">Resolved</option>
+              </select>
+              <ChevronDown size={15} aria-hidden="true" />
+            </label>
+          </div>
         </header>
 
         {view === 'resolved' && (
@@ -210,39 +211,14 @@ export default function ProfitBot() {
           picks.length === 0 ? (
             <p className="profits-notice">No markets meet the bar right now. This updates as tracked traders move.</p>
           ) : (
-            <div className="pbot-cards">
-              {picks.map(p => {
-                const url = marketUrl(p.event_slug || p.slug)
-                const entryC = Math.round(p.avg_entry * 100)
-                const nowC = Math.round(p.latest_price * 100)
-                const drift = nowC - entryC
-                const side = p.outcome.trim().toLowerCase()
-                const sideCls = side === 'yes' ? 'is-yes' : side === 'no' ? 'is-no' : 'is-other'
-                return (
-                  <article className="pbot-card" key={`${p.condition_id}:${p.outcome}`}>
-                    <div className="pbot-card-top">
-                      <span>{categoryLabel(p.category ?? 'other')}</span>
-                      {url && (
-                        <a href={url} target="_blank" rel="noopener noreferrer">
-                          View market <ArrowUpRight size={13} aria-hidden="true" />
-                        </a>
-                      )}
-                    </div>
-                    <h3 className="pbot-card-title">{p.title}</h3>
-                    <div className={`pbot-card-side ${sideCls}`}>{p.outcome}</div>
-                    <div className="pbot-card-meta">
-                      {p.experts} proven traders &middot; {fmtFull(p.combined_stake)} in &middot; last buy {timeAgo(p.last_entry)}
-                    </div>
-                    <div className="pbot-card-prices">
-                      <div><strong>{entryC}&cent;</strong><span>avg entry</span></div>
-                      <div className="pbot-card-move">
-                        <strong className={drift >= 0 ? 'is-positive' : 'is-negative'}>{drift >= 0 ? '+' : ''}{drift}&cent;</strong>
-                        <span>now {nowC}&cent;</span>
-                      </div>
-                    </div>
-                  </article>
-                )
-              })}
+            <div className="expert-picks-grid">
+              {[...picks]
+                .sort((a, b) => sort === 'profitable'
+                  ? Number(b.total_profit) - Number(a.total_profit)
+                  : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
+                .map(o => (
+                  <ExpertPickCard key={`${o.condition_id}::${o.outcome}`} opportunity={o} onOpen={() => setModalOpp(o)} />
+                ))}
             </div>
           )
         ) : (
@@ -274,6 +250,8 @@ export default function ProfitBot() {
           )
         )}
       </section>
+
+      {modalOpp && <SignalModal opportunity={modalOpp} onClose={() => setModalOpp(null)} />}
     </>
   )
 }
