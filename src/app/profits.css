@@ -66,8 +66,27 @@
   .profits-result-value > strong { font-size: 18px; }
 }
 
-/* ── Profit Bot (ProfitBot.tsx) — rules-based strategy picks at the top of
-   the Profits page. ── */
+/* ── Profit Bot (ProfitBot.tsx) — the Profits page hero: a rules-based
+   strategy shown in the same overview design as the raw numbers below. ── */
+.pbot-overview { position: relative; }
+.pbot-hero-head { margin-bottom: 4px; }
+.pbot-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px;
+  background: color-mix(in srgb, var(--green) 16%, transparent);
+  color: var(--green); font-size: 11px; font-weight: 750; letter-spacing: 0.02em;
+}
+
+/* Strategy explainer */
+.pbot-explain { margin: 4px 0 28px; }
+.pbot-explain h2 { margin: 0 0 10px; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+.pbot-explain > p { margin: 0 0 14px; font-size: 13px; color: var(--text-dim); line-height: 1.65; max-width: 62ch; }
+.pbot-rules-list { margin: 0; padding-left: 1.15em; display: flex; flex-direction: column; gap: 8px; }
+.pbot-rules-list li { font-size: 13px; color: var(--text-dim); line-height: 1.6; max-width: 62ch; }
+.pbot-rules-list strong { color: var(--text); font-weight: 650; }
+.pbot-explain-foot { margin: 16px 0 0 !important; font-size: 11.5px !important; color: var(--text-faint) !important; }
+
+/* Picks-for-today block */
 .pbot {
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -75,26 +94,10 @@
   padding: 20px;
   margin-bottom: 28px;
 }
-.pbot-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.pbot-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 9px; border-radius: 999px;
-  background: color-mix(in srgb, var(--green) 16%, transparent);
-  color: var(--green); font-size: 11px; font-weight: 750; letter-spacing: 0.02em;
-}
 .pbot-head h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
 .pbot-rules { margin: 8px 0 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.6; }
 
-.pbot-perf {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px; margin: 18px 0; padding: 0;
-  background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
-}
-.pbot-perf > div { background: var(--surface-2); padding: 12px 14px; }
-.pbot-perf dt { font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.4; }
-.pbot-perf dd { margin: 6px 0 0; font-size: 19px; font-weight: 750; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-
-.pbot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.pbot-list { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; }
 .pbot-row {
   display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 16px;
   padding: 14px 0; border-top: 1px solid var(--border);
@@ -114,12 +117,14 @@
 }
 .pbot-go:hover { color: var(--text); border-color: color-mix(in srgb, var(--text) 25%, transparent); }
 .pbot-row-skel { height: 56px; border-radius: 10px; margin: 8px 0; }
-.pbot-foot { margin: 16px 0 0; font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+
+/* Separator between the bot hero and the raw all-traders numbers */
+.profits-raw-divider { margin: 8px 0 20px; padding-top: 24px; border-top: 1px solid var(--border); }
+.profits-raw-divider h2 { margin: 0 0 6px; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+.profits-raw-divider p { margin: 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.6; max-width: 60ch; }
 
 @media (max-width: 700px) {
   .pbot { padding: 16px; }
-  .pbot-perf { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pbot-perf dd { font-size: 17px; }
   .pbot-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 12px; }
   .pbot-prices { grid-column: 1 / -1; justify-content: flex-start; gap: 20px; }
   .pbot-price { align-items: flex-start; text-align: left; }
