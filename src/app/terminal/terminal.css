@@ -463,6 +463,18 @@
 .terminal-ticker-items a:hover { background: var(--surface); }
 .terminal-ticker-items a span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .terminal-ticker-items strong { margin-left: auto; color: var(--text); white-space: nowrap; }
+
+/* Loading placeholder — same cell geometry as .terminal-ticker-items a so
+   the bar looks identical before real markets arrive and nothing shifts. */
+.terminal-ticker-skel { display: flex; }
+.terminal-ticker-skel-cell { display: flex; align-items: center; flex-shrink: 0; width: 240px; padding: 0 18px; border-right: 1px solid var(--border); }
+.terminal-ticker-skel-cell::after {
+  content: ""; display: block; width: 100%; height: 12px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--surface) 25%, var(--chip) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: terminal-shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .terminal-ticker-skel-cell::after { animation: none; } }
 .terminal-locked-inner { gap: 24px; padding: 20px 32px; }
 .terminal-card { border-radius: 10px; background: var(--bg); }
 .terminal-sidebar { border: 0; border-right: 1px solid var(--border); border-radius: 0; }

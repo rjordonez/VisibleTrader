@@ -242,10 +242,14 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
   // starving risk this fix doesn't solve.
   //
   // A close is an UPDATE on opportunity_wallets (exit_ts or market_closed/
-  // resolved_ts getting set on an existing row), not an INSERT, and
-  // Realtime can't subscribe to wallet_positions directly since it's a
-  // view — same "subscribe on the real table just to trigger a refetch"
-  // pattern as opportunities_live above, just watching UPDATE not INSERT.
+  // resolved_ts getting set on an existing row), not an INSERT. This feed
+  // used to hold a Realtime subscription on that table to trigger a
+  // refetch, but an unfiltered postgres_changes UPDATE sub on
+  // opportunity_wallets (~1.6M rows, written continuously by
+  // live-signal-service.py) is exactly the per-row fanout that blew the
+  // Realtime message quota in Sept 2026 (see realtimeBroadcast.ts). Closed
+  // profitable positions are rare, high-value events, so a plain poll plus
+  // a refetch on tab-focus keeps this current without any Realtime load.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const buildWinsQueryRef = useRef<() => any>(() => supabase.from('wallet_positions').select('*'))
   useEffect(() => {
@@ -289,13 +293,9 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
     }
     loadWinsRef.current = load
     load()
-    const channel = supabase
-      .channel('wins-changes')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'opportunity_wallets' }, load)
-      .subscribe()
-    const interval = setInterval(load, 60000)
+    const interval = setInterval(load, 30000)
     const unsubVisible = onTabVisible(load)
-    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel); unsubVisible() }
+    return () => { cancelled = true; clearInterval(interval); unsubVisible() }
   }, [])
 
   // Refetches for the new filter set whenever a filter changes — debounced
