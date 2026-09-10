@@ -1893,7 +1893,7 @@ def main():
                     last_wallet_category_refresh = now
 
                 if now - last_profit_bot_refresh > PROFIT_BOT_REFRESH_SECONDS:  # profit_bot_*_cache
-                    executor.submit(refresh_profit_bot, db)
+                    maintenance_jobs.submit('profit-bot', refresh_profit_bot, maintenance_db)
                     last_profit_bot_refresh = now
 
                 if now - last_warm_search > WARM_SEARCH_SECONDS:  # keeps wallet-search's Edge Function isolate warm
