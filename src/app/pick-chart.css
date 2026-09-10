@@ -1,8 +1,7 @@
-/* PickChart — the hand-drawn SVG price chart used on the Signals "vetted"
-   cards (ExpertPickCard) and, via MarketDetailContent's `minimal` variant,
-   on the Terminal market page. Lives in its own file (moved out of
-   signals.css) so both surfaces load exactly these styles and neither can
-   drift from the other. */
+/* PickChart — the hand-drawn SVG price chart used on the ExpertPickCard
+   grids (Profits) and, via MarketDetailContent's `minimal` variant, on the
+   Terminal market page. Lives in its own file so both surfaces load exactly
+   these styles and neither can drift from the other. */
 .expert-pick-chart { position: relative; height: 104px; margin-top: auto; padding-top: 8px; box-sizing: content-box; color: #7196ff; }
 .expert-pick-plot { height: 104px; margin-right: 88px; }
 .expert-pick-plot > span { display: grid; place-items: center; height: 100%; color: var(--text-faint); font-size: 12px; }

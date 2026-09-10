@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { onTabVisible, traderLabel, fmtSigned, avatarGradient } from './helpers'
 import GogglesMark from './GogglesMark'
+import RecentWins from './RecentWins'
 import type { useAlerts } from './useAlerts'
 import './leaderboard.css'
 
@@ -26,6 +27,7 @@ function LeaderboardPage(follow: FollowProps) {
   const [rows, setRows] = useState<LeaderboardRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [view, setView] = useState<'rankings' | 'wins'>('rankings')
   const [ranking, setRanking] = useState<'profit' | 'winrate'>('profit')
   const [minimumTrades, setMinimumTrades] = useState(10)
   useEffect(() => {
@@ -71,47 +73,63 @@ function LeaderboardPage(follow: FollowProps) {
     <div className="sig-page leaders-page">
       <header className="app-section-header leaders-header">
         <div><h1 className="app-section-title">Leaderboard</h1><p className="leaders-period">All tracked history</p></div>
-        <div className="leaders-header-controls">
-          <label className="leaders-select">
-            <select aria-label="Rank traders by" value={ranking} onChange={e => setRanking(e.target.value as typeof ranking)}>
-              <option value="profit">Highest P&L</option>
-              <option value="winrate">Highest win rate</option>
-            </select>
-            <ChevronDown size={15} aria-hidden="true" />
-          </label>
-          {ranking === 'winrate' && <label className="leaders-select leaders-minimum">
-            <select aria-label="Minimum resolved trades" value={minimumTrades} onChange={e => setMinimumTrades(Number(e.target.value))}>
-              {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}+ resolved trades</option>)}
-            </select>
-            <ChevronDown size={15} aria-hidden="true" />
-          </label>}
-        </div>
+        {view === 'rankings' && (
+          <div className="leaders-header-controls">
+            <label className="leaders-select">
+              <select aria-label="Rank traders by" value={ranking} onChange={e => setRanking(e.target.value as typeof ranking)}>
+                <option value="profit">Highest P&L</option>
+                <option value="winrate">Highest win rate</option>
+              </select>
+              <ChevronDown size={15} aria-hidden="true" />
+            </label>
+            {ranking === 'winrate' && <label className="leaders-select leaders-minimum">
+              <select aria-label="Minimum resolved trades" value={minimumTrades} onChange={e => setMinimumTrades(Number(e.target.value))}>
+                {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}+ resolved trades</option>)}
+              </select>
+              <ChevronDown size={15} aria-hidden="true" />
+            </label>}
+          </div>
+        )}
       </header>
-      {error && <p className="leaders-notice" role="status">Unable to refresh rankings. {rows.length > 0 ? 'Showing the last available data. ' : ''}Retrying automatically.</p>}
-      <section className="leaders-podium" aria-label="Top three traders" aria-busy={loading}>
-        {loading ? [0, 1, 2].map(i => <div className="leaders-podium-skeleton sig-skel" key={i} aria-hidden="true" />) : ranked.slice(0, 3).map((row, index) => (
-          <article className={`leaders-card leaders-place-${index + 1}`} key={row.wallet}>
-            <div className="leaders-card-top"><span className="leaders-place">#{index + 1}</span><Link to={dashboardPath(`/trader/${row.wallet}`)} aria-label={`View ${traderLabel(row.wallet, row.wallet_name)}`}><ArrowUpRight size={18} /></Link></div>
-            <Link className="leaders-card-person" to={dashboardPath(`/trader/${row.wallet}`)}><span className="leaders-avatar" style={{ background: avatarGradient(row.wallet) }}><GogglesMark /></span><h2>{traderLabel(row.wallet, row.wallet_name)}</h2></Link>
-            <strong className={`leaders-card-profit ${row.net_profit >= 0 ? 'is-positive' : 'is-negative'}`}>{fmtSigned(row.net_profit)}</strong><span className="leaders-metric-label">Resolved P&L</span>
-            <div className="leaders-card-record"><strong>{winRate(row)?.toFixed(0)}% <span>win rate</span></strong><span>{resolvedCount(row).toLocaleString()} resolved</span></div>
-            <FollowButton row={row} {...follow} />
-          </article>
-        ))}
-      </section>
-      <section className="leaders-list" aria-labelledby="leaders-list-title" aria-busy={loading}>
-        <div className="leaders-list-heading"><h2 id="leaders-list-title">The rankings</h2>{!loading && <span>{ranked.length} of {eligible.length.toLocaleString()} eligible traders</span>}</div>
-        <div className="leaders-column-head" aria-hidden="true"><span>Trader</span><span>Resolved P&L</span><span>Win rate</span><span /></div>
-        {loading ? [0, 1, 2, 3, 4].map(i => <div key={i} className="leaders-row-skeleton sig-skel" aria-hidden="true" />) : <ol className="leaders-rows">{ranked.map((row, index) => (
-          <li className="leaders-row" key={row.wallet}>
-            <div className="leaders-person"><span className="leaders-rank">{index + 1}</span><Link to={dashboardPath(`/trader/${row.wallet}`)}><span className="leaders-avatar" style={{ background: avatarGradient(row.wallet) }}><GogglesMark /></span><span className="leaders-name"><strong>{traderLabel(row.wallet, row.wallet_name)}</strong><small>{resolvedCount(row).toLocaleString()} resolved positions</small></span></Link></div>
-            <div className={`leaders-row-profit ${row.net_profit >= 0 ? 'is-positive' : 'is-negative'}`}><span className="leaders-mobile-label">Resolved P&L</span><strong>{fmtSigned(row.net_profit)}</strong></div>
-            <div className="leaders-row-rate"><span className="leaders-mobile-label">Win rate</span><strong>{winRate(row)?.toFixed(0)}%</strong><small>{row.won.toLocaleString()} wins</small></div>
-            <FollowButton row={row} {...follow} />
-          </li>
-        ))}</ol>}
-        {!loading && !error && ranked.length === 0 && <p className="leaders-notice">{ranking === 'winrate' ? 'No traders meet this minimum yet. Try a lower trade count or browse by P&L.' : 'Rankings will appear as tracked positions resolve.'}</p>}
-      </section>
+
+      <div className="sig-seg" role="tablist" aria-label="Leaderboard view">
+        <button type="button" role="tab" aria-selected={view === 'rankings'}
+          className={view === 'rankings' ? 'sig-seg-btn active' : 'sig-seg-btn'}
+          onClick={() => setView('rankings')}>Rankings</button>
+        <button type="button" role="tab" aria-selected={view === 'wins'}
+          className={view === 'wins' ? 'sig-seg-btn active' : 'sig-seg-btn'}
+          onClick={() => setView('wins')}>Recent wins</button>
+      </div>
+
+      {view === 'rankings' && (<>
+        {error && <p className="leaders-notice" role="status">Unable to refresh rankings. {rows.length > 0 ? 'Showing the last available data. ' : ''}Retrying automatically.</p>}
+        <section className="leaders-podium" aria-label="Top three traders" aria-busy={loading}>
+          {loading ? [0, 1, 2].map(i => <div className="leaders-podium-skeleton sig-skel" key={i} aria-hidden="true" />) : ranked.slice(0, 3).map((row, index) => (
+            <article className={`leaders-card leaders-place-${index + 1}`} key={row.wallet}>
+              <div className="leaders-card-top"><span className="leaders-place">#{index + 1}</span><Link to={dashboardPath(`/trader/${row.wallet}`)} aria-label={`View ${traderLabel(row.wallet, row.wallet_name)}`}><ArrowUpRight size={18} /></Link></div>
+              <Link className="leaders-card-person" to={dashboardPath(`/trader/${row.wallet}`)}><span className="leaders-avatar" style={{ background: avatarGradient(row.wallet) }}><GogglesMark /></span><h2>{traderLabel(row.wallet, row.wallet_name)}</h2></Link>
+              <strong className={`leaders-card-profit ${row.net_profit >= 0 ? 'is-positive' : 'is-negative'}`}>{fmtSigned(row.net_profit)}</strong><span className="leaders-metric-label">Resolved P&L</span>
+              <div className="leaders-card-record"><strong>{winRate(row)?.toFixed(0)}% <span>win rate</span></strong><span>{resolvedCount(row).toLocaleString()} resolved</span></div>
+              <FollowButton row={row} {...follow} />
+            </article>
+          ))}
+        </section>
+        <section className="leaders-list" aria-labelledby="leaders-list-title" aria-busy={loading}>
+          <div className="leaders-list-heading"><h2 id="leaders-list-title">The rankings</h2>{!loading && <span>{ranked.length} of {eligible.length.toLocaleString()} eligible traders</span>}</div>
+          <div className="leaders-column-head" aria-hidden="true"><span>Trader</span><span>Resolved P&L</span><span>Win rate</span><span /></div>
+          {loading ? [0, 1, 2, 3, 4].map(i => <div key={i} className="leaders-row-skeleton sig-skel" aria-hidden="true" />) : <ol className="leaders-rows">{ranked.map((row, index) => (
+            <li className="leaders-row" key={row.wallet}>
+              <div className="leaders-person"><span className="leaders-rank">{index + 1}</span><Link to={dashboardPath(`/trader/${row.wallet}`)}><span className="leaders-avatar" style={{ background: avatarGradient(row.wallet) }}><GogglesMark /></span><span className="leaders-name"><strong>{traderLabel(row.wallet, row.wallet_name)}</strong><small>{resolvedCount(row).toLocaleString()} resolved positions</small></span></Link></div>
+              <div className={`leaders-row-profit ${row.net_profit >= 0 ? 'is-positive' : 'is-negative'}`}><span className="leaders-mobile-label">Resolved P&L</span><strong>{fmtSigned(row.net_profit)}</strong></div>
+              <div className="leaders-row-rate"><span className="leaders-mobile-label">Win rate</span><strong>{winRate(row)?.toFixed(0)}%</strong><small>{row.won.toLocaleString()} wins</small></div>
+              <FollowButton row={row} {...follow} />
+            </li>
+          ))}</ol>}
+          {!loading && !error && ranked.length === 0 && <p className="leaders-notice">{ranking === 'winrate' ? 'No traders meet this minimum yet. Try a lower trade count or browse by P&L.' : 'Rankings will appear as tracked positions resolve.'}</p>}
+        </section>
+      </>)}
+
+      {view === 'wins' && <RecentWins />}
     </div>
   )
 }

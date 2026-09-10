@@ -662,9 +662,9 @@
   text-transform: uppercase; letter-spacing: 0.04em;
 }
 
-/* Filters stay collapsed by default (see filtersOpen in SignalsDemo.tsx) —
-   this toggle + badge is what's visible instead until someone actually
-   asks to see them, instead of every chip/slider always being in view. */
+/* Filters stay collapsed by default (see filtersOpen in AllMarkets /
+   RecentWins) — this toggle + badge is what's visible instead until someone
+   actually asks to see them, instead of every chip/slider always in view. */
 .sig-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .sig-filters-toggle {
   display: flex; align-items: center; gap: 7px;
@@ -810,8 +810,8 @@
 .sig-seg::-webkit-scrollbar { display: none; }
 .sig-seg-btn {
   padding: 10px 2px; margin-bottom: -1px;
-  font-size: 13.5px; font-weight: 600; color: var(--text-dim); cursor: pointer;
-  border-bottom: 2px solid transparent;
+  font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--text-dim); cursor: pointer;
+  background: none; border: 0; border-bottom: 2px solid transparent;
   white-space: nowrap; flex-shrink: 0;
 }
 .sig-seg-btn.active { color: var(--text); font-weight: 700; border-bottom-color: var(--blue); }

@@ -102,3 +102,8 @@
 }
 .pbot-sort button + button { border-left: 1px solid #30303d; }
 .pbot-sort button.is-on { background: #17171e; color: #e2e3ef; }
+
+/* Page-level "Profit Bot | All markets" segmented control. Base .sig-seg /
+   .sig-seg-btn live in app.css; carry the larger Signals-era sizing. */
+.profits-page .sig-seg { margin-top: 4px; margin-bottom: 24px; }
+.profits-page .sig-seg-btn { font-size: 16px; border-bottom-width: 3px; padding: 12px 2px 16px; }

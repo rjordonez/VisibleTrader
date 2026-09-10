@@ -8,7 +8,6 @@
 // line before shipping; swap any that turn out to be premium):
 //   home        system-outline-63-home
 //   search      system-outline-19-magnifier
-//   signals     system-outline-1043-signal
 //   terminal    system-outline-3089-bar-chart-vertical
 //   profits     system-outline-4224-line-graph-arrow-up
 //   leaderboard system-outline-433-trophy-star
@@ -19,7 +18,6 @@
 export const navIconIds = new Set<string>([
   'home',
   'search',
-  'signals',
   'terminal',
   'profits',
   'leaderboard',

@@ -6,7 +6,6 @@ import { CumulativeChart } from './PriceChart'
 import { ExpertPickCard } from './ExpertPickCard'
 import { SignalModal } from './SignalModal'
 import type { Opportunity } from './types'
-import './signals.css'
 
 // The whole Profits page. Reads the profit_bot_* RPCs (see
 // supabase/migrations/20260909060000_profit_bot.sql and follow-ups): a
