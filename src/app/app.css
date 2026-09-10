@@ -2101,11 +2101,11 @@
 .sig-drill-row { font-size: 14px; padding-block: 10px; }
 .sig-drill-label { font-size: 12px; }
 .sig-stats-row { gap: 12px; background: none; border: 0; border-radius: 0; overflow: visible; }
-.sig-stat-cell { min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: var(--ui-radius-card); overflow: hidden; }
+.sig-stat-cell { min-width: 0; padding: 20px 22px; border: 1px solid var(--border); border-radius: var(--ui-radius-card); overflow: hidden; }
 .sig-stat-cell-label { font-size: 12px; text-transform: none; letter-spacing: 0; line-height: 1.5; }
 /* Numbers stay on one line and scale down to fit rather than breaking a
    dollar figure across lines (e.g. "+$691,83" / "6"). */
-.sig-stat-cell-val { font-size: clamp(19px, 2.1vw, 30px); font-weight: 750; letter-spacing: -0.035em; overflow-wrap: normal; word-break: normal; white-space: nowrap; }
+.sig-stat-cell-val { font-size: clamp(17px, 1.7vw, 25px); font-weight: 750; letter-spacing: -0.035em; overflow-wrap: normal; word-break: normal; white-space: nowrap; }
 .profits-chart-net { font-size: 36px; letter-spacing: -0.04em; }
 .sig-table-wrap { border-radius: var(--ui-radius-card); }
 .sig-table { font-size: 14px; }
@@ -2140,8 +2140,8 @@
   .app-section-header { margin-bottom: 24px; }
   .app-section-sub { font-size: 13px; }
   .sig-stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .sig-stat-cell { padding: 16px; }
-  .sig-stat-cell-val { font-size: 26px; }
+  .sig-stat-cell { padding: 16px 18px; }
+  .sig-stat-cell-val { font-size: 20px; }
   .lb-row { gap: 8px; padding: 18px 0; }
   .lb-stats { gap: 12px; }
   .sig-table td { padding: 10px 0; }
