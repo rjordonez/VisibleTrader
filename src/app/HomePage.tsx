@@ -1,6 +1,5 @@
 import { MarketIcon } from './MarketIcon'
 import { useState, useEffect, type CSSProperties } from 'react'
-import type { User } from '@supabase/supabase-js'
 import { ArrowUpRight, ArrowUp, Bell, X, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { dashboardPath } from '../lib/domains'
@@ -13,13 +12,12 @@ import { useHomeTrades } from './useHomeTrades'
 import type { TickerTrade } from './types'
 import './home.css'
 
-function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<typeof useAlerts> }) {
+function HomePage({ alerts }: { alerts: ReturnType<typeof useAlerts> }) {
   // Discovery is the landing experience: a new or returning user should
   // immediately see validated trader activity before opting into Following.
   const [tab, setTab] = useState<'following' | 'discover'>('discover')
   const [sortMode, setSortMode] = useState<'compelling' | 'recent' | 'pnl' | 'winRate' | 'size'>('compelling')
   const feed = useHomeTrades(tab, alerts.watchedWallets.map(w => w.wallet))
-  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Your account'
   const liveCount = useLiveTradeCounter()
 
   // Twitter-style feed freeze: while the reader is at the top the list is
@@ -105,13 +103,6 @@ function HomePage({ user, alerts }: { user: User | null; alerts: ReturnType<type
           <ArrowUp size={14} /> {newCount} new trade{newCount === 1 ? '' : 's'}
         </button>
       )}
-      <header className="home-account">
-        <Link className="home-account-link" to={dashboardPath('/settings')} aria-label={`${displayName}, account settings`}>
-          <span className="home-account-avatar">{String(displayName).slice(0, 1).toUpperCase()}</span>
-          <span><small>Your home</small><strong>{displayName}</strong></span>
-        </Link>
-      </header>
-
       <details className="home-preferences">
         <summary><Bell size={16} /><span>Alerts & following</span><span className="home-alert-count">{alerts.history.length}</span></summary>
         <AlertsPage {...alerts} />

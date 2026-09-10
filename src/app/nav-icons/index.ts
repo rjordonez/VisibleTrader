@@ -6,7 +6,7 @@
 //
 // Sources (verify each is on Lordicon's FREE tier and add an attribution
 // line before shipping; swap any that turn out to be premium):
-//   home        system-outline-63-home
+//   feed        system-outline-56-document (free tier — verify + attribute)
 //   search      system-outline-19-magnifier
 //   terminal    system-outline-3089-bar-chart-vertical
 //   profits     system-outline-4224-line-graph-arrow-up
@@ -16,7 +16,7 @@
 // To change one: grab a new icon on lordicon.com, Download → Lottie JSON,
 // overwrite <id>.json here.
 export const navIconIds = new Set<string>([
-  'home',
+  'feed',
   'search',
   'terminal',
   'profits',

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Home as HomeIcon, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X } from 'lucide-react'
+import { Newspaper, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -146,7 +146,7 @@ function TabLoading() {
 // not a page you navigate to browse.
 const navItems = [
   { id: 'profits',     label: 'Profits',     path: '/profits',     Icon: TrendingUp },
-  { id: 'home',        label: 'Feed',        path: '/',            Icon: HomeIcon },
+  { id: 'feed',        label: 'Feed',        path: '/',            Icon: Newspaper },
   { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
 ]
 
@@ -335,7 +335,7 @@ export default function AppShell() {
         <div className={locked ? 'search-locked-bg' : undefined}>
           <Suspense fallback={<TabLoading />}>
             <Routes>
-              <Route index element={<HomePage user={user} alerts={alerts} />} />
+              <Route index element={<HomePage alerts={alerts} />} />
               {/* Signals was retired — its Expert Picks browser now lives on the Profits page. */}
               <Route path="signals" element={<Navigate to={dashboardPath('/profits')} replace />} />
               <Route path="profits" element={<ProfitsPage />} />
