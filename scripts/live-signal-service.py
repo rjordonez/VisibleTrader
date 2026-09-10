@@ -37,6 +37,7 @@ BALANCE_REFRESH_SECONDS = 15 * 60
 AGGREGATE_REFRESH_SECONDS = 90  # opportunities_live's best_win_rate/best_bet_ratio join — see refresh_opportunity_aggregates()
 LEADERBOARD_REFRESH_SECONDS = 120  # leaderboard_cache — see refresh_leaderboard()
 WALLET_CATEGORY_REFRESH_SECONDS = 180  # wallet_category_breakdown_cache — see refresh_wallet_category_breakdown()
+PROFIT_BOT_REFRESH_SECONDS = 120  # profit_bot_*_cache — see refresh_profit_bot()
 WARM_SEARCH_SECONDS = 4 * 60  # keeps the wallet-search Edge Function's isolate warm — see ping_wallet_search()
 BROADCAST_INTERVAL_SECONDS = 5  # batches opportunities/ticker changes into one Realtime broadcast per window —
 # see flush_dirty_broadcast(). Replaces per-row postgres_changes delivery on these two tables, which was blowing
@@ -932,6 +933,20 @@ def refresh_leaderboard(db):
     print('  [aggregates] refreshed leaderboard_cache')
 
 
+def refresh_profit_bot(db):
+    """Runs periodically (PROFIT_BOT_REFRESH_SECONDS, see main()) — recomputes
+    the profit_bot_*_cache tables the four profit_bot_* RPCs now just read.
+    Those RPCs used to run opportunity_wallets JOIN proven_wallets grouped by
+    (condition_id, outcome) with a `count(distinct wallet) >= 5` filter on
+    every Profits-page load and 60s poll — a ~56k-row sort spilling to disk,
+    ~11s cold for profit_bot_resolved(). Same precompute pattern as
+    refresh_leaderboard(); see
+    supabase/migrations/20260909140000_profit_bot_cache.sql for the full
+    story and the queries this mirrors."""
+    db.execute('SELECT refresh_profit_bot_cache()')
+    print('  [aggregates] refreshed profit_bot_*_cache')
+
+
 def refresh_wallet_category_breakdown(db):
     """Runs periodically (WALLET_CATEGORY_REFRESH_SECONDS, see main()) —
     recomputes wallet_category_breakdown_cache, the table the
@@ -1763,6 +1778,7 @@ def main():
     last_aggregate_refresh = 0.0  # fire once on startup, not just after the first interval
     last_leaderboard_refresh = 0.0  # fire once on startup, not just after the first interval
     last_wallet_category_refresh = 0.0  # fire once on startup, not just after the first interval
+    last_profit_bot_refresh = 0.0  # fire once on startup, not just after the first interval
     last_warm_search = 0.0  # fire once on startup, not just after the first interval
     last_broadcast_flush = time.time()
     last_price_flush = 0.0
@@ -1875,6 +1891,10 @@ def main():
                 if now - last_wallet_category_refresh > WALLET_CATEGORY_REFRESH_SECONDS:  # wallet_category_breakdown_cache
                     maintenance_jobs.submit('category-stats', refresh_wallet_category_breakdown, maintenance_db)
                     last_wallet_category_refresh = now
+
+                if now - last_profit_bot_refresh > PROFIT_BOT_REFRESH_SECONDS:  # profit_bot_*_cache
+                    executor.submit(refresh_profit_bot, db)
+                    last_profit_bot_refresh = now
 
                 if now - last_warm_search > WARM_SEARCH_SECONDS:  # keeps wallet-search's Edge Function isolate warm
                     maintenance_jobs.submit('warm-search', ping_wallet_search)
