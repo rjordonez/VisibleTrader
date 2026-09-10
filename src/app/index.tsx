@@ -145,8 +145,8 @@ function TabLoading() {
 // the Terminal's own read-only Alerts tab: it's a notification surface,
 // not a page you navigate to browse.
 const navItems = [
-  { id: 'home',        label: 'Home',        path: '/',            Icon: HomeIcon },
   { id: 'profits',     label: 'Profits',     path: '/profits',     Icon: TrendingUp },
+  { id: 'home',        label: 'Feed',        path: '/',            Icon: HomeIcon },
   { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
 ]
 
