@@ -20,6 +20,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from _env import load_env
+from live_work import TradeWorkers, SingleFlightJobs, PendingPrices, MarketLocks
 
 WS_HOST = 'ws-subscriptions-clob.polymarket.com'
 WS_PATH = '/ws/market'
@@ -81,6 +82,7 @@ stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trade
          # this same run's real traffic, is the real reduction — no need
          # to wait on production quota numbers to see it.
          'old_message_estimate': 0, 'broadcast_sends': 0,
+         'onchain_fills_received': 0, 'trade_side_failures': 0,
          # Timing diagnostics (2026-08-26) — added to find where a
          # process_trade call actually spends its time under real on-chain
          # volume, instead of guessing at pool/worker sizes again. All in
@@ -591,7 +593,9 @@ class Database:
         with self.pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.executemany(sql, params_seq)
+                affected = cur.rowcount
             conn.commit()
+            return affected
 
     def run_transaction(self, fn):
         """Runs fn(conn) — fn issues one or more related statements
@@ -1047,11 +1051,13 @@ def sweep_resolved_positions(db):
                  n, won_inc, lost_inc, realized_delta, now))
             return n
 
-        n = db.run_transaction(txn)
-        if n and won is not None:
-            with state_lock:
-                resolved_markets.add((condition_id, outcome))
-            mark_opportunity_dirty(condition_id, outcome)  # only this txn's opportunities.latest_price write is relevant here
+        with price_write_locks.hold([(condition_id, outcome)]):
+            n = db.run_transaction(txn)
+            if n and won is not None:
+                pending_prices.discard((condition_id, outcome))
+                with state_lock:
+                    resolved_markets.add((condition_id, outcome))
+                mark_opportunity_dirty(condition_id, outcome)
         if n:
             closed_count += 1
     if closed_count:
@@ -1105,6 +1111,12 @@ def prune_ticker(db):
 # ---------------- signal processing ----------------
 
 last_mtm_update = {}  # (conditionId, outcome) -> unix time of last mark-to-market write
+pending_prices = PendingPrices()
+# Serialize quote batches with direct fill/settlement price writes so an
+# older queued quote cannot land after a newer fill or final settlement.
+price_write_locks = MarketLocks()
+PRICE_FLUSH_SECONDS = 1
+PRICE_BATCH_ROWS = 200
 MTM_THROTTLE_SECONDS = 15  # price_change fires far more often than trades — measured live:
 # 490 price_change events vs 0 last_trade_price events in 20s for one token during an active
 # game. The original ask was "stale for minutes/forever", not sub-second freshness — 15s
@@ -1149,13 +1161,37 @@ def filter_price_changes(keyed_token_info, item):
 
 
 def write_price_updates(db, updates):
-    """The only part of price-change handling that touches the DB —
-    submitted to the executor so a slow write never stalls the
-    WS-receiving loop."""
-    for condition_id, outcome, mid in updates:
-        db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
-                   (mid, condition_id, outcome))
+    """One statement/commit for a bounded batch instead of one per market.
+
+    Only current quotes are coalesced; fills and position calculations still
+    use their original trade prices and timestamps.
+    """
+    if not updates:
+        return
+    placeholders = ','.join(['(%s::text,%s::text,%s::numeric)'] * len(updates))
+    db.execute(f'''UPDATE opportunities AS o SET latest_price = v.price
+        FROM (VALUES {placeholders}) AS v(condition_id, outcome, price)
+        WHERE o.condition_id = v.condition_id AND o.outcome = v.outcome
+          AND o.latest_price IS DISTINCT FROM v.price''',
+        [value for row in updates for value in row])
+    for condition_id, outcome, _ in updates:
         mark_opportunity_dirty(condition_id, outcome)
+
+
+def flush_pending_prices(db):
+    updates = pending_prices.take(PRICE_BATCH_ROWS)
+    with price_write_locks.hold([row[:2] for row in updates]):
+        updates = pending_prices.current(updates)
+        with state_lock:
+            settled = [row for row in updates if row[:2] in resolved_markets]
+        pending_prices.acknowledge(settled)
+        updates = [row for row in updates if row not in settled]
+        try:
+            write_price_updates(db, updates)
+            pending_prices.acknowledge(updates)
+        except Exception:
+            pending_prices.restore(updates)
+            raise
 
 
 # ---------------- realtime broadcast (opportunities only) ----------------
@@ -1296,10 +1332,14 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
     # a market we already track is a free, sub-second price update — no
     # extra network call, since we already receive it over the WS.
     key_probe = (info['conditionId'], info['outcome'])
-    if record_ticker and price and float(price) > 0 and key_probe in tiers_hit and key_probe not in resolved_markets:
-        last_mtm_update[key_probe] = time.time()  # a real fill is always fresher than a throttled quote update
-        db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
-                   (float(price), key_probe[0], key_probe[1]))
+    if record_ticker and price and float(price) > 0 and key_probe in tiers_hit:
+        with price_write_locks.hold([key_probe]):
+            if key_probe not in resolved_markets:
+                pending_prices.discard(key_probe)
+                last_mtm_update[key_probe] = time.time()
+                db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
+                           (float(price), key_probe[0], key_probe[1]))
+                mark_opportunity_dirty(*key_probe)
 
     if usd <= 0:
         return
@@ -1527,12 +1567,14 @@ def fetch_onchain_fills_via_rpc(db):
         if not rows:
             return
 
-        db.executemany('''
+        inserted = db.executemany('''
             INSERT INTO onchain_fills
                 (tx_hash, log_index, maker, taker, side, token_id, maker_amount_filled, taker_amount_filled, block_timestamp)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (tx_hash, log_index) DO NOTHING
         ''', rows)
+        with state_lock:
+            stats['onchain_fills_received'] += max(0, inserted)
     finally:
         with state_lock:
             _onchain_fetch_in_flight['v'] = False
@@ -1543,7 +1585,7 @@ def prune_onchain_fills(db):
     db.execute('DELETE FROM onchain_fills WHERE processed = true AND EXTRACT(EPOCH FROM received_at) < %s', (cutoff,))
 
 
-def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor):
+def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor, trade_db=None):
     """Replaces the old last_trade_price WebSocket branch as the source of
     trade discovery (see the 2026-08-26 investigation: that path measured a
     60% miss rate on rapid trade bursts even on actively-watched markets).
@@ -1571,9 +1613,12 @@ def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor):
     outcome-token leg when it was a SELL (side=1); taker_amount_filled is
     always the other leg.
     """
+    limit = min(200, executor.available)
+    if limit == 0:
+        return  # Backpressure: leave work durable in onchain_fills.
     rows = db.fetchall('''SELECT id, tx_hash, maker, taker, side, token_id,
             maker_amount_filled, taker_amount_filled, block_timestamp
-        FROM onchain_fills WHERE processed = false ORDER BY id LIMIT 200''')
+        FROM onchain_fills WHERE processed = false ORDER BY id LIMIT %s''', (limit,))
     if not rows:
         return
 
@@ -1593,13 +1638,51 @@ def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor):
         # record_ticker=True only on the first (buyer) call — see process_trade's
         # docstring: a tx_hash gets exactly one ticker row, and having both
         # calls write it broke that, corrupting which wallet showed on it.
-        for wallet, trade_side, record_ticker in ((buyer, 'BUY', True), (seller, 'SELL', False)):
-            with state_lock:
-                stats['process_trade_submitted'] += 1
-            executor.submit(process_trade_timed, db, keyed_token_info, token_id, price, size,
-                             trade_side, tx_hash, wallet, roster, wallet_names, block_ts, record_ticker)
+        # Both parties run together, FIFO within this token's lane. Snapshot
+        # metadata so a market-universe refresh cannot remove a queued fill's
+        # lookup while it waits. Unknown tokens were already ignored by
+        # process_trade; avoid allocating workers for those no-op calls.
+        info = keyed_token_info.get(token_id)
+        if info is None:
+            continue
+        with state_lock:
+            stats['process_trade_submitted'] += 2
+        executor.submit(token_id, process_fill, trade_db or db,
+                        {token_id: info}, token_id, price, size, tx_hash,
+                        buyer, seller, roster, wallet_names, block_ts)
 
+    # Existing acknowledgment semantics: processed means dispatched, not
+    # committed. Do NOT add automatic replay here: contributions/exits are
+    # not idempotent across a partially successful fill. See the deployment
+    # notes in docs/live-processing.md before restarting a loaded service.
     db.execute('UPDATE onchain_fills SET processed = true WHERE id = ANY(%s)', (ids,))
+
+
+def process_fill(db, token_info, token_id, price, size, tx_hash,
+                 buyer, seller, roster, wallet_names, block_ts):
+    # Attempt both sides even if one fails, matching the former independent
+    # submissions. Report failures instead of hiding exceptions in Futures.
+    errors = []
+    for wallet, side, ticker in ((buyer, 'BUY', True), (seller, 'SELL', False)):
+        try:
+            process_trade_timed(db, token_info, token_id, price, size, side,
+                                tx_hash, wallet, roster, wallet_names, block_ts, ticker)
+        except Exception as exc:
+            with state_lock:
+                stats['trade_side_failures'] += 1
+            errors.append(exc)
+    if errors:
+        raise RuntimeError(f'fill {tx_hash}: {errors!r}')
+
+
+def report_pipeline_freshness(db):
+    # Indexed first-row reads, not a full backlog COUNT on a busy database.
+    pending = db.fetchone('''SELECT EXTRACT(EPOCH FROM (now() - block_timestamp))
+        FROM onchain_fills WHERE processed = false ORDER BY id LIMIT 1''')
+    ticker = db.fetchone('''SELECT EXTRACT(EPOCH FROM (now() - ts))
+        FROM ticker ORDER BY epoch DESC LIMIT 1''')
+    print(f'[freshness] oldest_unsubmitted_fill_seconds={float(pending[0]) if pending else 0:.1f} '
+          f'newest_ticker_age_seconds={float(ticker[0]) if ticker else "unknown"}', flush=True)
 
 
 # ---------------- main loop ----------------
@@ -1608,27 +1691,26 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--roster-size', type=int, default=ROSTER_SIZE)
     ap.add_argument('--database-url', default=os.environ.get('DATABASE_URL'))
-    ap.add_argument('--workers', type=int, default=32)  # was 16 — bumped 2026-08-26 for the
-    # extra volume from covering both exchange contracts (not just Neg Risk)
-    # plus every roster-matched fill now needing two process_trade calls
-    # (buyer + seller) instead of one
+    ap.add_argument('--workers', type=int, default=24,
+                    help='Trade worker lanes (default 24); other workloads have dedicated workers')
+    ap.add_argument('--db-pool-size', type=int, default=32,
+                    help='Total connection budget, including 8 reserved for non-trade work')
+    ap.add_argument('--trade-queue-size', type=int, default=200,
+                    help='Maximum in-memory fills; excess stays in onchain_fills')
     args = ap.parse_args()
-
+    if args.workers < 1 or args.trade_queue_size < 1 or args.db_pool_size < 9:
+        ap.error('workers/queue must be positive and db-pool-size must be at least 9')
     if not args.database_url:
-        raise SystemExit('DATABASE_URL not set — export it or pass --database-url '
-                          '(Supabase Settings > Database > Connection string, session pooler, port 5432)')
+        raise SystemExit('DATABASE_URL not set')
 
-    # 32 (2026-09-04) — matches --workers exactly, so every worker can always
-    # get a connection without contention. The earlier 15-connection ceiling
-    # (EMAXCONNSESSION, pool_size=18 got refused outright) turned out to be
-    # Supavisor's own dashboard "Pool Size" setting for this project (Project
-    # Settings > Database > Connection Pooling), not a hard plan-tier limit —
-    # the Pro/Micro compute tier actually supports up to 60 direct database
-    # connections. Raised that dashboard setting to 40 first, leaving 8
-    # connections of headroom under it for everything else sharing this
-    # pooler (PostgREST, Auth, migrations, ad-hoc scripts). Do not raise
-    # pool_size here past whatever the dashboard setting currently is.
-    db = Database(args.database_url, pool_size=32)
+    # Separate connection pools reserve actual database access, not just
+    # Python threads. Total stays at 32 by default, as on the existing VM.
+    db = Database(args.database_url, pool_size=2)  # main-loop reads/config
+    trade_db = Database(args.database_url, pool_size=args.db_pool_size - 8)
+    price_db = Database(args.database_url, pool_size=1)
+    delivery_db = Database(args.database_url, pool_size=1)
+    ingestion_db = Database(args.database_url, pool_size=2)
+    maintenance_db = Database(args.database_url, pool_size=2)
 
     all_users = load_all_users(db)
     config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page
@@ -1655,7 +1737,13 @@ def main():
         resolved_markets.add((cond_id, outcome))
     print(f'{len(resolved_markets)} already-resolved condition/outcome pairs rehydrated (mark-to-market writes blocked for these).')
 
-    executor = ThreadPoolExecutor(max_workers=args.workers)
+    executor = TradeWorkers(args.workers, args.trade_queue_size)
+    price_jobs = SingleFlightJobs(1, 'prices')
+    delivery_jobs = SingleFlightJobs(1, 'delivery')
+    ingestion_jobs = SingleFlightJobs(1, 'ingestion')
+    maintenance_jobs = SingleFlightJobs(2, 'maintenance')
+    print(f'Work pools: trade_lanes={args.workers} fill_capacity={args.trade_queue_size} '
+          f'database_connections={args.db_pool_size}')
 
     print('Fetching active market/token universe...')
     tokens, token_info = fetch_active_tokens()
@@ -1677,6 +1765,8 @@ def main():
     last_wallet_category_refresh = 0.0  # fire once on startup, not just after the first interval
     last_warm_search = 0.0  # fire once on startup, not just after the first interval
     last_broadcast_flush = time.time()
+    last_price_flush = 0.0
+    last_trade_submitted = last_trade_completed = last_fills_received = 0
 
     last_activity['ts'] = time.time()
     threading.Thread(target=watchdog, daemon=True).start()
@@ -1718,7 +1808,16 @@ def main():
                         n_opps = sum(len(v) for v in tiers_hit.values())
                         avg_trade_ms = stats['process_trade_ms'] / stats['process_trade_count'] if stats['process_trade_count'] else 0
                         avg_profile_ms = stats['profile_fetch_ms'] / stats['profile_fetch_count'] if stats['profile_fetch_count'] else 0
-                        in_flight = stats['process_trade_submitted'] - stats['process_trade_count']
+                        submitted = stats['process_trade_submitted']
+                        completed = stats['process_trade_count']
+                        in_flight = submitted - completed
+                        elapsed = now - last_heartbeat
+                        admitted_rate = (submitted - last_trade_submitted) / elapsed
+                        completed_rate = (completed - last_trade_completed) / elapsed
+                        received = stats['onchain_fills_received']
+                        received_rate = (received - last_fills_received) / elapsed
+                        last_fills_received = received
+                        last_trade_submitted, last_trade_completed = submitted, completed
                         old_est, sends = stats['old_message_estimate'], stats['broadcast_sends']
                         reduction = f'{(1 - sends / old_est) * 100:.1f}%' if old_est else 'n/a'
                         print(f'[heartbeat] trades_seen={stats["trades_seen"]} '
@@ -1732,47 +1831,53 @@ def main():
                               f'avg_profile_fetch_ms={avg_profile_ms:.1f} '
                               f'(n={stats["profile_fetch_count"]}, cache_hits={stats["profile_fetch_cache_hits"]}) '
                               f'executor_in_flight={in_flight} '
+                              f'trade_tasks_admitted_per_s={admitted_rate:.1f} '
+                              f'trade_tasks_finished_per_s={completed_rate:.1f} '
+                              f'onchain_fills_received_per_s={received_rate:.1f} '
+                              f'trade_side_failures={stats["trade_side_failures"]} '
+                              f'pending_price_markets={len(pending_prices)} '
                               f'old_message_estimate={old_est} broadcast_sends={sends} reduction={reduction}')
                     last_heartbeat = now
+                    ingestion_jobs.submit('freshness', report_pipeline_freshness, ingestion_db)
 
                 if now - last_prune > 600:  # every 10 min, keep the high-volume ticker table bounded
-                    prune_ticker(db)
+                    maintenance_jobs.submit('prune-ticker', prune_ticker, maintenance_db)
                     last_prune = now
 
                 if now - last_onchain_prune > 600:  # every 10 min, keep onchain_fills bounded — see prune_ticker
-                    prune_onchain_fills(db)
+                    maintenance_jobs.submit('prune-fills', prune_onchain_fills, maintenance_db)
                     last_onchain_prune = now
 
                 if now - last_onchain_rpc_fetch > ONCHAIN_RPC_POLL_SECONDS:  # populates onchain_fills — see fetch_onchain_fills_via_rpc's docstring
-                    executor.submit(fetch_onchain_fills_via_rpc, db)  # makes several blocking HTTP calls — off the main loop, like sweep_resolved_positions below
+                    ingestion_jobs.submit('fetch-fills', fetch_onchain_fills_via_rpc, ingestion_db)  # makes several blocking HTTP calls — off the main loop, like sweep_resolved_positions below
                     last_onchain_rpc_fetch = now
 
                 if now - last_onchain_poll > 1:  # trade discovery — replaces the old last_trade_price WS branch
-                    poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor)
+                    poll_onchain_fills(ingestion_db, keyed_token_info, roster, wallet_names, executor, trade_db)
                     last_onchain_poll = now
 
                 if now - last_resolution_sweep > 300:  # every 5 min — catches positions closed out by market resolution, not a sale
-                    executor.submit(sweep_resolved_positions, db)
+                    maintenance_jobs.submit('resolve', sweep_resolved_positions, maintenance_db)
                     last_resolution_sweep = now
 
                 if now - last_balance_refresh > BALANCE_REFRESH_SECONDS:  # roster wallets' USDC.e balances, for the win-rate/bet-ratio filters
-                    executor.submit(refresh_wallet_balances, db, set(roster))
+                    maintenance_jobs.submit('balances', refresh_wallet_balances, maintenance_db, set(roster))
                     last_balance_refresh = now
 
                 if now - last_aggregate_refresh > AGGREGATE_REFRESH_SECONDS:  # opportunities_live's precomputed best_win_rate/best_bet_ratio join
-                    executor.submit(refresh_opportunity_aggregates, db)
+                    maintenance_jobs.submit('opportunity-stats', refresh_opportunity_aggregates, maintenance_db)
                     last_aggregate_refresh = now
 
                 if now - last_leaderboard_refresh > LEADERBOARD_REFRESH_SECONDS:  # leaderboard_cache
-                    executor.submit(refresh_leaderboard, db)
+                    maintenance_jobs.submit('leaderboard', refresh_leaderboard, maintenance_db)
                     last_leaderboard_refresh = now
 
                 if now - last_wallet_category_refresh > WALLET_CATEGORY_REFRESH_SECONDS:  # wallet_category_breakdown_cache
-                    executor.submit(refresh_wallet_category_breakdown, db)
+                    maintenance_jobs.submit('category-stats', refresh_wallet_category_breakdown, maintenance_db)
                     last_wallet_category_refresh = now
 
                 if now - last_warm_search > WARM_SEARCH_SECONDS:  # keeps wallet-search's Edge Function isolate warm
-                    executor.submit(ping_wallet_search)
+                    maintenance_jobs.submit('warm-search', ping_wallet_search)
                     last_warm_search = now
 
                 if now - last_config_reload > 10:  # picks up Settings-page changes without a restart
@@ -1780,8 +1885,12 @@ def main():
                     last_config_reload = now
 
                 if now - last_broadcast_flush > BROADCAST_INTERVAL_SECONDS:  # batched opportunities/ticker broadcast — see flush_dirty_broadcast()
-                    executor.submit(flush_dirty_broadcast, db)
+                    delivery_jobs.submit('broadcast', flush_dirty_broadcast, delivery_db)
                     last_broadcast_flush = now
+
+                if now - last_price_flush >= PRICE_FLUSH_SECONDS:
+                    price_jobs.submit('flush-prices', flush_pending_prices, price_db)
+                    last_price_flush = now
 
                 # recv_frames already swallows socket.timeout internally (expected,
                 # just means no data this tick) and raises ConnectionError on a real
@@ -1800,13 +1909,12 @@ def main():
                             if et == 'price_change':
                                 with state_lock:
                                     stats['price_change_seen'] += 1
-                                # Filtered inline (cheap, no I/O) — only submits to the
-                                # executor when there's an actual write to do, see
-                                # filter_price_changes' docstring for why this matters
-                                # at the current tracked-market count.
+                                # Preserve the existing quote throttle; stage a
+                                # latest-value snapshot instead of queueing a
+                                # new database task for every accepted update.
                                 updates = filter_price_changes(keyed_token_info, item)
                                 if updates:
-                                    executor.submit(write_price_updates, db, updates)
+                                    pending_prices.stage(updates)
                             elif et == 'book':
                                 with state_lock:
                                     stats['book_seen'] += 1
