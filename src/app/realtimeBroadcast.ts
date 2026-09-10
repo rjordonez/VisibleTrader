@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import type { Opportunity } from './types'
+import { subscribeWhileVisible } from './visibleRealtime'
 
 // live-signal-service.py batches opportunities writes into one broadcast
 // message per ~5s window (BROADCAST_INTERVAL_SECONDS) instead of every
@@ -12,28 +13,32 @@ import type { Opportunity } from './types'
 // SignalsDemo.tsx.) This opens exactly one channel, shared across every
 // caller (Terminal/SignalsDemo), instead of one per component.
 function makeBatchTopic<T>(topic: string, event: string) {
-  let channel: ReturnType<typeof supabase.channel> | null = null
+  let stop: (() => void) | null = null
   const listeners = new Set<(rows: T[]) => void>()
+  const refreshers = new Map<(rows: T[]) => void, () => void>()
 
   function ensureChannel() {
-    if (channel) return
-    channel = supabase
+    if (stop) return
+    stop = subscribeWhileVisible(() => supabase
       .channel(topic)
       .on('broadcast', { event }, (msg: { payload?: { rows?: T[] } }) => {
         const rows = msg.payload?.rows ?? []
         for (const cb of listeners) cb(rows)
+      }), () => {
+        for (const refresh of refreshers.values()) refresh()
       })
-      .subscribe()
   }
 
-  return function subscribe(cb: (rows: T[]) => void): () => void {
+  return function subscribe(cb: (rows: T[]) => void, refresh: () => void): () => void {
     listeners.add(cb)
+    refreshers.set(cb, refresh)
     ensureChannel()
     return () => {
       listeners.delete(cb)
-      if (listeners.size === 0 && channel) {
-        supabase.removeChannel(channel)
-        channel = null
+      refreshers.delete(cb)
+      if (listeners.size === 0 && stop) {
+        stop()
+        stop = null
       }
     }
   }

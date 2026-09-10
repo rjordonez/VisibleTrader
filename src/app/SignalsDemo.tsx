@@ -10,6 +10,7 @@ import {
 } from './helpers'
 import GogglesMark from './GogglesMark'
 import { onOpportunitiesBatch } from './realtimeBroadcast'
+import { subscribeWhileVisible } from './visibleRealtime'
 import { SignalModal } from './SignalModal'
 import { SkelLbRow } from './Skeleton'
 import { ExpertPickCard } from './ExpertPickCard'
@@ -155,7 +156,7 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
     // a fallback in case a broadcast is ever missed (dropped connection etc.).
     const unsubBroadcast = onOpportunitiesBatch(() => {
       if (!cancelled) refreshKeepingDepth()
-    })
+    }, refreshKeepingDepth)
     const interval = setInterval(refreshKeepingDepth, 60000)
     const unsubVisible = onTabVisible(refreshKeepingDepth)
     return () => {
@@ -210,19 +211,18 @@ function SignalsDemo({ category, onCategoryChange }: { category: string; onCateg
     // batching, so it stays on a plain postgres_changes subscription and
     // merges the inserted row straight from the payload instead of
     // refetching all 200 rows on every insert.
-    const channel = supabase
+    const unsubTicker = subscribeWhileVisible(() => supabase
       .channel('ticker-changes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ticker' }, payload => {
         if (cancelled) return
         setTicker(prev => [payload.new as TickerTrade, ...prev].slice(0, 200))
-      })
-      .subscribe()
+      }), load)
     // Realtime is the primary delivery path here — this interval is only a
     // fallback in case a realtime event is ever missed, not the main way
     // updates land, so it doesn't need to be aggressive.
     const interval = setInterval(load, 60000)
     const unsubVisible = onTabVisible(load)
-    return () => { cancelled = true; clearInterval(interval); supabase.removeChannel(channel); unsubVisible() }
+    return () => { cancelled = true; clearInterval(interval); unsubTicker(); unsubVisible() }
   }, [])
 
   // Wins feed — closed, profitable positions from tracked wallets only

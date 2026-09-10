@@ -96,7 +96,7 @@ export default function Terminal() {
     const unsubBroadcast = onOpportunitiesBatch(rows => {
       if (cancelled) return
       setOpportunities(prev => mergeOpportunities(prev, rows))
-    })
+    }, load)
     const interval = setInterval(load, 60000)
     const unsubVisible = onTabVisible(load)
     return () => {
