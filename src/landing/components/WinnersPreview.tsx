@@ -4,11 +4,11 @@ import PhoneOverlay from './PhoneOverlay'
 // the Winners tab (fake traders, fake markets, fake everything above), not
 // a view onto real user or trading data. Same rule as the old
 // DashboardPreview this replaced: never wired to a real fetch. Mirrors the
-// real app's Winners tab (src/app/SignalsDemo.tsx + .lb-* in app.css)
+// real app's Recent wins view (Leaderboard tab + .lb-* in app.css)
 // visually, but stays its own self-contained styling (see .wp-* in
 // landing.css) — landing/ and app/ are a deliberately enforced boundary
 // (see .dependency-cruiser.cjs), so this can never actually import it.
-const navItems = ['Home', 'Signals', 'Profits', 'Leaderboard', 'Alerts', 'Lookup']
+const navItems = ['Home', 'Profits', 'Leaderboard', 'Alerts', 'Lookup']
 
 const rows = [
   { initial: 'C', bg: 'linear-gradient(135deg, #ca8a04, #facc15)', name: 'coinwatcher92', status: 'Won', time: '12s ago', market: 'Will the Fed cut rates in September?', outcome: 'Yes', pnl: '+$62,340', pct: '71.2%', staked: '$87,550', legs: '1 leg' },
@@ -43,7 +43,7 @@ export default function WinnersPreview() {
         {/* Top nav */}
         <div className="dash-topnav">
           {navItems.map(label => (
-            <div key={label} className={`dash-nav-item ${label === 'Signals' ? 'active' : ''}`}>
+            <div key={label} className={`dash-nav-item ${label === 'Leaderboard' ? 'active' : ''}`}>
               {label}
             </div>
           ))}

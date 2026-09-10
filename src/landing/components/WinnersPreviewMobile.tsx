@@ -1,4 +1,4 @@
-import { Menu, Home, Zap, TrendingUp, Trophy, Bell } from 'lucide-react'
+import { Menu, Home, TrendingUp, Trophy, Bell } from 'lucide-react'
 
 // Same illustrative-only rule as WinnersPreview.tsx: this is a static
 // marketing mockup (phone-frame version, shown only below the 768px
@@ -17,9 +17,8 @@ const rows = [
 // clone of the real nav.
 const bottomNavItems = [
   { Icon: Home, label: 'Home' },
-  { Icon: Zap, label: 'Signals', active: true },
   { Icon: TrendingUp, label: 'Profits' },
-  { Icon: Trophy, label: 'Leaders' },
+  { Icon: Trophy, label: 'Leaders', active: true },
   { Icon: Bell, label: 'Alerts' },
 ]
 

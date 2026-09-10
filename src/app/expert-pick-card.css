@@ -1,5 +1,5 @@
-/* ExpertPickCard styles. Moved out of signals.css so the card can be used
-   outside the Signals route (the Profits page's Profit Bot picks). Its
+/* ExpertPickCard styles. Kept in their own file so the card can be used on
+   any route (the Profits page's Profit Bot picks + All markets browser). Its
    PickChart brings pick-chart.css in on its own. */
 .expert-picks-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 .expert-picks-grid > .sig-empty { grid-column: 1 / -1; }

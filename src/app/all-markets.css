@@ -1,0 +1,15 @@
+/* All markets — the wide-angle, filterable browse of every open market a
+   tracked trader holds (AllMarkets.tsx), the "All markets" tab of the Profits
+   page. Carries the roomier filter/toolbar sizing the old `.signals-page`
+   overrides gave, scoped to `.all-markets`. The card grid itself is styled by
+   `expert-pick-card.css` (via ExpertPickCard); tokens resolve from `.sig-page`. */
+.all-markets .sig-chips.am-categories { margin-bottom: 18px; }
+.all-markets .sig-toolbar { margin-bottom: 18px; }
+.all-markets .sig-filters-toggle { border-radius: 13px; min-height: 44px; padding: 10px 14px; font-size: 14px; }
+.all-markets .sig-filters { border-radius: 18px; padding: 24px; }
+.all-markets .sig-filter-label { font-size: 12px; }
+.all-markets .sig-load-more { min-height: 48px; border-radius: 14px; font-size: 14px; }
+
+@media (max-width: 640px) {
+  .all-markets .sig-filters { padding: 18px; }
+}

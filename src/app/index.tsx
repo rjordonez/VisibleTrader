@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Home as HomeIcon, Zap, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X } from 'lucide-react'
+import { Newspaper, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -16,7 +16,6 @@ import './app.css'
 // downloads once someone actually visits it, instead of every tab's code
 // shipping together in one chunk the moment AppShell itself loads. See
 // App.tsx's identical reasoning for the marketing/app split this mirrors.
-const SignalsDemo = lazy(() => import('./SignalsDemo'))
 const HomePage = lazy(() => import('./HomePage'))
 const ProfitsPage = lazy(() => import('./ProfitsPage'))
 const LeaderboardPage = lazy(() => import('./LeaderboardPage'))
@@ -146,9 +145,8 @@ function TabLoading() {
 // the Terminal's own read-only Alerts tab: it's a notification surface,
 // not a page you navigate to browse.
 const navItems = [
-  { id: 'home',        label: 'Home',        path: '/',            Icon: HomeIcon },
-  { id: 'signals',     label: 'Signals',     path: '/signals',     Icon: Zap },
   { id: 'profits',     label: 'Profits',     path: '/profits',     Icon: TrendingUp },
+  { id: 'feed',        label: 'Feed',        path: '/',            Icon: Newspaper },
   { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
 ]
 
@@ -194,7 +192,6 @@ export default function AppShell() {
   const location = useLocation()
   const { locked } = useSubscriptionGate()
   const [user, setUser] = useState<User | null>(null)
-  const [category, setCategory] = useState('all')
   // Persisted so the choice sticks across reloads/sessions, same pattern as
   // useAlerts.ts's localStorage-backed watchlist/tier state.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('vt_sidebar_collapsed') === '1')
@@ -338,8 +335,9 @@ export default function AppShell() {
         <div className={locked ? 'search-locked-bg' : undefined}>
           <Suspense fallback={<TabLoading />}>
             <Routes>
-              <Route index element={<HomePage user={user} alerts={alerts} />} />
-              <Route path="signals" element={<SignalsDemo category={category} onCategoryChange={setCategory} />} />
+              <Route index element={<HomePage alerts={alerts} />} />
+              {/* Signals was retired — its Expert Picks browser now lives on the Profits page. */}
+              <Route path="signals" element={<Navigate to={dashboardPath('/profits')} replace />} />
               <Route path="profits" element={<ProfitsPage />} />
               <Route path="leaderboard" element={<LeaderboardPage {...alerts} />} />
               <Route path="alerts" element={<Navigate to={dashboardPath('/')} replace />} />

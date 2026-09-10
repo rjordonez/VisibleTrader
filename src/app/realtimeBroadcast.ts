@@ -9,9 +9,9 @@ import { subscribeWhileVisible } from './visibleRealtime'
 // blew through the message quota despite barely any real users, and three
 // separate frontend subscriptions to the same table tripled it further.
 // (ticker was originally batched the same way too, but its volume was
-// never actually the problem — it's back on plain postgres_changes, see
-// SignalsDemo.tsx.) This opens exactly one channel, shared across every
-// caller (Terminal/SignalsDemo), instead of one per component.
+// never actually the problem — it's back on plain postgres_changes.)
+// This opens exactly one channel, shared across every caller (Terminal /
+// AllMarkets), instead of one per component.
 function makeBatchTopic<T>(topic: string, event: string) {
   let stop: (() => void) | null = null
   const listeners = new Set<(rows: T[]) => void>()

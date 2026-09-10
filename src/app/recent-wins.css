@@ -1,0 +1,51 @@
+/* Recent wins — the recent-wins carousel + the deep wins feed, moved off the
+   old Signals page onto Leaderboard (RecentWins.tsx). Carries the "bigger type
+   / roomier rows" look the old `.signals-page` overrides gave, scoped to
+   `.recent-wins`, plus the unique win-card carousel styles (renamed from
+   `.signals-*` to `.rw-*`). Colour/spacing tokens resolve from `.sig-page`. */
+.rw-highlights { margin-bottom: 30px; }
+.rw-highlights-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.rw-highlights-heading h2 { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 650; margin: 0; }
+.rw-highlights-heading h2 svg { color: var(--text-dim); }
+.rw-highlights-track { display: flex; gap: 12px; overflow-x: auto; padding: 3px 3px 10px; scroll-snap-type: x proximity; scrollbar-width: thin; scrollbar-color: var(--chip) transparent; }
+.rw-win-card { flex: 0 0 220px; min-width: 0; border: 1px solid var(--border); border-radius: 18px; background: linear-gradient(145deg, #181820, #0d0d11); color: var(--text); text-decoration: none; overflow: hidden; scroll-snap-align: start; transition: border-color 150ms, background 150ms; }
+.rw-win-card:hover { border-color: #63637b; background: #191921; }
+.rw-win-trader { display: flex; align-items: center; gap: 8px; padding: 12px 14px; background: rgba(255,255,255,0.025); font-size: 13px; font-weight: 600; }
+.rw-win-trader > span:nth-child(2) { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rw-win-trader > svg { flex-shrink: 0; color: var(--text-dim); }
+.rw-win-avatar { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; font-size: 11px; }
+.rw-win-profit { padding: 14px 14px 5px; color: var(--green); font-size: 23px; font-weight: 700; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.rw-win-market { padding: 0 14px 15px; font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rw-win-skeleton { height: 137px; background: var(--surface-2); }
+
+.recent-wins .sig-chips.rw-categories { margin-bottom: 18px; }
+.recent-wins .sig-toolbar { margin-bottom: 18px; }
+.recent-wins .sig-filters-toggle { border-radius: 13px; min-height: 44px; padding: 10px 14px; font-size: 14px; }
+.recent-wins .sig-filters { border-radius: 18px; padding: 24px; }
+.recent-wins .sig-filter-label { font-size: 12px; }
+.recent-wins .lb-table { border: 0; border-radius: 0; overflow: visible; }
+.recent-wins .lb-head { background: none; padding: 12px 4px; font-size: 12px; text-transform: none; letter-spacing: 0; }
+.recent-wins .lb-row { padding: 22px 4px; min-height: 90px; border-bottom-color: rgba(255,255,255,0.045); }
+.recent-wins .lb-avatar { width: 46px; height: 46px; font-size: 16px; }
+.recent-wins .lb-name, .recent-wins .sig-q { font-size: 16px; font-weight: 600; }
+.recent-wins .sig-q { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
+.recent-wins .lb-val { font-size: 18px; font-weight: 650; letter-spacing: -0.025em; }
+.recent-wins .lb-sub, .recent-wins .lb-val-sub { font-size: 12px; line-height: 1.5; }
+
+@media (max-width: 640px) {
+  .rw-win-card { flex-basis: 190px; }
+  .recent-wins .lb-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(90px, 0.48fr); gap: 10px 14px; padding: 20px 0; align-items: start; }
+  .recent-wins .lb-market { grid-column: 1; grid-row: 1; }
+  .recent-wins .lb-row .lb-market .sig-q { font-size: 16px; white-space: normal; line-height: 1.4; }
+  .recent-wins .lb-trader { grid-column: 1; grid-row: 2; gap: 8px; }
+  .recent-wins .lb-avatar { width: 28px; height: 28px; font-size: 12px; }
+  .recent-wins .lb-name { font-size: 12px; color: var(--text-dim); }
+  .recent-wins .lb-sub { font-size: 11px; }
+  .recent-wins .lb-stats { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  .recent-wins .lb-row .lb-col { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+  .recent-wins .lb-row .lb-col::before { content: attr(data-label); font-size: 10px; text-transform: none; }
+  .recent-wins .lb-row .lb-col-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+  .recent-wins .lb-val { font-size: 17px; }
+  .recent-wins .lb-row .lb-val-sub { font-size: 11px; }
+  .recent-wins .sig-filters { padding: 18px; }
+}
