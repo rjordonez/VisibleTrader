@@ -15,6 +15,19 @@ class RequestError extends Error {
 }
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers });
 const text = (value: unknown) => typeof value === 'string' ? value.slice(0, 300) : '';
+const activityPageSize = 100;
+const activityMaxPages = 5;
+
+async function fetchInternationalActivity(wallet: string) {
+  const all: Record<string, unknown>[] = [];
+  for (let page = 0; page < activityMaxPages; page++) {
+    const batch = await upstream(`https://data-api.polymarket.com/activity?user=${wallet}&limit=${activityPageSize}&offset=${page * activityPageSize}&sortBy=TIMESTAMP&sortDirection=DESC&type=TRADE`);
+    if (!Array.isArray(batch)) throw new RequestError('Polymarket returned an unexpected activity response. Please retry.', 502);
+    all.push(...batch);
+    if (batch.length < activityPageSize) break;
+  }
+  return all;
+}
 
 async function upstream(url: string, allowMissing = false) {
   const res = await fetch(url, { signal: AbortSignal.timeout(12_000), headers: { Accept: 'application/json' } });
@@ -118,11 +131,12 @@ export async function handleConnection(req: Request) {
       const wallet = connection.wallet_address;
       const [positions, activity] = await Promise.all([
         upstream(`https://data-api.polymarket.com/positions?user=${wallet}&limit=100&offset=0&sizeThreshold=0&sortBy=CURRENT&sortDirection=DESC`),
-        upstream(`https://data-api.polymarket.com/activity?user=${wallet}&limit=50&offset=0&sortBy=TIMESTAMP&sortDirection=DESC&type=TRADE`),
+        fetchInternationalActivity(wallet),
       ]);
       if (!Array.isArray(positions) || !Array.isArray(activity)) throw new RequestError('Polymarket returned an unexpected response. Please retry.', 502);
       return reply({
         connection, fetched_at: new Date().toISOString(), positions_limited: positions.length === 100,
+        activity_limited: activity.length >= 500,
         positions: positions.map(p => ({
           asset: text(p.asset), title: text(p.title), outcome: text(p.outcome), size: finiteNumber(p.size),
           current_value: finiteNumber(p.currentValue), cash_pnl: finiteNumber(p.cashPnl), redeemable: p.redeemable === true,
@@ -131,6 +145,7 @@ export async function handleConnection(req: Request) {
           transaction_hash: text(a.transactionHash), asset: text(a.asset), timestamp: finiteNumber(a.timestamp),
           title: text(a.title), outcome: text(a.outcome), side: a.side === 'BUY' ? 'Buy' : a.side === 'SELL' ? 'Sell' : 'Trade',
           amount: finiteNumber(a.usdcSize), size: finiteNumber(a.size), price: finiteNumber(a.price),
+          pnl: finiteNumber(a.usdcPnl),
         })),
       });
     }

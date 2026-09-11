@@ -19,6 +19,8 @@ const waitText = async (page, text) => await page.getByText(text, { exact: true 
 async function scenario(width, withWallet = false) {
   const context = await browser.newContext({ viewport: { width, height: 950 } })
   let connection = null
+  let usConnection = null
+  let entries = []
   let failSnapshot = false
   const actions = []
   const errors = []
@@ -54,6 +56,18 @@ async function scenario(width, withWallet = false) {
     const send = (data, status=200) => route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)})
     if (url.pathname === '/auth/v1/user') return send(user)
     if (url.pathname.includes('/rest/v1/subscriptions')) return send([{status:'active',plan:'pro'}])
+    if (url.pathname.includes('/rest/v1/personal_pnl_entries')) {
+      if (req.method() === 'POST') { const entry = req.postDataJSON(); entries = [entry]; return send(entry) }
+      if (req.method() === 'DELETE') { entries = []; return send(null) }
+      return send(entries)
+    }
+    if (url.pathname.includes('/rest/v1/polymarket_us_connections')) return send(usConnection ? [usConnection] : [])
+    if (url.pathname.includes('/functions/v1/polymarket-us-connect')) {
+      const body = req.postDataJSON()
+      if (body.action === 'connect') { usConnection = { key_id: 'demo-key', status: 'active', connected_at: new Date().toISOString() }; return send({ connection: usConnection }) }
+      if (body.action === 'snapshot') return send({ connection: usConnection, activity: [], resource_errors: { positions: 'Polymarket US positions are currently unavailable. Activity is still available in Trades.' }, fetched_at: new Date().toISOString() })
+      if (body.action === 'disconnect') { usConnection = null; return send({ disconnected: true }) }
+    }
     if (url.pathname.includes('/rest/v1/polymarket_connections')) return send(connection ? [connection] : [])
     if (url.pathname.includes('/functions/v1/polymarket-connect')) {
       const body=req.postDataJSON(); actions.push(body.action)
@@ -75,19 +89,22 @@ async function scenario(width, withWallet = false) {
   })
   const page = await context.newPage()
   page.on('pageerror', error => errors.push(error.message))
-  await page.goto(`${process.env.CONNECTION_TEST_ORIGIN || 'http://127.0.0.1:5180'}/app/connections`)
-  await page.getByRole('button',{name:'Connect Polymarket',exact:true}).waitFor({state:'visible'})
-  await page.getByRole('button',{name:'Connect Polymarket',exact:true}).isEnabled()
-  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth > innerWidth), false, 'no page overflow')
-  await page.screenshot({path:`${artifacts}/accounts-${width}.png`,fullPage:true})
-  const beforeUS=actions.length
-  await page.getByRole('button',{name:'See how it will work'}).click()
+  const origin = process.env.CONNECTION_TEST_ORIGIN || 'http://127.0.0.1:5180'
+  await page.goto(origin + '/app/journal')
+  await page.getByRole('heading', { name: 'Your trading story starts here.' }).waitFor()
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'no page overflow')
+  await page.screenshot({path: artifacts + '/journal-empty-' + width + '.png', fullPage:true})
+  await page.getByRole('button',{name:'Connect your account',exact:true}).click()
   await page.getByRole('dialog').waitFor()
-  assert.equal(await page.getByRole('dialog').locator('input').count(),0,'US preview must not collect credentials')
-  await page.screenshot({path:`${artifacts}/us-${width}.png`,fullPage:true})
-  await page.getByRole('button',{name:'Got it',exact:true}).click()
-  assert.equal(actions.length,beforeUS,'US preview must make no API calls')
-  await page.getByRole('button',{name:'Connect Polymarket',exact:true}).click()
+  await page.screenshot({path: artifacts + '/choose-' + width + '.png', fullPage:true})
+  await page.getByRole('button',{name:'Polymarket US United States · API key'}).click()
+  await page.getByLabel('Key ID', {exact:true}).fill('demo-key')
+  await page.getByLabel('Secret Key', {exact:true}).fill('synthetic-test-key')
+  await page.getByRole('button',{name:'Show secret key'}).click()
+  assert.equal(await page.getByLabel('Secret Key', {exact:true}).getAttribute('type'), 'text')
+  await page.screenshot({path: artifacts + '/us-' + width + '.png', fullPage:true})
+  await page.getByRole('button',{name:'Choose another platform'}).click()
+  await page.getByRole('button',{name:'Polymarket International · Wallet or public profile'}).click()
   if(withWallet){
     await page.getByRole('button',{name:'Test Wallet',exact:true}).click()
     await waitText(page,'Connection canceled in your wallet. You can try again whenever you’re ready.')
@@ -97,38 +114,63 @@ async function scenario(width, withWallet = false) {
     assert.equal(actions.includes('verify'),false,'wallet change must prevent verification')
     await page.evaluate(()=>window.walletMode='ok')
     await page.getByRole('button',{name:'Test Wallet',exact:true}).click()
-    await waitText(page,'Wallet verified')
     assert.equal((await page.evaluate(()=>window.walletMethods)).includes('eth_sendTransaction'),false)
   }else{
     await waitText(page,'No browser wallet detected')
     await page.getByRole('button',{name:'Track profile',exact:true}).click()
-    await page.getByLabel('Polymarket profile or wallet address').fill(`https://polymarket.com/profile/${wallet}`)
+    await page.getByLabel('Polymarket profile or wallet address').fill('https://polymarket.com/profile/' + wallet)
     await page.getByRole('button',{name:'Find my account',exact:true}).click()
     await waitText(page,'Tracking only · ownership not verified')
+    await page.screenshot({path: artifacts + '/profile-' + width + '.png', fullPage:true})
     await page.getByRole('button',{name:'Track this account',exact:true}).click()
-    await waitText(page,'Tracking active')
   }
   await waitText(page,'Will the next launch happen this month?')
-  await page.screenshot({path:`${artifacts}/portfolio-${width}.png`,fullPage:true})
-  await page.getByRole('button',{name:'Recent trades',exact:true}).click()
+  await page.screenshot({path: artifacts + '/portfolio-' + width + '.png', fullPage:true})
+  await page.getByRole('button',{name:'Trades',exact:true}).click()
   await waitText(page,'Buy')
+  await page.getByRole('button',{name:'Review day',exact:true}).click()
+  await page.getByRole('dialog').waitFor()
+  await page.getByLabel('Note (optional)').fill('Stayed patient with my entry.')
+  await page.getByRole('button',{name:'Save',exact:true}).click()
+  await page.getByRole('dialog').waitFor({state:'hidden'})
+  assert.equal(entries[0].note,'Stayed patient with my entry.')
+  assert.equal(entries[0].amount,0)
+  await page.screenshot({path: artifacts + '/calendar-' + width + '.png', fullPage:true})
   await page.reload()
-  await waitText(page,'Demo Trader')
   await waitText(page,'Will the next launch happen this month?')
   failSnapshot=true
   await page.getByRole('button',{name:'Refresh',exact:true}).click()
   await page.getByRole('alert').filter({hasText:'Showing the last successful update.'}).waitFor()
   await waitText(page,'Will the next launch happen this month?')
   failSnapshot=false
-  await page.getByRole('button',{name:'Disconnect',exact:true}).click()
-  await page.getByRole('button',{name:'Keep connected',exact:true}).click()
+  await page.getByRole('link',{name:'Manage connections',exact:true}).click()
+  await page.getByRole('heading',{name:'Connections',exact:true}).waitFor()
+  await page.screenshot({path: artifacts + '/settings-' + width + '.png', fullPage:true})
+  await page.getByRole('button',{name:'Disconnect Polymarket',exact:true}).click()
+  await page.getByRole('button',{name:'Cancel',exact:true}).click()
   assert.ok(connection)
+  await page.getByRole('button',{name:'Disconnect Polymarket',exact:true}).click()
   await page.getByRole('button',{name:'Disconnect',exact:true}).click()
-  await page.getByRole('button',{name:'Disconnect account',exact:true}).click()
-  await page.getByRole('button',{name:'Connect Polymarket',exact:true}).waitFor()
+  await page.getByText('Connect a wallet or follow a public profile.',{exact:true}).waitFor()
   assert.equal(connection,null)
+  assert.equal(entries.length,1,'disconnect preserves saved journal')
+  await page.getByRole('button',{name:'Connect account',exact:true}).click()
+  await page.getByRole('button',{name:'Polymarket US United States · API key'}).click()
+  await page.getByLabel('Key ID',{exact:true}).fill('demo-key')
+  await page.getByLabel('Secret Key',{exact:true}).fill('synthetic-test-key')
+  await page.getByRole('button',{name:'Connect Polymarket US',exact:true}).click()
+  await page.getByRole('link',{name:'Open Journal'}).click()
+  await page.getByText('Polymarket US positions are currently unavailable. Activity is still available in Trades.',{exact:true}).waitFor()
+  assert.equal(await page.getByRole('heading',{name:'No positions right now'}).count(),0,'unavailable positions must not look empty')
+  assert.equal(await page.locator('.connection-metrics strong').first().innerText(),'—','unavailable position value must not look like zero')
+  await page.getByRole('button',{name:'Trades',exact:true}).click()
+  await page.getByRole('heading',{name:'No recent trades'}).waitFor()
+  assert.equal(await page.getByRole('combobox',{name:'Trading account'}).inputValue(),'us')
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth > innerWidth), false, 'no connected page overflow')
+  await page.goto(origin + '/app/connections')
+  await page.waitForURL('**/app/settings/connections')
   assert.equal(errors.length,0,errors.join('\n'))
-  console.log(`PASS ${width}px: US UI only, ${withWallet?'wallet rejection/change/verification':'profile preview/tracking'}, restore, stale-data error, disconnect, no runtime errors`)
+  console.log('PASS ' + width + 'px: connection selection, wallet/profile, US credentials, journal review/save, restore, stale data, disconnect, legacy redirect, no overflow/runtime errors')
   await context.close()
 }
 try{await scenario(1440,true);await scenario(390,false)}finally{await browser.close()}

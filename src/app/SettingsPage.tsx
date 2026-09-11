@@ -163,8 +163,8 @@ function SettingsPage() {
       <div className="sig-panel settings-panel">
         <div className="settings-subscription">
           <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Connected accounts</div>
-          <p style={{ color: 'var(--text-dim)', fontSize: 13, marginBottom: 12 }}>Manage your Polymarket connection and view your portfolio.</p>
-          <Link className="sig-btn secondary" to={dashboardPath('/connections')}>Manage accounts</Link>
+          <p style={{ color: 'var(--text-dim)', fontSize: 13, marginBottom: 12 }}>Connect your trading accounts to Journal and manage access.</p>
+          <Link className="sig-btn secondary" to={dashboardPath('/settings/connections')}>Manage connections</Link>
         </div>
         <div className="settings-subscription">
           <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Subscription</div>

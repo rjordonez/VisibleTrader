@@ -5,14 +5,15 @@ import type { Connection, Profile, USConnection } from './api'
 import { signConnection, useBrowserWallets, walletAddress, walletError } from './wallet'
 import type { BrowserWallet } from './wallet'
 
-export default function ConnectDialog({ venue, onClose, onConnected, onConnectedUS }: {
-  venue: 'international' | 'us'
+export default function ConnectDialog({ venue: initialVenue, onClose, onConnected, onConnectedUS }: {
+  venue: 'international' | 'us' | 'choose'
   onClose: () => void
   onConnected: (connection: Connection) => void
   onConnectedUS: (connection: USConnection) => void
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const wallets = useBrowserWallets()
+  const [venue, setVenue] = useState(initialVenue)
   const [mode, setMode] = useState<'wallet' | 'profile'>('wallet')
   const [input, setInput] = useState('')
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -25,7 +26,7 @@ export default function ConnectDialog({ venue, onClose, onConnected, onConnected
   const lifetime = useRef(0)
   const releaseWallet = useRef<(() => void) | null>(null)
   const busy = Boolean(stage)
-  const canClose = !stage.includes('saving') && !stage.startsWith('Saving')
+  const canClose = !stage.includes('saving') && !stage.startsWith('Saving') && !stage.startsWith('Verifying your credentials')
 
   useEffect(() => {
     dialog.current?.showModal()
@@ -119,14 +120,23 @@ export default function ConnectDialog({ venue, onClose, onConnected, onConnected
     onCancel={event => { event.preventDefault(); if (canClose) onClose() }}
     onClick={event => { if (event.target === event.currentTarget && canClose) onClose() }}>
     <div className="connection-dialog-top">
-      <span className="connection-venue-icon">{venue === 'us' ? <span aria-hidden="true">US</span> : <Globe2 size={24} />}</span>
+      {venue !== 'choose' && initialVenue === 'choose' ? <button type="button" className="connection-icon-button" aria-label="Choose another platform" disabled={busy} onClick={() => { setVenue('choose'); setError(''); setSecretKey(''); setKeyId(''); setProfile(null) }}><ArrowLeft size={20} /></button> : <span className="connection-dialog-wordmark">VISIBLETRADER <span>/ CONNECTIONS</span></span>}
       <button type="button" className="connection-icon-button" disabled={!canClose} aria-label="Close connection dialog" onClick={onClose}><X size={20} /></button>
     </div>
-    <h2 id="connection-dialog-title">{venue === 'us' ? 'Polymarket US' : 'Connect Polymarket'}</h2>
-    {venue === 'us' ? <>
+    <div className="connection-flow-step">{venue === 'choose' ? '01 / CHOOSE YOUR PLATFORM' : '02 / LINK YOUR ACCOUNT'}</div>
+    <h2 id="connection-dialog-title">{venue === 'choose' ? 'Bring your trading into view.' : venue === 'us' ? 'Connect Polymarket US' : 'Connect Polymarket'}</h2>
+    {venue === 'choose' ? <>
+      <p>Choose where you trade. Your positions and recent activity will appear in Journal.</p>
+      <div className="connection-platform-list">
+        <button type="button" onClick={() => setVenue('international')}><img src="/polymarket.png" alt="" /><span><strong>Polymarket</strong><small>International · Wallet or public profile</small></span><ArrowUpRight size={18} /></button>
+        <button type="button" onClick={() => setVenue('us')}><span className="connection-brand-us">US</span><span><strong>Polymarket US</strong><small>United States · API key</small></span><ArrowUpRight size={18} /></button>
+      </div>
+      <div className="connection-dialog-footer"><ShieldCheck size={16} /> Used for tracking. No trades or transfers.</div>
+    </> : venue === 'us' ? <>
       <p>Use the API key from your Polymarket US account to bring in your positions and trade history.</p>
       <div className="connection-note"><LockKeyhole size={18} /><span>Trading is disabled in VisibleTrader — this connection only reads your positions and activity.</span></div>
-      <a className="connection-text-link" href="https://polymarket.us/developer" target="_blank" rel="noopener noreferrer">Open Polymarket US’s developer portal <ArrowUpRight size={15} /></a>
+      <div className="connection-key-guide"><span>1</span><div><strong>Create a dedicated API key</strong><a className="connection-text-link" href="https://polymarket.us/developer" target="_blank" rel="noopener noreferrer">Open developer portal <ArrowUpRight size={15} /></a></div></div>
+      <div className="connection-key-guide"><span>2</span><div><strong>Paste your key details below</strong><p>Use the Key ID and Secret Key supplied together.</p></div></div>
       <form onSubmit={event => { event.preventDefault(); void submitUSCredentials() }}>
         <label htmlFor="pm-us-key-id">Key ID</label>
         <input id="pm-us-key-id" className="connection-input ph-no-capture ph-mask" value={keyId} onChange={event => setKeyId(event.target.value)}
