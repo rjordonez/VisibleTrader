@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Bot, ChevronDown, HelpCircle, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Cpu, ChevronDown, HelpCircle, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { dashboardPath } from '../lib/domains'
+import { useSubscriptionGate } from '../lib/subscriptionGate'
 import { fmtSigned, timeAgo, categoryLabel } from './helpers'
 import { CumulativeChart } from './PriceChart'
 import { ExpertPickCard } from './ExpertPickCard'
@@ -39,6 +42,11 @@ interface BotDay {
 }
 
 export default function ProfitBot() {
+  // The hero (track record + chart) is genuinely public data now (see
+  // 20260911040000_profit_bot_picks_public_teaser.sql) — it's proof, not
+  // something to gate. The actual picks are the product, so only "Picks for
+  // today" / "Resolved picks" stay behind the subscribe teaser.
+  const { locked } = useSubscriptionGate()
   const [picks, setPicks] = useState<Opportunity[]>([])
   const [resolved, setResolved] = useState<BotResolved[]>([])
   const [perf, setPerf] = useState<BotPerf | null>(null)
@@ -105,7 +113,7 @@ export default function ProfitBot() {
     <>
       <section className="profits-overview pbot-overview" aria-labelledby="pbot-title">
         <div className="pbot-hero-head">
-          <span className="pbot-badge"><Bot size={13} aria-hidden="true" /> Profit Bot</span>
+          <span className="pbot-badge"><Cpu size={12} aria-hidden="true" /> Profit Bot</span>
           <button
             type="button"
             className="pbot-help-btn"
@@ -212,48 +220,63 @@ export default function ProfitBot() {
           </div>
         )}
 
-        {view === 'ongoing' ? (
-          picks.length === 0 ? (
-            <p className="profits-notice">No markets meet the bar right now. This updates as tracked traders move.</p>
+        {(() => {
+          const body = view === 'ongoing' ? (
+            picks.length === 0 ? (
+              <p className="profits-notice">No markets meet the bar right now. This updates as tracked traders move.</p>
+            ) : (
+              <div className="expert-picks-grid">
+                {[...picks]
+                  .sort((a, b) => sort === 'profitable'
+                    ? Number(b.total_profit) - Number(a.total_profit)
+                    : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
+                  .map(o => (
+                    <ExpertPickCard key={`${o.condition_id}::${o.outcome}`} opportunity={o} onOpen={() => setModalOpp(o)} />
+                  ))}
+              </div>
+            )
           ) : (
-            <div className="expert-picks-grid">
-              {[...picks]
-                .sort((a, b) => sort === 'profitable'
-                  ? Number(b.total_profit) - Number(a.total_profit)
-                  : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
-                .map(o => (
-                  <ExpertPickCard key={`${o.condition_id}::${o.outcome}`} opportunity={o} onOpen={() => setModalOpp(o)} />
+            resolved.length === 0 ? (
+              <p className="profits-notice">No Profit Bot picks have resolved yet.</p>
+            ) : (
+              <ol className="profits-result-list">
+                {resolved.map(r => (
+                  <li className="profits-result-row" key={`${r.condition_id}:${r.outcome}:${r.resolved_ts}`}>
+                    <div className="profits-position">
+                      <h3>{r.title}</h3>
+                      <div className="profits-trader-line">
+                        <span>{r.outcome}</span>
+                        <span>· {r.experts} proven traders</span>
+                        <span>· {categoryLabel(r.category ?? 'other')}</span>
+                      </div>
+                    </div>
+                    <div className="profits-entry"><strong>{Math.round(r.avg_entry * 100)}&cent;</strong><span>avg entry</span></div>
+                    <div className="profits-result-value">
+                      <strong className={r.pnl >= 0 ? 'is-positive' : 'is-negative'}>{fmtSigned(r.pnl)}</strong>
+                      <span>
+                        <span className={r.won ? 'is-positive' : 'is-negative'}>{r.won ? 'Won' : 'Lost'}</span>
+                        {' · '}<time dateTime={r.resolved_ts}>{timeAgo(r.resolved_ts)}</time>
+                      </span>
+                    </div>
+                  </li>
                 ))}
+              </ol>
+            )
+          )
+          if (!locked) return body
+          // The hero above is unblurred (already public data) — this is the
+          // one thing on Profits still worth subscribing for, so it's the
+          // only part that gets the blur-teaser treatment.
+          return (
+            <div className="search-locked">
+              <div className="search-locked-bg">{body}</div>
+              <div className="search-glass-overlay">
+                <p className="search-glass-title">Subscribe to see today&rsquo;s picks</p>
+                <Link to={dashboardPath('/pricing')} className="search-glass-btn">See plans</Link>
+              </div>
             </div>
           )
-        ) : (
-          resolved.length === 0 ? (
-            <p className="profits-notice">No Profit Bot picks have resolved yet.</p>
-          ) : (
-            <ol className="profits-result-list">
-              {resolved.map(r => (
-                <li className="profits-result-row" key={`${r.condition_id}:${r.outcome}:${r.resolved_ts}`}>
-                  <div className="profits-position">
-                    <h3>{r.title}</h3>
-                    <div className="profits-trader-line">
-                      <span>{r.outcome}</span>
-                      <span>· {r.experts} proven traders</span>
-                      <span>· {categoryLabel(r.category ?? 'other')}</span>
-                    </div>
-                  </div>
-                  <div className="profits-entry"><strong>{Math.round(r.avg_entry * 100)}&cent;</strong><span>avg entry</span></div>
-                  <div className="profits-result-value">
-                    <strong className={r.pnl >= 0 ? 'is-positive' : 'is-negative'}>{fmtSigned(r.pnl)}</strong>
-                    <span>
-                      <span className={r.won ? 'is-positive' : 'is-negative'}>{r.won ? 'Won' : 'Lost'}</span>
-                      {' · '}<time dateTime={r.resolved_ts}>{timeAgo(r.resolved_ts)}</time>
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )
-        )}
+        })()}
       </section>
 
       {modalOpp && <SignalModal opportunity={modalOpp} onClose={() => setModalOpp(null)} />}
