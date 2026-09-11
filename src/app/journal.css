@@ -64,9 +64,10 @@
 .journal-page .journal-activity-detail { flex: 1; min-width: 0; }.journal-page .journal-activity-detail strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 550; }.journal-page .journal-activity-detail small { display: block; color: var(--text-dim); font-size: 10px; margin-top: 5px; }
 .journal-page .journal-activity-amount { color: #aeb8d5; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }.journal-page .journal-activity-row > svg { flex-shrink: 0; color: var(--text-dim); }
 .journal-page .journal-editor { box-sizing: border-box; width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 26px; border: 1px solid #383842; border-radius: 24px; background: #17171f; color: var(--text); box-shadow: 0 24px 100px #0009; overflow-y: auto; }
-.journal-page .journal-day-tabs { display: flex; gap: 4px; padding: 4px; margin: 18px 0 4px; background: #0d0d13; border: 1px solid #ffffff0e; border-radius: 12px; }
-.journal-page .journal-day-tabs button { flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; min-height: 38px; border: 0; border-radius: 9px; background: none; color: #9999ad; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
-.journal-page .journal-day-tabs button[aria-selected=true] { background: #292936; color: #f0f0ff; }
+.journal-page .journal-day-tabs, .journal-page .journal-range-tabs { display: flex; gap: 4px; padding: 4px; margin: 18px 0 4px; background: #0d0d13; border: 1px solid #ffffff0e; border-radius: 12px; }
+.journal-page .journal-day-tabs button, .journal-page .journal-range-tabs button { flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; min-height: 38px; border: 0; border-radius: 9px; background: none; color: #9999ad; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
+.journal-page .journal-day-tabs button[aria-selected=true], .journal-page .journal-range-tabs button[aria-selected=true] { background: #292936; color: #f0f0ff; }
+.journal-page .journal-summary-main .journal-range-tabs { margin: 0 0 14px; max-width: 280px; }
 .journal-page .journal-day-trades { padding: 6px 2px 2px; max-height: 320px; overflow-y: auto; }
 .journal-page .journal-day-trade-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #ffffff0d; }
 .journal-page .journal-day-trade-row:last-child { border-bottom: 0; }
