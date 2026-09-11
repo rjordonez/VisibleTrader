@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Bot, ChevronDown, HelpCircle, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Cpu, ChevronDown, HelpCircle, Lock, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { dashboardPath } from '../lib/domains'
+import { useSubscriptionGate } from '../lib/subscriptionGate'
 import { fmtSigned, timeAgo, categoryLabel } from './helpers'
 import { CumulativeChart } from './PriceChart'
 import { ExpertPickCard } from './ExpertPickCard'
@@ -39,6 +42,11 @@ interface BotDay {
 }
 
 export default function ProfitBot() {
+  // The hero (track record + chart) is genuinely public data now (see
+  // 20260911040000_profit_bot_picks_public_teaser.sql) — it's proof, not
+  // something to gate. The actual picks are the product, so only "Picks for
+  // today" / "Resolved picks" stay behind the subscribe teaser.
+  const { locked } = useSubscriptionGate()
   const [picks, setPicks] = useState<Opportunity[]>([])
   const [resolved, setResolved] = useState<BotResolved[]>([])
   const [perf, setPerf] = useState<BotPerf | null>(null)
@@ -105,7 +113,7 @@ export default function ProfitBot() {
     <>
       <section className="profits-overview pbot-overview" aria-labelledby="pbot-title">
         <div className="pbot-hero-head">
-          <span className="pbot-badge"><Bot size={13} aria-hidden="true" /> Profit Bot</span>
+          <span className="pbot-badge"><Cpu size={12} aria-hidden="true" /> Profit Bot</span>
           <button
             type="button"
             className="pbot-help-btn"
@@ -150,7 +158,7 @@ export default function ProfitBot() {
         <div className="profits-chart-area">
           <p className="profits-chart-label">Cumulative P&amp;L, flat $100 per pick</p>
           {cumulative.length > 1
-            ? <CumulativeChart data={cumulative} height={250} />
+            ? <CumulativeChart data={cumulative} height={250} bold />
             : <p className="profits-notice">The curve appears once picks span more than one day.</p>}
         </div>
 
@@ -213,6 +221,9 @@ export default function ProfitBot() {
         )}
 
         {view === 'ongoing' ? (
+          // Each ExpertPickCard gates itself now (win rate + stats stay
+          // visible, the title blurs, the bet button becomes a "Subscribe"
+          // link) — see ExpertPickCard.tsx. No page-level blur needed here.
           picks.length === 0 ? (
             <p className="profits-notice">No markets meet the bar right now. This updates as tracked traders move.</p>
           ) : (
@@ -242,13 +253,22 @@ export default function ProfitBot() {
                     </div>
                   </div>
                   <div className="profits-entry"><strong>{Math.round(r.avg_entry * 100)}&cent;</strong><span>avg entry</span></div>
-                  <div className="profits-result-value">
-                    <strong className={r.pnl >= 0 ? 'is-positive' : 'is-negative'}>{fmtSigned(r.pnl)}</strong>
-                    <span>
-                      <span className={r.won ? 'is-positive' : 'is-negative'}>{r.won ? 'Won' : 'Lost'}</span>
-                      {' · '}<time dateTime={r.resolved_ts}>{timeAgo(r.resolved_ts)}</time>
-                    </span>
-                  </div>
+                  {/* Per-row gate, same idea as ExpertPickCard: the setup
+                      stays visible, the actual result is what's worth
+                      subscribing to see. */}
+                  {locked ? (
+                    <Link to={dashboardPath('/pricing')} className="profits-result-value profits-result-locked">
+                      <Lock size={13} /><span>Subscribe to see result</span>
+                    </Link>
+                  ) : (
+                    <div className="profits-result-value">
+                      <strong className={r.pnl >= 0 ? 'is-positive' : 'is-negative'}>{fmtSigned(r.pnl)}</strong>
+                      <span>
+                        <span className={r.won ? 'is-positive' : 'is-negative'}>{r.won ? 'Won' : 'Lost'}</span>
+                        {' · '}<time dateTime={r.resolved_ts}>{timeAgo(r.resolved_ts)}</time>
+                      </span>
+                    </div>
+                  )}
                 </li>
               ))}
             </ol>

@@ -193,7 +193,7 @@ function fmtCum(v: number) {
   return `${v >= 0 ? '+' : '-'}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
 }
 
-export function CumulativeChart({ data, height = 220 }: { data: { d: string; cum: number }[]; height?: number }) {
+export function CumulativeChart({ data, height = 220, bold = false }: { data: { d: string; cum: number }[]; height?: number; bold?: boolean }) {
   const [hoverI, setHoverI] = useState<number | null>(null)
   if (data.length < 2) return null
 
@@ -238,8 +238,16 @@ export function CumulativeChart({ data, height = 220 }: { data: { d: string; cum
         >
           <defs>
             <linearGradient id="cumFillGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={lineColor} stopOpacity={0.28} />
-              <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
+              {/* bold: this chart sits behind ProtectedRoute's blur-teaser
+                  (search-locked-bg's 5px content blur + the overlay's own
+                  backdrop-blur on top) — the default thin stroke + faint
+                  fill wash out almost entirely under that much compounded
+                  blur, so it needs a heavier line and a fill that doesn't
+                  fade all the way to nothing. Only ProfitBot's hero passes
+                  this; every other CumulativeChart usage is unblurred and
+                  keeps the lighter default look. */}
+              <stop offset="0%" stopColor={lineColor} stopOpacity={bold ? 0.5 : 0.28} />
+              <stop offset="100%" stopColor={lineColor} stopOpacity={bold ? 0.07 : 0} />
             </linearGradient>
           </defs>
           <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" vertical={false} />
@@ -260,10 +268,10 @@ export function CumulativeChart({ data, height = 220 }: { data: { d: string; cum
             isAnimationActive={false}
           />
           <Line
-            type="monotone" dataKey="cum" stroke={lineColor} strokeWidth={2.5}
+            type="monotone" dataKey="cum" stroke={lineColor} strokeWidth={bold ? 4.5 : 2.5}
             dot={false} activeDot={false} isAnimationActive={false}
           />
-          <ReferenceDot x={lastIndex} y={last} r={5} fill={lineColor} stroke="none" ifOverflow="extendDomain" />
+          <ReferenceDot x={lastIndex} y={last} r={bold ? 7 : 5} fill={lineColor} stroke="none" ifOverflow="extendDomain" />
           {hoverPoint && (
             <>
               <ReferenceLine x={hoverPoint.i} stroke="var(--text-faint)" strokeDasharray="3 3" ifOverflow="extendDomain" />
