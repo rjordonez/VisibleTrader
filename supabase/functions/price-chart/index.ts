@@ -10,6 +10,7 @@ const corsHeaders = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
 }
+const ACTIVE_SUB_STATUSES = new Set(['trialing', 'active'])
 
 async function lookupMarket(slug: string): Promise<Record<string, unknown> | null> {
   const res = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`, { headers: UA })
@@ -50,27 +51,19 @@ Deno.serve(async (req) => {
       })
     }
 
-    // opportunities' RLS now requires an active subscription
-    // (has_active_subscription()) — forward the caller's own auth header
-    // so that check runs against who's *actually* asking, same as every
-    // other endpoint that touches gated data. Not service role: that
-    // would bypass the subscription check entirely instead of enforcing
-    // it, handing chart data to anyone with just the public anon key. No
-    // header, or no active subscription, means this query naturally
-    // returns zero rows — the existing "no price history" empty state
-    // below already covers that case, no separate check needed.
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(JSON.stringify({ history: [], error: 'Market data could not be loaded' }), {
-        headers: { ...corsHeaders, 'content-type': 'application/json' },
-      })
-    }
-    const supabase = createClient(
+    // The market icon is cosmetic (often a generic, shared image) — free
+    // for anyone, including a signed-in-but-unsubscribed visitor's locked
+    // ExpertPickCard (see ExpertPickCard.tsx), same as the rest of Profit
+    // Bot's public teaser data. Looked up with the service role so it
+    // doesn't depend on the caller having an active subscription; only the
+    // price history below still requires one — checked explicitly now,
+    // since it used to ride on this same lookup's RLS and that lookup is
+    // unconditional here.
+    const serviceClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
-    const { data } = await supabase
+    const { data } = await serviceClient
       .from('opportunities')
       .select('slug')
       .eq('condition_id', condition_id)
@@ -79,9 +72,8 @@ Deno.serve(async (req) => {
 
     let slug = data?.slug
     // Discover includes recent trades that may not yet be an opportunity.
-    // Use the same caller-scoped database client and RLS for this lookup.
-    if (!slug && image_only) {
-      const { data: trade } = await supabase.from('ticker').select('slug')
+    if (!slug) {
+      const { data: trade } = await serviceClient.from('ticker').select('slug')
         .eq('condition_id', condition_id).limit(1).maybeSingle()
       slug = trade?.slug
     }
@@ -98,6 +90,30 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
     }
+
+    // Price history is the real product — still requires an active
+    // subscription, checked directly against the caller's own auth now
+    // that the slug/image lookup above no longer implies it.
+    const authHeader = req.headers.get('Authorization')
+    let active = false
+    if (authHeader) {
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authHeader } } },
+      )
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: sub } = await supabase.from('subscriptions').select('status').maybeSingle()
+        active = !!sub && ACTIVE_SUB_STATUSES.has(sub.status)
+      }
+    }
+    if (!active) {
+      return new Response(JSON.stringify({ history: [], image, error: 'Market data could not be loaded' }), {
+        headers: { ...corsHeaders, 'content-type': 'application/json' },
+      })
+    }
+
     const tokenId = resolveTokenId(market, outcome)
     if (!tokenId) {
       return new Response(JSON.stringify({ history: [], image, error: 'Outcome lookup failed' }), {

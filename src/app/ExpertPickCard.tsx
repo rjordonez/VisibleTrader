@@ -5,7 +5,7 @@ import { ArrowUpRight, Lock, Users } from 'lucide-react'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
 import type { ChartPoint, Opportunity } from './types'
-import { categoryLabel, fetchMarketChart, fmtFull, fmtSigned } from './helpers'
+import { categoryLabel, fetchMarketChart, fmtFull } from './helpers'
 import { PickChart } from './PickChart'
 import './expert-pick-card.css'
 
@@ -21,12 +21,12 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
   const [image, setImage] = useState<string | null>(null)
 
   useEffect(() => {
-    // Locked cards never show the chart (see below) and the underlying
-    // fetch would fail anyway — opportunities/price-chart both require an
-    // active subscription — so skip the wasted request entirely.
-    if (locked) return
     let cancelled = false
-    // Only request history as a card approaches the viewport.
+    // Only request history as a card approaches the viewport. Runs even
+    // when locked — the market icon is free for everyone (price-chart's
+    // slug/image lookup no longer requires a subscription); only the
+    // price history it also returns comes back empty for a locked caller,
+    // which is fine since <PickChart> isn't rendered in that case anyway.
     const observer = new IntersectionObserver(entries => {
       if (!entries.some(entry => entry.isIntersecting)) return
       observer.disconnect()
@@ -40,7 +40,7 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
     }, { rootMargin: '200px' })
     if (container.current) observer.observe(container.current)
     return () => { cancelled = true; observer.disconnect() }
-  }, [o.condition_id, o.outcome, attempt, locked])
+  }, [o.condition_id, o.outcome, attempt])
 
   const outcome = o.outcome.trim()
   const direction = outcome.toLowerCase()
@@ -79,13 +79,12 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
         </>
       )}
       <div className="expert-pick-evidence">
-        <div className={`expert-pick-stats ${winRatePct != null ? 'has-win-rate' : ''}`}>
+        <div className="expert-pick-stats">
           {winRatePct != null && (
             <span title="Best win rate among the tracked traders backing this pick"><strong>{winRatePct}%</strong><small>top trader win rate</small></span>
           )}
           <span title="Total invested by tracked traders"><strong>{fmtFull(o.cumulative_usd)}</strong><small>invested</small></span>
           <span title="Number of tracked expert traders"><strong><Users size={14} /> {o.wallet_count}</strong><small>{o.wallet_count === 1 ? 'expert' : 'experts'}</small></span>
-          <span className={o.total_profit >= 0 ? 'g' : 'r'} title="Combined profit of tracked traders"><strong>{fmtSigned(o.total_profit)}</strong><small>tracked profit</small></span>
         </div>
       </div>
       {locked ? (

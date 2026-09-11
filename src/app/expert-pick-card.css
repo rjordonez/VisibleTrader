@@ -15,12 +15,9 @@
 .expert-pick-icon img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .expert-pick-evidence { margin-top: 18px; padding: 16px 0 14px; border-top: 1px solid var(--border); }
 .expert-pick-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.expert-pick-stats.has-win-rate { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .expert-pick-stats > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .expert-pick-stats strong { display: flex; align-items: center; gap: 4px; color: var(--text); font-size: 17px; line-height: 1.1; letter-spacing: -.035em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .expert-pick-stats small { color: var(--text-dim); font-size: 10px; line-height: 1.2; }
-.expert-pick-stats .g strong { color: var(--green); }
-.expert-pick-stats .r strong { color: var(--red); }
 .expert-pick-bet { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; padding: 12px; border: 1px solid transparent; border-radius: 11px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; overflow-wrap: anywhere; transition: filter 150ms; }
 .expert-pick-bet.is-yes { background: #b9f5cc; color: #155b32; }
 .expert-pick-bet.is-no { background: #f5c4cb; color: #902b3e; }
@@ -35,5 +32,4 @@
   .expert-picks-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .expert-pick-card { padding: 20px; }
   .expert-pick-title { min-height: 0; }
-  .expert-pick-stats.has-win-rate { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 14px; }
 }
