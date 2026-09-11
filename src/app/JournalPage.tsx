@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { ChevronLeft, ChevronRight, X, Plus, MessageSquare, ArrowUpRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { Link } from 'react-router-dom'
+import { dashboardPath } from '../lib/domains'
 import { fmtSigned } from './helpers'
 import './journal.css'
 
@@ -164,7 +166,7 @@ function JournalPage() {
           <h1 className="app-section-title">Journal</h1>
           <p className="app-section-sub">Your trades. Your progress.</p>
         </div>
-        <button type="button" className="journal-add-button" disabled={!userId || loading || loadError} onClick={() => openDay(year === new Date().getFullYear() && month === new Date().getMonth() ? new Date().getDate() : 1)}><Plus size={18} /> Log a day</button>
+        <div className="journal-header-actions"><Link to={dashboardPath('/connections')} className="journal-add-button">Connect account</Link><button type="button" className="journal-add-button" disabled={!userId || loading || loadError} onClick={() => openDay(year === new Date().getFullYear() && month === new Date().getMonth() ? new Date().getDate() : 1)}><Plus size={18} /> Log a day</button></div>
       </div>
 
       <section className="journal-summary" aria-label={`${monthLabel} summary`}>

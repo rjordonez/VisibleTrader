@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Newspaper, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X } from 'lucide-react'
+import { Newspaper, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X, Link2 } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -22,6 +22,7 @@ const LeaderboardPage = lazy(() => import('./LeaderboardPage'))
 const TraderDetailPage = lazy(() => import('./TraderDetailPage'))
 const SettingsPage = lazy(() => import('./SettingsPage'))
 const JournalPage = lazy(() => import('./JournalPage'))
+const ConnectionsPage = lazy(() => import('./connections/ConnectionsPage'))
 
 // Self-contained (own state/ref/outside-click handling) rather than driven
 // by AppShell-level state, specifically so it can be mounted twice — once
@@ -67,6 +68,7 @@ function UserMenu({ user, settingsPath, signOut, expanded = false }: {
       </button>
       {open && (
         <div className="app-user-dropdown">
+          <Link to={dashboardPath('/connections')} className="app-user-dropdown-item" onClick={() => setOpen(false)}>Connect accounts</Link>
           <Link
             to={settingsPath}
             className="app-user-dropdown-item"
@@ -163,6 +165,7 @@ const terminalNavItem = { id: 'terminal', label: 'Terminal', path: '/terminal', 
 // still reachable from the sidebar/desktop.
 const personalNavItems = [
   { id: 'journal', label: 'Journal', path: '/journal', Icon: CalendarDays },
+  { id: 'connections', label: 'Accounts', path: '/connections', Icon: Link2 },
 ]
 
 // Wraps TraderDetailPage so it can live at a real /trader/:wallet URL —
@@ -343,6 +346,7 @@ export default function AppShell() {
               <Route path="alerts" element={<Navigate to={dashboardPath('/')} replace />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="journal" element={<JournalPage />} />
+              <Route path="connections" element={<ConnectionsPage />} />
               <Route path="trader/:wallet" element={<TraderDetailRoute />} />
               <Route path="*" element={<Navigate to={dashboardPath('/')} replace />} />
             </Routes>
