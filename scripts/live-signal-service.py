@@ -37,10 +37,7 @@ BALANCE_REFRESH_SECONDS = 15 * 60
 AGGREGATE_REFRESH_SECONDS = 90  # opportunities_live's best_win_rate/best_bet_ratio join — see refresh_opportunity_aggregates()
 LEADERBOARD_REFRESH_SECONDS = 120  # leaderboard_cache — see refresh_leaderboard()
 WALLET_CATEGORY_REFRESH_SECONDS = 180  # wallet_category_breakdown_cache — see refresh_wallet_category_breakdown()
-PROFIT_BOT_REFRESH_SECONDS = 10  # profit_bot_*_cache — see refresh_profit_bot(). Measured
-# at ~307ms end to end (indexed, see 20260909120000_profit_bot_indexes.sql) — cheap enough
-# to run this often so the frontend's few-second poll (ProfitBot.tsx) actually has fresh
-# numbers to ease toward instead of re-displaying the same cached value most ticks.
+PROFIT_BOT_REFRESH_SECONDS = 120  # profit_bot_*_cache — see refresh_profit_bot()
 WARM_SEARCH_SECONDS = 4 * 60  # keeps the wallet-search Edge Function's isolate warm — see ping_wallet_search()
 BROADCAST_INTERVAL_SECONDS = 5  # batches opportunities/ticker changes into one Realtime broadcast per window —
 # see flush_dirty_broadcast(). Replaces per-row postgres_changes delivery on these two tables, which was blowing

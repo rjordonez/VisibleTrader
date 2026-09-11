@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom'
 import { ArrowUpRight, Lock, Users } from 'lucide-react'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
-import { useCountUp } from '../lib/useCountUp'
 import type { ChartPoint, Opportunity } from './types'
 import { categoryLabel, fetchMarketChart, fmtFull } from './helpers'
 import { PickChart } from './PickChart'
@@ -46,9 +45,6 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
   const direction = outcome.toLowerCase()
   const label = direction === 'yes' || direction === 'no' ? direction.toUpperCase() : outcome
   const winRatePct = o.best_win_rate != null ? Math.round(o.best_win_rate * 100) : null
-  // Shows the real "invested" figure immediately; eases toward it if a
-  // later poll brings back a changed real value (see useCountUp).
-  const animatedInvested = useCountUp(o.cumulative_usd)
 
   return (
     <article ref={container} className={`expert-pick-card ${locked ? 'is-locked' : ''}`}>
@@ -85,7 +81,7 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
           {winRatePct != null && (
             <span title="Best win rate among the tracked traders backing this pick"><strong>{winRatePct}%</strong><small>top trader win rate</small></span>
           )}
-          <span className="g" title="Total invested by tracked traders"><strong>{fmtFull(animatedInvested)}</strong><small>invested</small></span>
+          <span className="g" title="Total invested by tracked traders"><strong>{fmtFull(o.cumulative_usd)}</strong><small>invested</small></span>
           <span title="Number of tracked expert traders"><strong><Users size={14} /> {o.wallet_count}</strong><small>{o.wallet_count === 1 ? 'expert' : 'experts'}</small></span>
         </div>
       </div>
