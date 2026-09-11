@@ -35,7 +35,7 @@ export default function Hero() {
             The #1 Whale Tracker To <em className="hero-h1-emphasis">Beat</em> Prediction Markets
           </h1>
 
-          <p className="hero-headline-sub">Real wallets. Real wins. Tracked the moment they trade.</p>
+          <p className="hero-headline-sub">See exactly who the insider traders and experts are, the moment they make a move.</p>
 
           <div className="hero-rating">
             <span className="hero-rating-stars">
