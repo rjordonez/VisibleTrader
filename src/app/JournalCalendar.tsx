@@ -11,6 +11,12 @@ interface JournalEntry {
   amount: number
   note: string | null
 }
+interface USTradeRow {
+  occurred_at: string
+  title: string
+  side: string
+  realized_pnl: number | null
+}
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -23,16 +29,16 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
   const [userId, setUserId] = useState<string | null>(null)
   const [viewDate, setViewDate] = useState(() => initialDay ? new Date(initialDay + 'T00:00:00') : new Date())
   const [entries, setEntries] = useState<Map<string, JournalEntry>>(new Map())
-  const [tradesByDay, setTradesByDay] = useState<Map<string, number>>(new Map())
+  const [tradesByDay, setTradesByDay] = useState<Map<string, USTradeRow[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [editingDate, setEditingDate] = useState<string | null>(initialDay ?? null)
+  const [dayTab, setDayTab] = useState<'trades' | 'manual'>('trades')
   const [editAmount, setEditAmount] = useState('')
   const [editNote, setEditNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState(false)
   const [editorError, setEditorError] = useState('')
   const editorRef = useRef<HTMLDialogElement>(null)
-  const tradesOn = (date: string) => activity.filter(trade => trade.timestamp != null && toISODate(new Date(trade.timestamp * 1000)) === date)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data, error }) => {
@@ -77,17 +83,17 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
     // US-only for now: international per-trade realized P&L isn't available
     // from Polymarket's Data API yet (see docs/polymarket-connections.md).
     Promise.resolve(
-      supabase.from('polymarket_trades').select('occurred_at, realized_pnl')
+      supabase.from('polymarket_trades').select('occurred_at, title, side, realized_pnl')
         .eq('venue', 'us').gte('occurred_at', `${monthStart}T00:00:00Z`).lt('occurred_at', `${nextMonthStart}T00:00:00Z`)
+        .order('occurred_at', { ascending: false })
     )
       .then(({ data, error }) => {
         if (error) throw error
         if (!active) return
-        const m = new Map<string, number>()
-        for (const row of (data ?? []) as { occurred_at: string; realized_pnl: number | null }[]) {
-          if (row.realized_pnl == null) continue
+        const m = new Map<string, USTradeRow[]>()
+        for (const row of (data ?? []) as USTradeRow[]) {
           const iso = toISODate(new Date(row.occurred_at))
-          m.set(iso, (m.get(iso) ?? 0) + row.realized_pnl)
+          m.set(iso, [...(m.get(iso) ?? []), row])
         }
         setTradesByDay(m)
       })
@@ -125,15 +131,12 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
   const monthActivity = activity
     .filter(trade => trade.timestamp != null && new Date(trade.timestamp * 1000).getFullYear() === year && new Date(trade.timestamp * 1000).getMonth() === month)
     .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
-  const activityPnlOn = (date: string) => {
-    const values = tradesOn(date).map(trade => trade.pnl).filter((value): value is number => value != null)
-    return values.length ? values.reduce((sum, value) => sum + value, 0) : null
-  }
   // Days logged / profitable days / monthly P&L combine manual entries with
   // real trade P&L (currently US only — see the polymarket_trades fetch
   // above), summed per day rather than one source overriding the other.
+  const realizedOn = (date: string) => (tradesByDay.get(date) ?? []).reduce((s, t) => s + (t.realized_pnl ?? 0), 0)
   const loggedDays = new Set([...entries.keys(), ...tradesByDay.keys()])
-  const combinedOn = (date: string) => (entries.get(date)?.amount ?? 0) + (tradesByDay.get(date) ?? 0)
+  const combinedOn = (date: string) => (entries.get(date)?.amount ?? 0) + realizedOn(date)
   const monthTotal = Array.from(loggedDays).reduce((s, d) => s + combinedOn(d), 0)
   const profitableDays = Array.from(loggedDays).filter(d => combinedOn(d) > 0).length
   const bestDay = loggedDays.size ? Math.max(...Array.from(loggedDays).map(combinedOn)) : null
@@ -143,6 +146,7 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
     const iso = toISODate(new Date(year, month, day))
     const existing = entries.get(iso)
     setEditingDate(iso)
+    setDayTab((tradesByDay.get(iso)?.length ?? 0) > 0 ? 'trades' : 'manual')
     setEditAmount(existing ? String(existing.amount) : '')
     setEditNote(existing?.note ?? '')
     setEditorError('')
@@ -270,7 +274,7 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
               >
                 <span className="journal-cell-day">{day}</span>
                 {hasData ? <><span className="journal-cell-amt">{fmtSigned(combined)}</span>{entry?.note && <MessageSquare className="journal-cell-note" size={12} aria-hidden="true" />}</> : <span className="journal-cell-add" aria-hidden="true">+</span>}
-                {tradesOn(iso).length > 0 && <><small className="journal-trade-count">{tradesOn(iso).length} {tradesOn(iso).length === 1 ? 'trade' : 'trades'}</small>{activityPnlOn(iso) != null && <small className={`journal-activity-pnl ${activityPnlOn(iso)! >= 0 ? 'g' : 'r'}`}>{fmtSigned(activityPnlOn(iso)!)}</small>}<small className="journal-trade-market">{tradesOn(iso)[0].title}</small></>}
+                {(tradesByDay.get(iso)?.length ?? 0) > 0 && <small className="journal-trade-count">{tradesByDay.get(iso)!.length} {tradesByDay.get(iso)!.length === 1 ? 'trade' : 'trades'}</small>}
               </button>
             )
           })}
@@ -289,7 +293,9 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
       </section>}
 
       <dialog className="journal-editor" ref={editorRef} aria-labelledby="journal-editor-title" onCancel={e => { e.preventDefault(); closeEditor() }} onClick={e => { if (e.target === e.currentTarget) closeEditor() }}>
-        {editingDate && <form onSubmit={e => { e.preventDefault(); saveEntry() }}>
+        {editingDate && (() => {
+          const dayTrades = tradesByDay.get(editingDate) ?? []
+          return <div>
             <div className="journal-editor-head">
               <div className="journal-editor-title" id="journal-editor-title">
                 {new Date(editingDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -298,43 +304,54 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
                 <X size={16} />
               </button>
             </div>
-            {tradesOn(editingDate).length > 0 && <div className="journal-day-activity"><p>Recent account activity</p>{tradesOn(editingDate).map((trade, i) => <div key={`${trade.venue}-${trade.transaction_hash}-${i}`}><strong>{trade.title}</strong><span>{trade.venue} · {trade.side} {trade.outcome} · {money(trade.amount)}</span></div>)}<small>Trade amounts are not profit. Only recently fetched trades appear here.</small></div>}
-            {tradesByDay.has(editingDate) && <p className="connection-small">Your connected account already logged {fmtSigned(tradesByDay.get(editingDate)!)} in realized P&amp;L for this day. Anything entered below is added on top of that, not a replacement for it.</p>}
-            <label className="journal-input-label" htmlFor="journal-amount">Manually logged profit / loss ($)</label>
-            <input
-              id="journal-amount"
-              className="sig-watch-input"
-              type="number"
-              step="any"
-              disabled={saving || loading || loadError}
-              placeholder="e.g. 240 or -85"
-              value={editAmount}
-              onChange={e => setEditAmount(e.target.value)}
-              autoFocus
-            />
-            <label className="journal-input-label" htmlFor="journal-note">Note (optional)</label>
-            <p className="connection-small">For a reflection only, leave the amount blank. This records $0 in your manual results.</p>
-            <textarea
-              id="journal-note"
-              disabled={saving || loading || loadError}
-              className="sig-watch-input journal-note-input"
-              placeholder="What happened today…"
-              value={editNote}
-              onChange={e => setEditNote(e.target.value)}
-              rows={3}
-            />
-            {editorError && <p className="journal-editor-error" role="alert">{editorError}</p>}
-            <div className="journal-editor-actions">
-              {entries.has(editingDate) && (
-                <button type="button" className="sig-btn secondary journal-delete-button" onClick={deleteEntry} disabled={saving}>
-                  Delete
-                </button>
-              )}
-              <button type="submit" className="sig-btn" disabled={saving || loading || loadError || (!editAmount.trim() && !editNote.trim())}>
-                {saving ? 'Saving…' : 'Save'}
-              </button>
+            <div className="journal-day-tabs" role="tablist">
+              <button type="button" role="tab" aria-selected={dayTab === 'trades'} onClick={() => setDayTab('trades')}>Trades{dayTrades.length ? ` (${dayTrades.length})` : ''}</button>
+              <button type="button" role="tab" aria-selected={dayTab === 'manual'} onClick={() => setDayTab('manual')}>Manual entry{entries.has(editingDate) ? ' •' : ''}</button>
             </div>
-        </form>}
+            {dayTab === 'trades' ? <div className="journal-day-trades">
+              {dayTrades.length === 0 ? <p className="connection-small">No trades recorded for this day.</p> : dayTrades.map((trade, i) => <div className="journal-day-trade-row" key={i}>
+                <div><strong>{trade.title}</strong><span>{trade.side} · {new Date(trade.occurred_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>
+                <strong className={trade.realized_pnl == null ? '' : trade.realized_pnl > 0 ? 'g' : trade.realized_pnl < 0 ? 'r' : ''}>{trade.realized_pnl == null ? '—' : fmtSigned(trade.realized_pnl)}</strong>
+              </div>)}
+            </div> : <form onSubmit={e => { e.preventDefault(); saveEntry() }}>
+              {dayTrades.length > 0 && <p className="connection-small">Your connected account already logged {fmtSigned(realizedOn(editingDate))} in realized P&amp;L for this day (see Trades). Anything entered below is added on top of that, not a replacement for it.</p>}
+              <label className="journal-input-label" htmlFor="journal-amount">Manually logged profit / loss ($)</label>
+              <input
+                id="journal-amount"
+                className="sig-watch-input"
+                type="number"
+                step="any"
+                disabled={saving || loading || loadError}
+                placeholder="e.g. 240 or -85"
+                value={editAmount}
+                onChange={e => setEditAmount(e.target.value)}
+                autoFocus
+              />
+              <label className="journal-input-label" htmlFor="journal-note">Note (optional)</label>
+              <p className="connection-small">For a reflection only, leave the amount blank. This records $0 in your manual results.</p>
+              <textarea
+                id="journal-note"
+                disabled={saving || loading || loadError}
+                className="sig-watch-input journal-note-input"
+                placeholder="What happened today…"
+                value={editNote}
+                onChange={e => setEditNote(e.target.value)}
+                rows={3}
+              />
+              {editorError && <p className="journal-editor-error" role="alert">{editorError}</p>}
+              <div className="journal-editor-actions">
+                {entries.has(editingDate) && (
+                  <button type="button" className="sig-btn secondary journal-delete-button" onClick={deleteEntry} disabled={saving}>
+                    Delete
+                  </button>
+                )}
+                <button type="submit" className="sig-btn" disabled={saving || loading || loadError || (!editAmount.trim() && !editNote.trim())}>
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </form>}
+          </div>
+        })()}
       </dialog>
     </div>
   )
