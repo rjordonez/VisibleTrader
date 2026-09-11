@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Newspaper, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X } from 'lucide-react'
+import { Newspaper, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X, Link2 } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -22,6 +22,7 @@ const LeaderboardPage = lazy(() => import('./LeaderboardPage'))
 const TraderDetailPage = lazy(() => import('./TraderDetailPage'))
 const SettingsPage = lazy(() => import('./SettingsPage'))
 const JournalPage = lazy(() => import('./JournalPage'))
+const ConnectionsPage = lazy(() => import('./connections/ConnectionsPage'))
 
 // Self-contained (own state/ref/outside-click handling) rather than driven
 // by AppShell-level state, specifically so it can be mounted twice — once
@@ -67,6 +68,7 @@ function UserMenu({ user, settingsPath, signOut, expanded = false }: {
       </button>
       {open && (
         <div className="app-user-dropdown">
+          <Link to={dashboardPath('/connections')} className="app-user-dropdown-item" onClick={() => setOpen(false)}>Connect accounts</Link>
           <Link
             to={settingsPath}
             className="app-user-dropdown-item"
@@ -163,6 +165,7 @@ const terminalNavItem = { id: 'terminal', label: 'Terminal', path: '/terminal', 
 // still reachable from the sidebar/desktop.
 const personalNavItems = [
   { id: 'journal', label: 'Journal', path: '/journal', Icon: CalendarDays },
+  { id: 'connections', label: 'Accounts', path: '/connections', Icon: Link2 },
 ]
 
 // Wraps TraderDetailPage so it can live at a real /trader/:wallet URL —
@@ -331,34 +334,46 @@ export default function AppShell() {
         </div>
       </aside>
 
-      <main className={`app-main ${locked ? 'app-main-locked' : ''}`}>
-        <div className={locked ? 'search-locked-bg' : undefined}>
-          <Suspense fallback={<TabLoading />}>
-            <Routes>
-              {/* Profits is the landing page — it's the strongest first impression
-                  (the bot's track record) and matches Profits leading the nav. */}
-              <Route index element={<ProfitsPage />} />
-              <Route path="feed" element={<HomePage alerts={alerts} />} />
-              {/* Signals was retired — its Expert Picks browser now lives on the Profits page. */}
-              <Route path="signals" element={<Navigate to={dashboardPath('/')} replace />} />
-              {/* Profits used to live at its own path; keep old links/bookmarks working. */}
-              <Route path="profits" element={<Navigate to={dashboardPath('/')} replace />} />
-              <Route path="leaderboard" element={<LeaderboardPage {...alerts} />} />
-              <Route path="alerts" element={<Navigate to={dashboardPath('/')} replace />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="journal" element={<JournalPage />} />
-              <Route path="trader/:wallet" element={<TraderDetailRoute />} />
-              <Route path="*" element={<Navigate to={dashboardPath('/')} replace />} />
-            </Routes>
-          </Suspense>
-        </div>
-        {locked && (
-          <div className="search-glass-overlay">
-            <p className="search-glass-title">Subscribe to unlock live signals, profits, and trader data</p>
-            <Link to={dashboardPath('/pricing')} className="search-glass-btn">See plans</Link>
-          </div>
-        )}
-      </main>
+      {/* Profits (the index route) is exempt from the page-level blur —
+          its hero is genuinely public data now (see
+          20260911040000_profit_bot_picks_public_teaser.sql), and it gates
+          just its own "Picks for today" section instead (see ProfitBot.tsx)
+          so the track record reads clearly instead of washing out under
+          this blur + the overlay's own backdrop-blur stacked on top. */}
+      {(() => {
+        const pageBlurred = locked && location.pathname !== dashboardPath('/')
+        return (
+          <main className={`app-main ${pageBlurred ? 'app-main-locked' : ''}`}>
+            <div className={pageBlurred ? 'search-locked-bg' : undefined}>
+              <Suspense fallback={<TabLoading />}>
+                <Routes>
+                  {/* Profits is the landing page — it's the strongest first impression
+                      (the bot's track record) and matches Profits leading the nav. */}
+                  <Route index element={<ProfitsPage />} />
+                  <Route path="feed" element={<HomePage alerts={alerts} />} />
+                  {/* Signals was retired — its Expert Picks browser now lives on the Profits page. */}
+                  <Route path="signals" element={<Navigate to={dashboardPath('/')} replace />} />
+                  {/* Profits used to live at its own path; keep old links/bookmarks working. */}
+                  <Route path="profits" element={<Navigate to={dashboardPath('/')} replace />} />
+                  <Route path="leaderboard" element={<LeaderboardPage {...alerts} />} />
+                  <Route path="alerts" element={<Navigate to={dashboardPath('/')} replace />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                  <Route path="journal" element={<JournalPage />} />
+                  <Route path="connections" element={<ConnectionsPage />} />
+                  <Route path="trader/:wallet" element={<TraderDetailRoute />} />
+                  <Route path="*" element={<Navigate to={dashboardPath('/')} replace />} />
+                </Routes>
+              </Suspense>
+            </div>
+            {pageBlurred && (
+              <div className="search-glass-overlay">
+                <p className="search-glass-title">Subscribe to unlock live signals, profits, and trader data</p>
+                <Link to={dashboardPath('/pricing')} className="search-glass-btn">See plans</Link>
+              </div>
+            )}
+          </main>
+        )
+      })()}
       <nav className="app-mobile-dock" aria-label="Main navigation">
         {navItems.map(({ id, label, path, Icon }) => {
           const target = dashboardPath(path)
