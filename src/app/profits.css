@@ -42,9 +42,9 @@
 .profits-entry strong { font-size: 15px; font-weight: 600; }
 .profits-entry span, .profits-result-value > span { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
 .profits-result-value > strong { font-size: 21px; font-weight: 750; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.profits-result-locked { flex-direction: row; align-items: center; gap: 6px; color: var(--text-dim); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; }
-.profits-result-locked svg { flex-shrink: 0; }
-.profits-result-locked:hover { color: var(--text); }
+/* Locked: won/lost stays legible (that's the proof), the exact payout
+   blurs — same idea as the chart on ongoing picks. */
+.profits-result-value > strong.is-blurred { filter: blur(6px); user-select: none; }
 .profits-page .is-positive { color: var(--green); }
 .profits-page .is-negative { color: var(--red); }
 .profits-notice { font-size: 14px; color: var(--text-dim); line-height: 1.7; padding: 18px 0; }

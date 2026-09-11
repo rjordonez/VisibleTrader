@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Cpu, ChevronDown, HelpCircle, Lock, X } from 'lucide-react'
+import { Cpu, ChevronDown, HelpCircle, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
 import { fmtSigned, timeAgo, categoryLabel } from './helpers'
 import { CumulativeChart } from './PriceChart'
@@ -253,22 +251,16 @@ export default function ProfitBot() {
                     </div>
                   </div>
                   <div className="profits-entry"><strong>{Math.round(r.avg_entry * 100)}&cent;</strong><span>avg entry</span></div>
-                  {/* Per-row gate, same idea as ExpertPickCard: the setup
-                      stays visible, the actual result is what's worth
-                      subscribing to see. */}
-                  {locked ? (
-                    <Link to={dashboardPath('/pricing')} className="profits-result-value profits-result-locked">
-                      <Lock size={13} /><span>Subscribe to see result</span>
-                    </Link>
-                  ) : (
-                    <div className="profits-result-value">
-                      <strong className={r.pnl >= 0 ? 'is-positive' : 'is-negative'}>{fmtSigned(r.pnl)}</strong>
-                      <span>
-                        <span className={r.won ? 'is-positive' : 'is-negative'}>{r.won ? 'Won' : 'Lost'}</span>
-                        {' · '}<time dateTime={r.resolved_ts}>{timeAgo(r.resolved_ts)}</time>
-                      </span>
-                    </div>
-                  )}
+                  {/* Per-row gate: whether it won or lost stays legible
+                      (that's the proof), the exact payout is what's
+                      blurred — same idea as the chart on ongoing picks. */}
+                  <div className="profits-result-value">
+                    <strong className={`${r.pnl >= 0 ? 'is-positive' : 'is-negative'} ${locked ? 'is-blurred' : ''}`}>{fmtSigned(r.pnl)}</strong>
+                    <span>
+                      <span className={r.won ? 'is-positive' : 'is-negative'}>{r.won ? 'Won' : 'Lost'}</span>
+                      {' · '}<time dateTime={r.resolved_ts}>{timeAgo(r.resolved_ts)}</time>
+                    </span>
+                  </div>
                 </li>
               ))}
             </ol>
