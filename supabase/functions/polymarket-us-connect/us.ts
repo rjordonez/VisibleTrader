@@ -106,16 +106,22 @@ export async function fetchActivity(keyId: string, secretKey: string) {
 export interface TradeRecord {
   external_id: string; occurred_at: string; asset: string; title: string;
   outcome: string; side: string; size: number | null; price: number | null;
-  amount: number | null; realized_pnl: number | null;
+  amount: number | null; realized_pnl: number | null; order_id: string | null;
 }
 
 function mapTrade(trade: Record<string, unknown>): TradeRecord | null {
   if (typeof trade.id !== 'string' || typeof trade.marketSlug !== 'string' || typeof trade.createTime !== 'string') return null;
+  // A resting order can fill in many pieces at different times, on either
+  // side of the match (aggressor or maker) — check both execution slots so
+  // grouping fills back into one logical order works regardless of which side we were.
+  const execution = (trade.aggressorExecution ?? trade.makerExecution) as Record<string, unknown> | undefined;
+  const order = execution?.order as Record<string, unknown> | undefined;
   return {
     external_id: trade.id, occurred_at: trade.createTime, asset: trade.marketSlug,
     title: trade.marketSlug.replaceAll('-', ' '), outcome: '', side: 'Trade',
     size: finiteNumber(trade.qtyDecimal), price: money(trade.price),
     amount: money(trade.costBasis), realized_pnl: money(trade.realizedPnl),
+    order_id: typeof order?.id === 'string' && order.id ? order.id : null,
   };
 }
 
@@ -141,7 +147,7 @@ function mapResolution(resolution: Record<string, unknown>): TradeRecord | null 
     occurred_at: updateTime, asset: marketSlug,
     title: typeof metadata.title === 'string' && metadata.title ? metadata.title : marketSlug.replaceAll('-', ' '),
     outcome: typeof metadata.outcome === 'string' ? metadata.outcome : '',
-    side: 'Settlement', size: null, price: null, amount: null, realized_pnl: after - before,
+    side: 'Settlement', size: null, price: null, amount: null, realized_pnl: after - before, order_id: null,
   };
 }
 

@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { ChevronLeft, ChevronRight, X, Plus, MessageSquare, ArrowUpRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import type { Activity } from './connections/api'
-import { money } from './connections/api'
 import { fmtSigned } from './helpers'
 import './journal.css'
 
@@ -12,20 +10,31 @@ interface JournalEntry {
   note: string | null
 }
 interface USTradeRow {
+  asset: string
   occurred_at: string
   title: string
   side: string
   size: number | null
   realized_pnl: number | null
+  order_id: string | null
 }
 interface TradeGroup {
   key: string
   title: string
-  side: string
+  side: 'Position' | 'Entry' | 'Settlement'
   occurred_at: string
   fills: number
   size: number | null
   realized_pnl: number | null
+}
+
+// Polymarket's own title metadata is sometimes blank (falls back to the raw
+// slug elsewhere), and it isn't always populated consistently between a
+// trade and its settlement for the same market — prefer whichever of the
+// two actually has a human-readable name instead of showing the slug.
+function bestTitle(asset: string, ...candidates: string[]) {
+  const fallback = asset.replaceAll('-', ' ')
+  return candidates.find(t => t && t !== fallback) ?? candidates.find(Boolean) ?? fallback
 }
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -34,34 +43,57 @@ function toISODate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-// A single order placed against a thin order book can fill in many pieces —
-// each a genuine, separate activity row from Polymarket, but not something
-// a person thinks of as a separate trade. Fills of one order share the same
-// market and the exact same timestamp (the order's own createTime), so that
-// pair is a reliable, already-available grouping key — no new data needed.
-// Settlement rows are real one-per-event P&L and are never grouped.
+// Two things collapse here, both because the raw per-fill activity feed is
+// far more granular than what a person thinks of as "a trade":
+// 1. A single order on a thin order book can fill in many pieces, each a
+//    genuine separate activity row. Grouped by Polymarket's own order id —
+//    a resting order can fill at different times, not necessarily the same
+//    instant, so matching by timestamp (an earlier version of this) missed
+//    fills that landed apart in time.
+// 2. If a position both has entry fills and a settlement for the same
+//    market on the same day, showing them as two rows is redundant — the
+//    settlement is already the final, complete answer for that position.
+//    They're merged into one row carrying the settlement's real P&L.
+// A position still open (no settlement yet) keeps showing as its own Entry
+// row with no P&L, since there's nothing final to report yet.
 function groupTrades(rows: USTradeRow[]): TradeGroup[] {
-  const groups: TradeGroup[] = []
-  const index = new Map<string, TradeGroup>()
+  const entries = new Map<string, { asset: string; title: string; occurred_at: string; fills: number; size: number | null }>()
+  const settlements = new Map<string, { title: string; occurred_at: string; realized_pnl: number }>()
+  let fallbackIndex = 0
   for (const row of rows) {
-    if (row.side !== 'Trade') {
-      groups.push({ key: `${row.occurred_at}-${groups.length}`, title: row.title, side: row.side, occurred_at: row.occurred_at, fills: 1, size: row.size, realized_pnl: row.realized_pnl })
+    if (row.side === 'Settlement') {
+      settlements.set(row.asset, { title: row.title, occurred_at: row.occurred_at, realized_pnl: row.realized_pnl ?? 0 })
       continue
     }
-    const key = `${row.occurred_at}|${row.title}`
-    const existing = index.get(key)
-    if (existing) { existing.fills += 1; existing.size = existing.size == null && row.size == null ? null : (existing.size ?? 0) + (row.size ?? 0) }
+    const key = row.order_id ?? `row:${fallbackIndex++}`
+    const existing = entries.get(key)
+    if (existing) { existing.fills += 1; existing.size = (existing.size ?? 0) + (row.size ?? 0) }
+    else entries.set(key, { asset: row.asset, title: row.title, occurred_at: row.occurred_at, fills: 1, size: row.size })
+  }
+
+  const closedAssets = new Map<string, TradeGroup>()
+  const result: TradeGroup[] = []
+  for (const entry of entries.values()) {
+    const settlement = settlements.get(entry.asset)
+    if (!settlement) { result.push({ key: entry.asset, title: entry.title, side: 'Entry', occurred_at: entry.occurred_at, fills: entry.fills, size: entry.size, realized_pnl: null }); continue }
+    const existing = closedAssets.get(entry.asset)
+    if (existing) { existing.fills += entry.fills; existing.size = (existing.size ?? 0) + (entry.size ?? 0) }
     else {
-      const group: TradeGroup = { key, title: row.title, side: row.side, occurred_at: row.occurred_at, fills: 1, size: row.size, realized_pnl: null }
-      index.set(key, group)
-      groups.push(group)
+      const group: TradeGroup = { key: entry.asset, title: bestTitle(entry.asset, settlement.title, entry.title), side: 'Position', occurred_at: settlement.occurred_at, fills: entry.fills, size: entry.size, realized_pnl: settlement.realized_pnl }
+      closedAssets.set(entry.asset, group)
+      result.push(group)
     }
   }
-  return groups
+  // A settlement with no entry fills captured this period (e.g. the position
+  // was opened before the connected history began) still needs to be shown.
+  for (const [asset, settlement] of settlements) {
+    if (!closedAssets.has(asset)) result.push({ key: asset, title: bestTitle(asset, settlement.title), side: 'Settlement', occurred_at: settlement.occurred_at, fills: 1, size: null, realized_pnl: settlement.realized_pnl })
+  }
+  return result.sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
 }
 
-// Daily reflections and manual results, with recent account activity as context.
-function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity & { venue: string })[]; initialDay?: string }) {
+// Daily reflections, manual results, and real trade history (see each day's Trades tab).
+function JournalCalendar({ initialDay }: { initialDay?: string }) {
   const [userId, setUserId] = useState<string | null>(null)
   const [viewDate, setViewDate] = useState(() => initialDay ? new Date(initialDay + 'T00:00:00') : new Date())
   const [entries, setEntries] = useState<Map<string, JournalEntry>>(new Map())
@@ -75,6 +107,9 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
   const [loadError, setLoadError] = useState(false)
   const [editorError, setEditorError] = useState('')
   const editorRef = useRef<HTMLDialogElement>(null)
+  const [statsRange, setStatsRange] = useState<'month' | 'year' | 'all'>('month')
+  const [rangeSummary, setRangeSummary] = useState<{ total: number; days: number; profitableDays: number; bestDay: number | null } | null>(null)
+  const [rangeLoading, setRangeLoading] = useState(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data, error }) => {
@@ -119,7 +154,7 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
     // US-only for now: international per-trade realized P&L isn't available
     // from Polymarket's Data API yet (see docs/polymarket-connections.md).
     Promise.resolve(
-      supabase.from('polymarket_trades').select('occurred_at, title, side, size, realized_pnl')
+      supabase.from('polymarket_trades').select('asset, occurred_at, title, side, size, realized_pnl, order_id')
         .eq('venue', 'us').gte('occurred_at', `${monthStart}T00:00:00Z`).lt('occurred_at', `${nextMonthStart}T00:00:00Z`)
         .order('occurred_at', { ascending: false })
     )
@@ -136,6 +171,54 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
       .catch(() => { /* Real trade P&L is additive; a failed fetch just falls back to manual-only stats. */ })
     return () => { active = false }
   }, [userId, monthStart, monthEnd, year, month])
+
+  // Year/all-time stats are a separate, wider fetch rather than reusing the
+  // month-scoped entries/tradesByDay above — the calendar grid itself always
+  // shows one month regardless of which range the summary header is set to.
+  useEffect(() => {
+    if (!userId || statsRange === 'month') return
+    let active = true
+    // Deferred so the effect body itself never calls setState synchronously —
+    // matches the pattern used for the mount/backfill effects elsewhere in this app.
+    const start = window.setTimeout(() => {
+      if (!active) return
+      setRangeLoading(true)
+      const yearBounds = statsRange === 'year'
+        ? { entryFrom: `${year}-01-01`, entryTo: `${year}-12-31`, tradeFrom: `${year}-01-01T00:00:00Z`, tradeTo: `${year + 1}-01-01T00:00:00Z` }
+        : null
+      let entryQuery = supabase.from('personal_pnl_entries').select('entry_date, amount')
+      let tradeQuery = supabase.from('polymarket_trades').select('occurred_at, realized_pnl').eq('venue', 'us')
+      if (yearBounds) {
+        entryQuery = entryQuery.gte('entry_date', yearBounds.entryFrom).lte('entry_date', yearBounds.entryTo)
+        tradeQuery = tradeQuery.gte('occurred_at', yearBounds.tradeFrom).lt('occurred_at', yearBounds.tradeTo)
+      }
+      Promise.all([entryQuery, tradeQuery])
+        .then(([entriesRes, tradesRes]) => {
+          if (entriesRes.error) throw entriesRes.error
+          if (tradesRes.error) throw tradesRes.error
+          if (!active) return
+          const totals = new Map<string, number>()
+          for (const e of (entriesRes.data ?? []) as { entry_date: string; amount: number }[]) {
+            totals.set(e.entry_date, (totals.get(e.entry_date) ?? 0) + e.amount)
+          }
+          for (const t of (tradesRes.data ?? []) as { occurred_at: string; realized_pnl: number | null }[]) {
+            if (t.realized_pnl == null) continue
+            const iso = toISODate(new Date(t.occurred_at))
+            totals.set(iso, (totals.get(iso) ?? 0) + t.realized_pnl)
+          }
+          const values = Array.from(totals.values())
+          setRangeSummary({
+            total: values.reduce((s, v) => s + v, 0),
+            days: totals.size,
+            profitableDays: values.filter(v => v > 0).length,
+            bestDay: values.length ? Math.max(...values) : null,
+          })
+        })
+        .catch(() => { if (active) setRangeSummary(null) })
+        .finally(() => { if (active) setRangeLoading(false) })
+    }, 0)
+    return () => { active = false; clearTimeout(start) }
+  }, [userId, statsRange, year])
 
   useEffect(() => {
     if (editingDate) editorRef.current?.showModal()
@@ -164,9 +247,6 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
 
   const todayISO = toISODate(new Date())
   const monthEntries = Array.from(entries.values()).sort((a, b) => b.entry_date.localeCompare(a.entry_date))
-  const monthActivity = activity
-    .filter(trade => trade.timestamp != null && new Date(trade.timestamp * 1000).getFullYear() === year && new Date(trade.timestamp * 1000).getMonth() === month)
-    .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
   // Days logged / profitable days / monthly P&L combine manual entries with
   // real trade P&L (currently US only — see the polymarket_trades fetch
   // above), summed per day rather than one source overriding the other.
@@ -177,6 +257,11 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
   const profitableDays = Array.from(loggedDays).filter(d => combinedOn(d) > 0).length
   const bestDay = loggedDays.size ? Math.max(...Array.from(loggedDays).map(combinedOn)) : null
   const monthLabel = viewDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  const summaryLabel = statsRange === 'month' ? monthLabel : statsRange === 'year' ? String(year) : 'All time'
+  const summaryBusy = statsRange === 'month' ? (loading || loadError) : (rangeLoading || !rangeSummary)
+  const summary = statsRange === 'month'
+    ? { total: monthTotal, days: loggedDays.size, profitableDays, bestDay }
+    : { total: rangeSummary?.total ?? 0, days: rangeSummary?.days ?? 0, profitableDays: rangeSummary?.profitableDays ?? 0, bestDay: rangeSummary?.bestDay ?? null }
 
   const openDay = (day: number) => {
     const iso = toISODate(new Date(year, month, day))
@@ -249,26 +334,21 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
         <button type="button" className="journal-add-button" disabled={!userId || loading || loadError} onClick={() => openDay(year === new Date().getFullYear() && month === new Date().getMonth() ? new Date().getDate() : 1)}><Plus size={18} /> Log a day</button>
       </div>
 
-      <section className="journal-summary" aria-label={`${monthLabel} summary`}>
+      <section className="journal-summary" aria-label={`${summaryLabel} summary`}>
         <div className="journal-summary-main">
-          <span>Monthly P&L</span>
-          <strong className={monthTotal > 0 ? 'g' : monthTotal < 0 ? 'r' : ''}>{loading || loadError ? '—' : fmtSigned(monthTotal)}</strong>
-          <p>{monthLabel} · {tradesByDay.size ? 'Manual entries + account P&L' : 'Manually logged'}</p>
+          <div className="journal-range-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={statsRange === 'month'} onClick={() => setStatsRange('month')}>Month</button>
+            <button type="button" role="tab" aria-selected={statsRange === 'year'} onClick={() => setStatsRange('year')}>Year</button>
+            <button type="button" role="tab" aria-selected={statsRange === 'all'} onClick={() => setStatsRange('all')}>All time</button>
+          </div>
+          <strong className={summary.total > 0 ? 'g' : summary.total < 0 ? 'r' : ''}>{summaryBusy ? '—' : fmtSigned(summary.total)}</strong>
+          <p>{summaryLabel} · {tradesByDay.size || (statsRange !== 'month' && summary.days) ? 'Manual entries + account P&L' : 'Manually logged'}</p>
         </div>
         <dl className="journal-summary-details">
-          <div><dt>Days logged</dt><dd>{loading || loadError ? '—' : loggedDays.size}</dd></div>
-          <div><dt>Profitable days</dt><dd>{loading || loadError ? '—' : profitableDays}</dd></div>
-          <div><dt>Best day</dt><dd className={bestDay !== null && bestDay > 0 ? 'g' : bestDay !== null && bestDay < 0 ? 'r' : ''}>{loading || loadError || bestDay === null ? '—' : fmtSigned(bestDay)}</dd></div>
+          <div><dt>Days logged</dt><dd>{summaryBusy ? '—' : summary.days}</dd></div>
+          <div><dt>Profitable days</dt><dd>{summaryBusy ? '—' : summary.profitableDays}</dd></div>
+          <div><dt>Best day</dt><dd className={summary.bestDay !== null && summary.bestDay > 0 ? 'g' : summary.bestDay !== null && summary.bestDay < 0 ? 'r' : ''}>{summaryBusy || summary.bestDay === null ? '—' : fmtSigned(summary.bestDay)}</dd></div>
         </dl>
-      </section>
-
-      <section className="journal-activity" aria-labelledby="journal-activity-title">
-        <div className="journal-entries-heading"><h2 id="journal-activity-title">Account activity</h2><span>{monthLabel}</span></div>
-        {monthActivity.length === 0 ? <div className="journal-empty"><p>No imported trades were fetched for this month.</p></div> : <div className="journal-activity-list">{monthActivity.map((trade, index) => <button type="button" className="journal-activity-row" key={`${trade.venue}-${trade.transaction_hash}-${index}`} onClick={() => openDay(new Date((trade.timestamp ?? 0) * 1000).getDate())}>
-          <span className="journal-activity-date"><strong>{new Date((trade.timestamp ?? 0) * 1000).getDate()}</strong><small>{new Date((trade.timestamp ?? 0) * 1000).toLocaleDateString(undefined, { weekday: 'short' })}</small></span>
-          <span className="journal-activity-detail"><strong>{trade.title}</strong><small>{trade.venue} · {trade.side} · {trade.timestamp == null ? 'Time unavailable' : new Date(trade.timestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</small></span>
-          <span className="journal-activity-amount">{trade.pnl != null ? `P&L ${fmtSigned(trade.pnl)}` : money(trade.amount)}</span><ArrowUpRight size={15} aria-hidden="true" />
-        </button>)}</div>}
       </section>
 
       <section className="journal-calendar" aria-label="Daily P&L calendar" aria-busy={loading}>
@@ -349,7 +429,7 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
             </div>
             {dayTab === 'trades' ? <div className="journal-day-trades">
               {dayGroups.length === 0 ? <p className="connection-small">No trades recorded for this day.</p> : dayGroups.map(group => <div className="journal-day-trade-row" key={group.key}>
-                <div><strong>{group.title}</strong><span>{group.side === 'Settlement' ? 'Settlement' : `Entry${group.fills > 1 ? ` · ${group.fills} fills` : ''}${group.size != null ? ` · ${group.size.toLocaleString(undefined, { maximumFractionDigits: 2 })} shares` : ''}`} · {new Date(group.occurred_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>
+                <div><strong>{group.title}</strong><span>{group.side === 'Settlement' ? 'Settlement' : group.side === 'Position' ? `Closed${group.fills > 1 ? ` · ${group.fills} fills` : ''}` : `Entry${group.fills > 1 ? ` · ${group.fills} fills` : ''}${group.size != null ? ` · ${group.size.toLocaleString(undefined, { maximumFractionDigits: 2 })} shares` : ''}`} · {new Date(group.occurred_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>
                 <strong className={group.realized_pnl == null ? '' : group.realized_pnl > 0 ? 'g' : group.realized_pnl < 0 ? 'r' : ''}>{group.realized_pnl == null ? '—' : fmtSigned(group.realized_pnl)}</strong>
               </div>)}
             </div> : <form onSubmit={e => { e.preventDefault(); saveEntry() }}>
