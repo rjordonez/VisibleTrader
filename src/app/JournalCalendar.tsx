@@ -15,6 +15,16 @@ interface USTradeRow {
   occurred_at: string
   title: string
   side: string
+  size: number | null
+  realized_pnl: number | null
+}
+interface TradeGroup {
+  key: string
+  title: string
+  side: string
+  occurred_at: string
+  fills: number
+  size: number | null
   realized_pnl: number | null
 }
 
@@ -22,6 +32,32 @@ const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function toISODate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// A single order placed against a thin order book can fill in many pieces —
+// each a genuine, separate activity row from Polymarket, but not something
+// a person thinks of as a separate trade. Fills of one order share the same
+// market and the exact same timestamp (the order's own createTime), so that
+// pair is a reliable, already-available grouping key — no new data needed.
+// Settlement rows are real one-per-event P&L and are never grouped.
+function groupTrades(rows: USTradeRow[]): TradeGroup[] {
+  const groups: TradeGroup[] = []
+  const index = new Map<string, TradeGroup>()
+  for (const row of rows) {
+    if (row.side !== 'Trade') {
+      groups.push({ key: `${row.occurred_at}-${groups.length}`, title: row.title, side: row.side, occurred_at: row.occurred_at, fills: 1, size: row.size, realized_pnl: row.realized_pnl })
+      continue
+    }
+    const key = `${row.occurred_at}|${row.title}`
+    const existing = index.get(key)
+    if (existing) { existing.fills += 1; existing.size = existing.size == null && row.size == null ? null : (existing.size ?? 0) + (row.size ?? 0) }
+    else {
+      const group: TradeGroup = { key, title: row.title, side: row.side, occurred_at: row.occurred_at, fills: 1, size: row.size, realized_pnl: null }
+      index.set(key, group)
+      groups.push(group)
+    }
+  }
+  return groups
 }
 
 // Daily reflections and manual results, with recent account activity as context.
@@ -83,7 +119,7 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
     // US-only for now: international per-trade realized P&L isn't available
     // from Polymarket's Data API yet (see docs/polymarket-connections.md).
     Promise.resolve(
-      supabase.from('polymarket_trades').select('occurred_at, title, side, realized_pnl')
+      supabase.from('polymarket_trades').select('occurred_at, title, side, size, realized_pnl')
         .eq('venue', 'us').gte('occurred_at', `${monthStart}T00:00:00Z`).lt('occurred_at', `${nextMonthStart}T00:00:00Z`)
         .order('occurred_at', { ascending: false })
     )
@@ -274,7 +310,10 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
               >
                 <span className="journal-cell-day">{day}</span>
                 {hasData ? <><span className="journal-cell-amt">{fmtSigned(combined)}</span>{entry?.note && <MessageSquare className="journal-cell-note" size={12} aria-hidden="true" />}</> : <span className="journal-cell-add" aria-hidden="true">+</span>}
-                {(tradesByDay.get(iso)?.length ?? 0) > 0 && <small className="journal-trade-count">{tradesByDay.get(iso)!.length} {tradesByDay.get(iso)!.length === 1 ? 'trade' : 'trades'}</small>}
+                {(() => {
+                  const count = groupTrades(tradesByDay.get(iso) ?? []).length
+                  return count > 0 && <small className="journal-trade-count">{count} {count === 1 ? 'trade' : 'trades'}</small>
+                })()}
               </button>
             )
           })}
@@ -294,7 +333,7 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
 
       <dialog className="journal-editor" ref={editorRef} aria-labelledby="journal-editor-title" onCancel={e => { e.preventDefault(); closeEditor() }} onClick={e => { if (e.target === e.currentTarget) closeEditor() }}>
         {editingDate && (() => {
-          const dayTrades = tradesByDay.get(editingDate) ?? []
+          const dayGroups = groupTrades(tradesByDay.get(editingDate) ?? [])
           return <div>
             <div className="journal-editor-head">
               <div className="journal-editor-title" id="journal-editor-title">
@@ -305,16 +344,16 @@ function JournalCalendar({ activity = [], initialDay }: { activity?: (Activity &
               </button>
             </div>
             <div className="journal-day-tabs" role="tablist">
-              <button type="button" role="tab" aria-selected={dayTab === 'trades'} onClick={() => setDayTab('trades')}>Trades{dayTrades.length ? ` (${dayTrades.length})` : ''}</button>
+              <button type="button" role="tab" aria-selected={dayTab === 'trades'} onClick={() => setDayTab('trades')}>Trades{dayGroups.length ? ` (${dayGroups.length})` : ''}</button>
               <button type="button" role="tab" aria-selected={dayTab === 'manual'} onClick={() => setDayTab('manual')}>Manual entry{entries.has(editingDate) ? ' •' : ''}</button>
             </div>
             {dayTab === 'trades' ? <div className="journal-day-trades">
-              {dayTrades.length === 0 ? <p className="connection-small">No trades recorded for this day.</p> : dayTrades.map((trade, i) => <div className="journal-day-trade-row" key={i}>
-                <div><strong>{trade.title}</strong><span>{trade.side} · {new Date(trade.occurred_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>
-                <strong className={trade.realized_pnl == null ? '' : trade.realized_pnl > 0 ? 'g' : trade.realized_pnl < 0 ? 'r' : ''}>{trade.realized_pnl == null ? '—' : fmtSigned(trade.realized_pnl)}</strong>
+              {dayGroups.length === 0 ? <p className="connection-small">No trades recorded for this day.</p> : dayGroups.map(group => <div className="journal-day-trade-row" key={group.key}>
+                <div><strong>{group.title}</strong><span>{group.side === 'Settlement' ? 'Settlement' : `Entry${group.fills > 1 ? ` · ${group.fills} fills` : ''}${group.size != null ? ` · ${group.size.toLocaleString(undefined, { maximumFractionDigits: 2 })} shares` : ''}`} · {new Date(group.occurred_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>
+                <strong className={group.realized_pnl == null ? '' : group.realized_pnl > 0 ? 'g' : group.realized_pnl < 0 ? 'r' : ''}>{group.realized_pnl == null ? '—' : fmtSigned(group.realized_pnl)}</strong>
               </div>)}
             </div> : <form onSubmit={e => { e.preventDefault(); saveEntry() }}>
-              {dayTrades.length > 0 && <p className="connection-small">Your connected account already logged {fmtSigned(realizedOn(editingDate))} in realized P&amp;L for this day (see Trades). Anything entered below is added on top of that, not a replacement for it.</p>}
+              {dayGroups.length > 0 && <p className="connection-small">Your connected account already logged {fmtSigned(realizedOn(editingDate))} in realized P&amp;L for this day (see Trades). Anything entered below is added on top of that, not a replacement for it.</p>}
               <label className="journal-input-label" htmlFor="journal-amount">Manually logged profit / loss ($)</label>
               <input
                 id="journal-amount"
