@@ -220,58 +220,58 @@ export default function ProfitBot() {
           </div>
         )}
 
-        {(() => {
-          const body = view === 'ongoing' ? (
-            picks.length === 0 ? (
-              <p className="profits-notice">No markets meet the bar right now. This updates as tracked traders move.</p>
-            ) : (
-              <div className="expert-picks-grid">
-                {[...picks]
-                  .sort((a, b) => sort === 'profitable'
-                    ? Number(b.total_profit) - Number(a.total_profit)
-                    : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
-                  .map(o => (
-                    <ExpertPickCard key={`${o.condition_id}::${o.outcome}`} opportunity={o} onOpen={() => setModalOpp(o)} />
-                  ))}
-              </div>
-            )
+        {view === 'ongoing' ? (
+          // Each ExpertPickCard gates itself now (win rate + stats stay
+          // visible, the title blurs, the bet button becomes a "Subscribe"
+          // link) — see ExpertPickCard.tsx. No page-level blur needed here.
+          picks.length === 0 ? (
+            <p className="profits-notice">No markets meet the bar right now. This updates as tracked traders move.</p>
           ) : (
-            resolved.length === 0 ? (
-              <p className="profits-notice">No Profit Bot picks have resolved yet.</p>
-            ) : (
-              <ol className="profits-result-list">
-                {resolved.map(r => (
-                  <li className="profits-result-row" key={`${r.condition_id}:${r.outcome}:${r.resolved_ts}`}>
-                    <div className="profits-position">
-                      <h3>{r.title}</h3>
-                      <div className="profits-trader-line">
-                        <span>{r.outcome}</span>
-                        <span>· {r.experts} proven traders</span>
-                        <span>· {categoryLabel(r.category ?? 'other')}</span>
-                      </div>
-                    </div>
-                    <div className="profits-entry"><strong>{Math.round(r.avg_entry * 100)}&cent;</strong><span>avg entry</span></div>
-                    <div className="profits-result-value">
-                      <strong className={r.pnl >= 0 ? 'is-positive' : 'is-negative'}>{fmtSigned(r.pnl)}</strong>
-                      <span>
-                        <span className={r.won ? 'is-positive' : 'is-negative'}>{r.won ? 'Won' : 'Lost'}</span>
-                        {' · '}<time dateTime={r.resolved_ts}>{timeAgo(r.resolved_ts)}</time>
-                      </span>
-                    </div>
-                  </li>
+            <div className="expert-picks-grid">
+              {[...picks]
+                .sort((a, b) => sort === 'profitable'
+                  ? Number(b.total_profit) - Number(a.total_profit)
+                  : new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime())
+                .map(o => (
+                  <ExpertPickCard key={`${o.condition_id}::${o.outcome}`} opportunity={o} onOpen={() => setModalOpp(o)} />
                 ))}
-              </ol>
-            )
+            </div>
           )
-          if (!locked) return body
-          // The hero above is unblurred (already public data) — this is the
-          // one thing on Profits still worth subscribing for, so it's the
-          // only part that gets the blur-teaser treatment.
+        ) : (() => {
+          const resolvedBody = resolved.length === 0 ? (
+            <p className="profits-notice">No Profit Bot picks have resolved yet.</p>
+          ) : (
+            <ol className="profits-result-list">
+              {resolved.map(r => (
+                <li className="profits-result-row" key={`${r.condition_id}:${r.outcome}:${r.resolved_ts}`}>
+                  <div className="profits-position">
+                    <h3>{r.title}</h3>
+                    <div className="profits-trader-line">
+                      <span>{r.outcome}</span>
+                      <span>· {r.experts} proven traders</span>
+                      <span>· {categoryLabel(r.category ?? 'other')}</span>
+                    </div>
+                  </div>
+                  <div className="profits-entry"><strong>{Math.round(r.avg_entry * 100)}&cent;</strong><span>avg entry</span></div>
+                  <div className="profits-result-value">
+                    <strong className={r.pnl >= 0 ? 'is-positive' : 'is-negative'}>{fmtSigned(r.pnl)}</strong>
+                    <span>
+                      <span className={r.won ? 'is-positive' : 'is-negative'}>{r.won ? 'Won' : 'Lost'}</span>
+                      {' · '}<time dateTime={r.resolved_ts}>{timeAgo(r.resolved_ts)}</time>
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )
+          if (!locked) return resolvedBody
+          // Resolved picks don't have per-row gating like the ongoing
+          // cards, so this one still gets the whole-section blur teaser.
           return (
             <div className="search-locked">
-              <div className="search-locked-bg">{body}</div>
+              <div className="search-locked-bg">{resolvedBody}</div>
               <div className="search-glass-overlay">
-                <p className="search-glass-title">Subscribe to see today&rsquo;s picks</p>
+                <p className="search-glass-title">Subscribe to see resolved picks</p>
                 <Link to={dashboardPath('/pricing')} className="search-glass-btn">See plans</Link>
               </div>
             </div>

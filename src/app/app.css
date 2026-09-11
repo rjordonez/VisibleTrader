@@ -614,6 +614,14 @@
   margin: 0;
 }
 
+/* Visually hidden but still announced — gives an icon-only or
+   aria-hidden-title control a real accessible name without showing text
+   on screen (e.g. a locked ExpertPickCard's title link). */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
 /* ── Signals / dashboard shared (sig- prefixed to avoid colliding with the
    rest of the app's class names). Redesigned away from the original v4 mock's
    pill-everything look toward a flatter, data-dense "trading terminal" style:
