@@ -150,7 +150,7 @@ export default function ProfitBot() {
         <div className="profits-chart-area">
           <p className="profits-chart-label">Cumulative P&amp;L, flat $100 per pick</p>
           {cumulative.length > 1
-            ? <CumulativeChart data={cumulative} height={250} />
+            ? <CumulativeChart data={cumulative} height={250} bold />
             : <p className="profits-notice">The curve appears once picks span more than one day.</p>}
         </div>
 
