@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Cpu, ChevronDown, HelpCircle, X } from 'lucide-react'
+import { Cpu, ChevronDown, HelpCircle, Lock, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -237,8 +237,8 @@ export default function ProfitBot() {
                 ))}
             </div>
           )
-        ) : (() => {
-          const resolvedBody = resolved.length === 0 ? (
+        ) : (
+          resolved.length === 0 ? (
             <p className="profits-notice">No Profit Bot picks have resolved yet.</p>
           ) : (
             <ol className="profits-result-list">
@@ -253,30 +253,27 @@ export default function ProfitBot() {
                     </div>
                   </div>
                   <div className="profits-entry"><strong>{Math.round(r.avg_entry * 100)}&cent;</strong><span>avg entry</span></div>
-                  <div className="profits-result-value">
-                    <strong className={r.pnl >= 0 ? 'is-positive' : 'is-negative'}>{fmtSigned(r.pnl)}</strong>
-                    <span>
-                      <span className={r.won ? 'is-positive' : 'is-negative'}>{r.won ? 'Won' : 'Lost'}</span>
-                      {' · '}<time dateTime={r.resolved_ts}>{timeAgo(r.resolved_ts)}</time>
-                    </span>
-                  </div>
+                  {/* Per-row gate, same idea as ExpertPickCard: the setup
+                      stays visible, the actual result is what's worth
+                      subscribing to see. */}
+                  {locked ? (
+                    <Link to={dashboardPath('/pricing')} className="profits-result-value profits-result-locked">
+                      <Lock size={13} /><span>Subscribe to see result</span>
+                    </Link>
+                  ) : (
+                    <div className="profits-result-value">
+                      <strong className={r.pnl >= 0 ? 'is-positive' : 'is-negative'}>{fmtSigned(r.pnl)}</strong>
+                      <span>
+                        <span className={r.won ? 'is-positive' : 'is-negative'}>{r.won ? 'Won' : 'Lost'}</span>
+                        {' · '}<time dateTime={r.resolved_ts}>{timeAgo(r.resolved_ts)}</time>
+                      </span>
+                    </div>
+                  )}
                 </li>
               ))}
             </ol>
           )
-          if (!locked) return resolvedBody
-          // Resolved picks don't have per-row gating like the ongoing
-          // cards, so this one still gets the whole-section blur teaser.
-          return (
-            <div className="search-locked">
-              <div className="search-locked-bg">{resolvedBody}</div>
-              <div className="search-glass-overlay">
-                <p className="search-glass-title">Subscribe to see resolved picks</p>
-                <Link to={dashboardPath('/pricing')} className="search-glass-btn">See plans</Link>
-              </div>
-            </div>
-          )
-        })()}
+        )}
       </section>
 
       {modalOpp && <SignalModal opportunity={modalOpp} onClose={() => setModalOpp(null)} />}
