@@ -22,11 +22,10 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
 
   useEffect(() => {
     let cancelled = false
-    // Only request history as a card approaches the viewport. Runs even
-    // when locked — the market icon is free for everyone (price-chart's
-    // slug/image lookup no longer requires a subscription); only the
-    // price history it also returns comes back empty for a locked caller,
-    // which is fine since <PickChart> isn't rendered in that case anyway.
+    // Only request history as a card approaches the viewport. Runs the
+    // same whether locked or not now — price-chart no longer requires a
+    // subscription (it's Polymarket's own public price data; what stays
+    // gated is which markets the tracked roster is even on).
     const observer = new IntersectionObserver(entries => {
       if (!entries.some(entry => entry.isIntersecting)) return
       observer.disconnect()
@@ -51,9 +50,9 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
     <article ref={container} className={`expert-pick-card ${locked ? 'is-locked' : ''}`}>
       <div className="expert-pick-topline">
         <span>{categoryLabel(o.category ?? 'other')}</span>
-        {/* The market link identifies exactly which pick this is — that's
-            the thing being gated, so it drops out entirely once the title
-            below is blurred, instead of leaking the answer around it. */}
+        {/* Suppressed when locked so there's nowhere to bounce off-platform
+            to Polymarket before subscribing — the market itself is visible
+            (title, chart), it's which side to bet that's gated below. */}
         {!locked && (
           <a href={`https://polymarket.com/event/${encodeURIComponent(o.event_slug || o.slug)}`} target="_blank" rel="noopener noreferrer">
             View market <ArrowUpRight size={14} />
@@ -63,8 +62,7 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
       {locked ? (
         <Link to={dashboardPath('/pricing')} className="expert-pick-title">
           <MarketIcon conditionId={o.condition_id} outcome={o.outcome} category={o.category} className="expert-pick-icon" source={image} />
-          <h3 className="expert-pick-title-blur" aria-hidden="true">{o.title}</h3>
-          <span className="sr-only">Subscribe to see this pick: {o.title}</span>
+          <h3>{o.title}</h3>
         </Link>
       ) : (
         <button className="expert-pick-title" onClick={onOpen}>
@@ -72,12 +70,12 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
           <h3>{o.title}</h3>
         </button>
       )}
-      {!locked && (
-        <>
-          <PickChart history={history} outcome={o.outcome} price={o.latest_price} error={chartError} onRetry={retry} />
-          <div className="expert-pick-chart-caption"><span>Polymarket</span><span>All time</span></div>
-        </>
-      )}
+      {/* Locked: shown but blurred + non-interactive — proof a real,
+          tracked chart exists without giving away the shape of the move. */}
+      <div className={locked ? 'expert-pick-chart-locked' : undefined}>
+        <PickChart history={history} outcome={o.outcome} price={o.latest_price} error={chartError} onRetry={retry} />
+      </div>
+      <div className="expert-pick-chart-caption"><span>Polymarket</span><span>All time</span></div>
       <div className="expert-pick-evidence">
         <div className="expert-pick-stats">
           {winRatePct != null && (

@@ -10,9 +10,12 @@
 .expert-pick-topline a:hover { color: var(--text); }
 .expert-pick-title { display: flex; align-items: flex-start; gap: 12px; width: 100%; min-height: 110px; padding: 22px 0 16px; text-align: left; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; }
 .expert-pick-title h3 { margin: 0; font-size: 17px; line-height: 1.45; font-weight: 650; letter-spacing: -0.025em; overflow-wrap: anywhere; }
-.expert-pick-title h3.expert-pick-title-blur { filter: blur(5px); user-select: none; }
 .expert-pick-icon { display: grid; place-items: center; flex-shrink: 0; width: 52px; height: 52px; overflow: hidden; border-radius: 11px; font-size: 24px; }
 .expert-pick-icon img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* Locked: the chart is real (proof it's a tracked market), just obscured —
+   blurring the wrapper is enough since PickChart's line/dot/price text all
+   sit inside it. */
+.expert-pick-chart-locked { filter: blur(3px); pointer-events: none; user-select: none; }
 .expert-pick-evidence { margin-top: 18px; padding: 16px 0 14px; border-top: 1px solid var(--border); }
 .expert-pick-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .expert-pick-stats > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }

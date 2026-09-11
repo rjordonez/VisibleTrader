@@ -10,7 +10,6 @@ const corsHeaders = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
 }
-const ACTIVE_SUB_STATUSES = new Set(['trialing', 'active'])
 
 async function lookupMarket(slug: string): Promise<Record<string, unknown> | null> {
   const res = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`, { headers: UA })
@@ -51,14 +50,15 @@ Deno.serve(async (req) => {
       })
     }
 
-    // The market icon is cosmetic (often a generic, shared image) — free
-    // for anyone, including a signed-in-but-unsubscribed visitor's locked
-    // ExpertPickCard (see ExpertPickCard.tsx), same as the rest of Profit
-    // Bot's public teaser data. Looked up with the service role so it
-    // doesn't depend on the caller having an active subscription; only the
-    // price history below still requires one — checked explicitly now,
-    // since it used to ride on this same lookup's RLS and that lookup is
-    // unconditional here.
+    // Both the icon and the price history here are public regardless of
+    // subscription now — a locked ExpertPickCard shows the real market
+    // icon and a real (blurred) chart, same as its win rate/stats (see
+    // ExpertPickCard.tsx). This data is Polymarket's own public price
+    // history, reachable by anyone who already knows the condition_id;
+    // what's actually gated is the curation — which markets the tracked
+    // roster is on at all — enforced by opportunities/expert_picks_open's
+    // RLS, untouched here. Uses the service role since there's no caller
+    // entitlement left to check for this lookup.
     const serviceClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -87,29 +87,6 @@ Deno.serve(async (req) => {
     const image = [market?.icon, market?.image].find(value => typeof value === 'string' && value.startsWith('https://')) ?? null
     if (image_only) {
       return new Response(JSON.stringify({ image }), {
-        headers: { ...corsHeaders, 'content-type': 'application/json' },
-      })
-    }
-
-    // Price history is the real product — still requires an active
-    // subscription, checked directly against the caller's own auth now
-    // that the slug/image lookup above no longer implies it.
-    const authHeader = req.headers.get('Authorization')
-    let active = false
-    if (authHeader) {
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_ANON_KEY')!,
-        { global: { headers: { Authorization: authHeader } } },
-      )
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: sub } = await supabase.from('subscriptions').select('status').maybeSingle()
-        active = !!sub && ACTIVE_SUB_STATUSES.has(sub.status)
-      }
-    }
-    if (!active) {
-      return new Response(JSON.stringify({ history: [], image, error: 'Market data could not be loaded' }), {
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
     }
