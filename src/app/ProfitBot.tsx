@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Cpu, ChevronDown, HelpCircle, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
-import { useCountUp } from '../lib/useCountUp'
 import { fmtSigned, timeAgo, categoryLabel } from './helpers'
 import { CumulativeChart } from './PriceChart'
 import { ExpertPickCard } from './ExpertPickCard'
@@ -86,11 +85,7 @@ export default function ProfitBot() {
       setLoading(false)
     }
     void load()
-    // Polls the already-cached profit_bot_* tables (see refresh_profit_bot_cache,
-    // now refreshed every ~10s server-side) rather than Realtime — a plain REST
-    // read every few seconds costs nothing extra per user and never touches the
-    // Realtime message quota, unlike a postgres_changes subscription would.
-    const t = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 3000)
+    const t = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 60000)
     return () => { cancelled = true; clearInterval(t); clearTimeout(retry) }
   }, [])
 
@@ -103,10 +98,7 @@ export default function ProfitBot() {
   const sinceLabel = perf
     ? new Date(`${perf.since}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
     : ''
-  // Eases toward each new poll's real value instead of snapping — see
-  // useCountUp's own comment for why this is honest motion, not fake ticking.
-  const animatedFlat100 = useCountUp(perf?.flat100_pnl ?? 0)
-  const flat100Pnl = perf ? fmtSigned(animatedFlat100) : null
+  const flat100Pnl = perf ? fmtSigned(perf.flat100_pnl) : null
 
   if (loading) {
     return <div className="profits-overview-skeleton sig-skel" aria-busy="true" aria-label="Loading Profit Bot" />
