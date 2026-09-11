@@ -145,8 +145,8 @@ function TabLoading() {
 // the Terminal's own read-only Alerts tab: it's a notification surface,
 // not a page you navigate to browse.
 const navItems = [
-  { id: 'profits',     label: 'Profits',     path: '/profits',     Icon: TrendingUp },
-  { id: 'feed',        label: 'Feed',        path: '/',            Icon: Newspaper },
+  { id: 'profits',     label: 'Profits',     path: '/',            Icon: TrendingUp },
+  { id: 'feed',        label: 'Feed',        path: '/feed',        Icon: Newspaper },
   { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
 ]
 
@@ -335,10 +335,14 @@ export default function AppShell() {
         <div className={locked ? 'search-locked-bg' : undefined}>
           <Suspense fallback={<TabLoading />}>
             <Routes>
-              <Route index element={<HomePage alerts={alerts} />} />
+              {/* Profits is the landing page — it's the strongest first impression
+                  (the bot's track record) and matches Profits leading the nav. */}
+              <Route index element={<ProfitsPage />} />
+              <Route path="feed" element={<HomePage alerts={alerts} />} />
               {/* Signals was retired — its Expert Picks browser now lives on the Profits page. */}
-              <Route path="signals" element={<Navigate to={dashboardPath('/profits')} replace />} />
-              <Route path="profits" element={<ProfitsPage />} />
+              <Route path="signals" element={<Navigate to={dashboardPath('/')} replace />} />
+              {/* Profits used to live at its own path; keep old links/bookmarks working. */}
+              <Route path="profits" element={<Navigate to={dashboardPath('/')} replace />} />
               <Route path="leaderboard" element={<LeaderboardPage {...alerts} />} />
               <Route path="alerts" element={<Navigate to={dashboardPath('/')} replace />} />
               <Route path="settings" element={<SettingsPage />} />
