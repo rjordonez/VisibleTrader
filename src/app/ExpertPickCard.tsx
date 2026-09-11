@@ -81,7 +81,7 @@ export function ExpertPickCard({ opportunity: o, onOpen }: { opportunity: Opport
           {winRatePct != null && (
             <span title="Best win rate among the tracked traders backing this pick"><strong>{winRatePct}%</strong><small>top trader win rate</small></span>
           )}
-          <span title="Total invested by tracked traders"><strong>{fmtFull(o.cumulative_usd)}</strong><small>invested</small></span>
+          <span className="g" title="Total invested by tracked traders"><strong>{fmtFull(o.cumulative_usd)}</strong><small>invested</small></span>
           <span title="Number of tracked expert traders"><strong><Users size={14} /> {o.wallet_count}</strong><small>{o.wallet_count === 1 ? 'expert' : 'experts'}</small></span>
         </div>
       </div>
