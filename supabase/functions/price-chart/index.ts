@@ -50,27 +50,20 @@ Deno.serve(async (req) => {
       })
     }
 
-    // opportunities' RLS now requires an active subscription
-    // (has_active_subscription()) — forward the caller's own auth header
-    // so that check runs against who's *actually* asking, same as every
-    // other endpoint that touches gated data. Not service role: that
-    // would bypass the subscription check entirely instead of enforcing
-    // it, handing chart data to anyone with just the public anon key. No
-    // header, or no active subscription, means this query naturally
-    // returns zero rows — the existing "no price history" empty state
-    // below already covers that case, no separate check needed.
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(JSON.stringify({ history: [], error: 'Market data could not be loaded' }), {
-        headers: { ...corsHeaders, 'content-type': 'application/json' },
-      })
-    }
-    const supabase = createClient(
+    // Both the icon and the price history here are public regardless of
+    // subscription now — a locked ExpertPickCard shows the real market
+    // icon and a real (blurred) chart, same as its win rate/stats (see
+    // ExpertPickCard.tsx). This data is Polymarket's own public price
+    // history, reachable by anyone who already knows the condition_id;
+    // what's actually gated is the curation — which markets the tracked
+    // roster is on at all — enforced by opportunities/expert_picks_open's
+    // RLS, untouched here. Uses the service role since there's no caller
+    // entitlement left to check for this lookup.
+    const serviceClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
-    const { data } = await supabase
+    const { data } = await serviceClient
       .from('opportunities')
       .select('slug')
       .eq('condition_id', condition_id)
@@ -79,9 +72,8 @@ Deno.serve(async (req) => {
 
     let slug = data?.slug
     // Discover includes recent trades that may not yet be an opportunity.
-    // Use the same caller-scoped database client and RLS for this lookup.
-    if (!slug && image_only) {
-      const { data: trade } = await supabase.from('ticker').select('slug')
+    if (!slug) {
+      const { data: trade } = await serviceClient.from('ticker').select('slug')
         .eq('condition_id', condition_id).limit(1).maybeSingle()
       slug = trade?.slug
     }
@@ -98,6 +90,7 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
     }
+
     const tokenId = resolveTokenId(market, outcome)
     if (!tokenId) {
       return new Response(JSON.stringify({ history: [], image, error: 'Outcome lookup failed' }), {
