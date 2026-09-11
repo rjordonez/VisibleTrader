@@ -20,6 +20,7 @@ export default function ConnectionsPage() {
   const request = useRef<AbortController | null>(null)
   const generation = useRef(0)
   const alive = useRef(true)
+  const lastUserId = useRef<string | null | undefined>(undefined)
 
   const [usConnection, setUsConnection] = useState<USConnection | null>(null)
   const [usSnapshot, setUsSnapshot] = useState<USSnapshot | null>(null)
@@ -93,8 +94,14 @@ export default function ConnectionsPage() {
   useEffect(() => {
     alive.current = true
     const start = window.setTimeout(() => void initialize(), 0)
-    const { data } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') void initialize()
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      // Supabase re-fires SIGNED_IN when a backgrounded tab regains focus and
+      // revalidates its session, even for the same user — only reinitialize
+      // (which closes any open dialog) on an actual sign-in/sign-out change,
+      // not a redundant re-fire for the user already loaded.
+      const userId = session?.user?.id ?? null
+      if (event === 'SIGNED_OUT') { lastUserId.current = null; void initialize(); return }
+      if (event === 'SIGNED_IN' && userId !== lastUserId.current) { lastUserId.current = userId; void initialize() }
     })
     return () => {
       clearTimeout(start)
