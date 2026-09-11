@@ -1,5 +1,9 @@
 project_id = "vohtqodprqpobvvcdypy"
 
+[functions.polymarket-connect]
+# Validates the user's JWT with auth.getUser before every action.
+verify_jwt = false
+
 [functions.price-chart]
 verify_jwt = false
 

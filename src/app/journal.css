@@ -1,5 +1,8 @@
 /* Personal results stay prominent; the calendar uses restrained daily color. */
 .journal-page { max-width: 1040px; --text-dim: #a2a2b0; --blue: #6370ff; }
+.journal-header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.journal-header-actions a { text-decoration: none; }
+@media (max-width: 600px) { .journal-page .journal-header { flex-wrap: wrap; } }
 .journal-page .journal-header { align-items: center; gap: 16px; margin-bottom: 30px; }
 .journal-page .app-section-title { font-size: clamp(30px, 4vw, 38px); letter-spacing: -.045em; }
 .journal-page .app-section-sub { font-size: 14px; margin-top: 7px; }
