@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
 import './all-markets.css'
 import { supabase } from '../lib/supabase'
+import { useSubscriptionGate } from '../lib/subscriptionGate'
 import type { Opportunity } from './types'
 import {
-  onTabVisible, opportunityCursor, PAGE_SIZE, NAV_CATEGORIES, categoryLabel, fmtFull,
+  onTabVisible, byCategory, opportunityCursor, PAGE_SIZE, NAV_CATEGORIES, categoryLabel, fmtFull,
 } from './helpers'
 import { onOpportunitiesBatch } from './realtimeBroadcast'
 import { SignalModal } from './SignalModal'
@@ -16,8 +17,11 @@ import { ExpertPickCard } from './ExpertPickCard'
 // Profit Bot's strict rules-based cut of the same data. Framed as an overview,
 // not a recommendation. Self-contained: owns its own category + filter state.
 function AllMarkets() {
+  const { locked } = useSubscriptionGate()
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
-  const [loading, setLoading]             = useState(true)
+  // Locked visitors never fire the live query below (see its effect) — start
+  // "not loading" for them rather than flipping it off from inside an effect.
+  const [loading, setLoading]             = useState(() => !locked)
   const [error, setError]                 = useState<string | null>(null)
   const [modalOpp, setModalOpp]           = useState<Opportunity | null>(null)
   const [category, setCategory]           = useState('all')
@@ -59,6 +63,22 @@ function AllMarkets() {
   const [hasMore, setHasMore]             = useState(false)
   const [loadingMore, setLoadingMore]     = useState(false)
 
+  // Locked visitors get a small, bounded public preview (see
+  // 20260911200000_all_markets_teaser.sql) instead of the live, filterable,
+  // paginated feed below — expert_picks_open itself stays fully gated (this
+  // is a separate ~30-row snapshot), so the paid effects below skip their
+  // network calls entirely while locked.
+  const [teaser, setTeaser] = useState<Opportunity[]>([])
+  const [teaserLoading, setTeaserLoading] = useState(true)
+  useEffect(() => {
+    if (!locked) return
+    let cancelled = false
+    supabase.rpc('all_markets_teaser').then(({ data }) => {
+      if (!cancelled) { setTeaser((data ?? []) as Opportunity[]); setTeaserLoading(false) }
+    })
+    return () => { cancelled = true }
+  }, [locked])
+
   // Every discovery filter is pushed into the query itself instead of
   // filtering the already-fetched page client-side — a narrow filter (e.g.
   // 9+ traders) previously showed nothing until you'd paged deep enough to
@@ -99,6 +119,10 @@ function AllMarkets() {
   const loadFirstPageRef = useRef<() => void>(() => {})
 
   useEffect(() => {
+    // Locked visitors use the bounded teaser above instead — expert_picks_open
+    // returns nothing for them anyway (still fully gated), so skip the call.
+    // (loading's initial value already accounts for this — see useState below.)
+    if (locked) return
     let cancelled = false
     const loadFirstPage = () => {
       loadedCountRef.current = PAGE_SIZE
@@ -149,18 +173,19 @@ function AllMarkets() {
       unsubBroadcast()
       unsubVisible()
     }
-  }, [])
+  }, [locked])
 
   // Refetches page 1 for the new filter set whenever a filter changes —
   // debounced since range sliders fire on every drag tick. Skips the first
   // render since the mount effect above already loads page 1.
   const filterMounted = useRef(false)
   useEffect(() => {
+    if (locked) return
     if (!filterMounted.current) { filterMounted.current = true; return }
     const t = setTimeout(() => loadFirstPageRef.current(), 300)
     return () => clearTimeout(t)
   }, [category, todayOnly, minWinRate, minBetRatio, minPrice, maxPrice,
-      minTotal, maxTotal, sortMode])
+      minTotal, maxTotal, sortMode, locked])
 
   const loadMore = () => {
     const last = opportunities[opportunities.length - 1]
@@ -196,9 +221,13 @@ function AllMarkets() {
     (minPrice > 0 || maxPrice < 100 ? 1 : 0) +
     (minTotal > 0 || maxTotal < TOTAL_CAP ? 1 : 0)
 
+  // Locked: the bounded public teaser, filtered by category only — a fixed
+  // ~30-row snapshot doesn't need the full filter/sort/pagination UI.
+  const filteredTeaser = byCategory(teaser, category)
+
   return (
     <div className="all-markets">
-      {error && (
+      {!locked && error && (
         <div style={{ color: '#ff3b5c', padding: '0 0 20px', fontSize: '0.875rem' }}>
           Having trouble reaching market data — this usually resolves on its own. Check your internet connection if it continues.
         </div>
@@ -213,24 +242,26 @@ function AllMarkets() {
         ))}
       </div>
 
-      <div className="sig-toolbar">
-        <button
-          type="button"
-          className={filtersOpen ? 'sig-filters-toggle active' : 'sig-filters-toggle'}
-          onClick={() => setFiltersOpen(o => !o)}
-          aria-expanded={filtersOpen}
-          aria-controls="am-filters"
-        >
-          <SlidersHorizontal size={16} /> Filters
-          {activeFilterCount > 0 && <span className="sig-filters-badge">{activeFilterCount}</span>}
-        </button>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" className={sortMode === 'recent' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('recent')}>Most recent</button>
-          <button type="button" className={sortMode === 'profit' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('profit')}>Most profitable</button>
+      {!locked && (
+        <div className="sig-toolbar">
+          <button
+            type="button"
+            className={filtersOpen ? 'sig-filters-toggle active' : 'sig-filters-toggle'}
+            onClick={() => setFiltersOpen(o => !o)}
+            aria-expanded={filtersOpen}
+            aria-controls="am-filters"
+          >
+            <SlidersHorizontal size={16} /> Filters
+            {activeFilterCount > 0 && <span className="sig-filters-badge">{activeFilterCount}</span>}
+          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className={sortMode === 'recent' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('recent')}>Most recent</button>
+            <button type="button" className={sortMode === 'profit' ? 'sig-chip active' : 'sig-chip'} onClick={() => setSortMode('profit')}>Most profitable</button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {filtersOpen && (
+      {!locked && filtersOpen && (
         <div className="sig-filters" id="am-filters">
           <div className="sig-filter-group">
             <button type="button"
@@ -304,21 +335,37 @@ function AllMarkets() {
         </div>
       )}
 
-      <div className="expert-picks-grid" aria-busy={loading}>
-        {loading && Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="expert-pick-skeleton" aria-label="Loading pick" />
-        ))}
-        {!loading && filteredOpportunities.length === 0 && (
-          <div className="sig-empty">No markets match right now. Try adjusting your filters or check back soon.</div>
-        )}
-        {!loading && filteredOpportunities.map(o => (
-          <ExpertPickCard key={`${o.condition_id}::${o.outcome}`} opportunity={o} onOpen={() => setModalOpp(o)} />
-        ))}
-      </div>
-      {!loading && hasMore && (
-        <button className="sig-load-more" onClick={loadMore} disabled={loadingMore}>
-          {loadingMore ? 'Loading…' : 'Load more'}
-        </button>
+      {locked ? (
+        <div className="expert-picks-grid" aria-busy={teaserLoading}>
+          {teaserLoading && Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="expert-pick-skeleton" aria-label="Loading pick" />
+          ))}
+          {!teaserLoading && filteredTeaser.length === 0 && (
+            <div className="sig-empty">No markets match right now. Try adjusting your filters or check back soon.</div>
+          )}
+          {!teaserLoading && filteredTeaser.map(o => (
+            <ExpertPickCard key={`${o.condition_id}::${o.outcome}`} opportunity={o} onOpen={() => setModalOpp(o)} />
+          ))}
+        </div>
+      ) : (
+        <>
+          <div className="expert-picks-grid" aria-busy={loading}>
+            {loading && Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="expert-pick-skeleton" aria-label="Loading pick" />
+            ))}
+            {!loading && filteredOpportunities.length === 0 && (
+              <div className="sig-empty">No markets match right now. Try adjusting your filters or check back soon.</div>
+            )}
+            {!loading && filteredOpportunities.map(o => (
+              <ExpertPickCard key={`${o.condition_id}::${o.outcome}`} opportunity={o} onOpen={() => setModalOpp(o)} />
+            ))}
+          </div>
+          {!loading && hasMore && (
+            <button className="sig-load-more" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </button>
+          )}
+        </>
       )}
 
       <div className="sig-foot">Every open market tracked traders hold — an overview, not a recommendation</div>
