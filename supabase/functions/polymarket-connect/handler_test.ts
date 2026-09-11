@@ -52,7 +52,9 @@ Deno.test('connection boundary: JWT, ownership, replay, expiry, isolation and up
     if (url.host === 'data-api.polymarket.com') {
       assert.equal(url.searchParams.get('user'), wallet, 'read only the saved account, never caller-supplied address');
       if (failUpstream) return response({ error: 'provider down' }, 500);
-      return response(url.pathname === '/positions' ? [{ asset: 'yes', title: 'Test', outcome: 'Yes', size: 10, currentValue: 6, cashPnl: 1 }] : []);
+      if (url.pathname === '/positions') return response([{ asset: 'yes', title: 'Test', outcome: 'Yes', size: 10, currentValue: 6, cashPnl: 1 }]);
+      assert.equal(url.searchParams.get('limit'), '100');
+      return response(url.searchParams.get('offset') === '0' ? [] : []);
     }
     const table = url.pathname.split('/').pop();
     const records = table === 'polymarket_connections' ? connections : table === 'polymarket_connection_challenges' ? challenges : null;

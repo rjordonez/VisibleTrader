@@ -16,12 +16,14 @@ export interface Activity {
   transaction_hash: string; asset: string; timestamp: number | null
   title: string; outcome: string; side: string; amount: number | null
   size: number | null; price: number | null
+  pnl?: number | null
 }
 export interface Snapshot {
   connection: Connection | null
   positions?: Position[]
   activity?: Activity[]
   positions_limited?: boolean
+  activity_limited?: boolean
   fetched_at?: string
 }
 export interface USConnection {
@@ -30,8 +32,11 @@ export interface USConnection {
   last_verified_at: string | null
   last_synced_at: string | null
   connected_at: string
+  backfill_status?: 'pending' | 'in_progress' | 'done'
 }
 export interface USSnapshot {
+  resource_errors?: { positions?: string; activity?: string }
+  activity_limited?: boolean
   connection: USConnection | null
   positions?: Position[]
   activity?: Activity[]
@@ -64,7 +69,7 @@ export async function loadConnection() {
 
 export async function loadUSConnection() {
   const { data, error } = await supabase.from('polymarket_us_connections')
-    .select('key_id, status, last_verified_at, last_synced_at, connected_at').maybeSingle()
+    .select('key_id, status, last_verified_at, last_synced_at, connected_at, backfill_status').maybeSingle()
   if (error) throw new Error('Account connections are unavailable. Please retry in a moment.')
   return data as USConnection | null
 }

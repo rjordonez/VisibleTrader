@@ -104,3 +104,83 @@
   .connection-dialog { padding: 22px; }.connection-input { font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { .connections-page *, .connection-dialog * { animation: none !important; } }
+
+/* Shared Journal and connection surfaces. */
+.connections-page { max-width: 1120px; }
+.connections-page .app-section-header { gap: 24px; flex-wrap: wrap; }
+.connection-header-actions, .connection-row-actions { display: flex; align-items: center; gap: 8px; }
+.connection-button { border-radius: 9px; background: #1c1d22; border-color: #ffffff1c; font-size: 12px; }
+.connection-button-primary { background: #e9ecf5; color: #13151c; border-color: #e9ecf5; }
+.connection-icon-button { border-radius: 9px; text-decoration: none; flex-shrink: 0; }
+.connection-account-select { display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid #ffffff1c; border-radius: 9px; min-width: 0; }
+.connection-account-select select { min-height: 44px; max-width: 190px; background: #111216; color: #e5e6ed; border: 0; font: inherit; font-size: 12px; }
+.connection-account-select option { background: #17181c; }
+.connection-loading { display: flex; gap: 12px; padding: 36px 0; color: #a3a5b0; font-size: 13px; }
+.connection-success { display: flex; align-items: center; gap: 10px; background: #14231c; border: 1px solid #2a4937; color: #b8ddc4; padding: 14px 18px; margin-bottom: 24px; border-radius: 10px; font-size: 12px; line-height: 1.7; }
+.connection-success > svg { flex-shrink: 0; }
+.connection-success a { margin-left: auto; color: inherit; display: flex; align-items: center; white-space: nowrap; }
+.connection-manage-list { border-top: 1px solid #ffffff15; }
+.connection-manage-row { display: flex; align-items: center; gap: 18px; padding: 28px 0; border-bottom: 1px solid #ffffff12; flex-wrap: wrap; }
+.connection-brand, .connection-brand-us { width: 42px; height: 42px; object-fit: cover; border-radius: 10px; flex-shrink: 0; }
+.connection-brand-us { display: grid; place-items: center; background: #252936; color: #dce3ff; font-weight: 750; font-size: 15px; }
+.connection-manage-info { flex: 1; min-width: 180px; }
+.connection-manage-info h2 { font-size: 15px; margin: 0 0 7px; }
+.connection-manage-info h2 > span { color: #8d909d; font-size: 10px; font-weight: 500; margin-left: 8px; }
+.connection-manage-info p { font-size: 12px; color: #9296a3; margin: 0 0 8px; overflow-wrap: anywhere; }
+.connection-status { display: inline-flex; align-items: center; gap: 7px; color: #a3b9aa; font-size: 11px; }
+.connection-status > span { width: 5px; height: 5px; border-radius: 50%; background: #90c6a2; }
+.connection-status.needs-attention { color: #e1bb82; }.connection-status.needs-attention > span { background: #e1bb82; }
+.connection-manage-row .connection-disconnect, .connection-manage-row > .connection-error { flex-basis: 100%; }
+.connection-settings-foot { display: flex; align-items: center; gap: 12px; padding-top: 24px; color: #969ba8; }
+.connection-settings-foot > svg { flex-shrink: 0; }
+.connection-settings-foot p { flex: 1; max-width: 620px; font-size: 12px; line-height: 1.8; margin: 0; }
+.connection-settings-foot a { margin-left: auto; white-space: nowrap; }
+.journal-view-tabs { display: flex; gap: 28px; border-bottom: 1px solid #ffffff14; margin-bottom: 20px; }
+.journal-view-tabs button { border: 0; border-bottom: 2px solid transparent; background: none; padding: 14px 0; font: inherit; font-size: 13px; color: #9196a4; cursor: pointer; }
+.journal-view-tabs button[aria-current] { color: #f1f3fa; border-bottom-color: #c4cefa; }
+.connection-welcome { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 52px 24px 0; border: 1px solid #ffffff0d; background: radial-gradient(ellipse at 50% 0, #22263366, transparent 65%), #0d0e12; border-radius: 16px; margin-top: 30px; overflow: hidden; }
+.connection-welcome-mark { display: grid; place-items: center; width: 64px; height: 64px; background: #20242e; border: 1px solid #ffffff1c; border-radius: 18px; color: #cbd3f4; margin-bottom: 28px; }
+.connection-welcome .connection-eyebrow { font-size: 9px; }
+.connection-welcome h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.15; letter-spacing: -.045em; margin: 5px 0 16px; font-weight: 600; }
+.connection-welcome > p { max-width: 350px; color: #9da3b2; font-size: 13px; line-height: 1.85; margin: 0 0 24px; }
+.connection-welcome > .connection-text-link { margin: 8px 0 34px; color: #a8adba; }
+.connection-welcome-benefits { display: flex; justify-content: center; gap: 30px; padding: 20px; border-top: 1px solid #ffffff10; width: calc(100% + 48px); font-size: 10px; color: #8e96a8; }
+.connection-sync-row, .connection-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.connection-section-heading { margin: 24px 0 10px; }.connection-section-heading h2 { font-size: 17px; letter-spacing: -.02em; margin: 0; }.connection-section-heading > span { font-size: 11px; color: #8c93a2; }
+.connection-metrics { margin: 12px 0 30px; padding: 26px 0; }
+.connection-metrics strong { font-size: clamp(24px, 3vw, 38px); }
+.connection-table-wrap { border: 1px solid #ffffff10; border-radius: 12px; background: #101115; }
+.connection-table-wrap th { background: #ffffff03; padding: 15px; }.connection-table-wrap td { padding: 18px 15px; }
+.journal-reflection-prompt { width: 100%; display: flex; align-items: center; justify-content: space-between; text-align: left; gap: 20px; padding: 24px; margin: 28px 0; border: 1px solid #ffffff13; border-radius: 12px; background: #14161d; color: #dce0ed; font: inherit; cursor: pointer; }
+.journal-reflection-prompt span { font-size: 9px; color: #959fba; letter-spacing: .13em; }.journal-reflection-prompt h3 { font-size: 18px; margin: 9px 0; font-weight: 550; }.journal-reflection-prompt p { color: #979eaf; font-size: 12px; margin: 0; }
+.connection-trade-row { display: flex; align-items: center; gap: 18px; border-bottom: 1px solid #ffffff10; padding: 23px 0; }
+.connection-trade-row > div { flex: 1; min-width: 0; }.connection-trade-row h3 { font-size: 13px; line-height: 1.6; margin: 0 0 7px; font-weight: 550; }.connection-trade-row p { color: #9ca2af; font-size: 11px; margin: 0 0 5px; }.connection-trade-row small { color: #8d94a3; font-size: 10px; }.connection-trade-row > strong { font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.connection-side { padding: 6px 8px; background: #1a2c24; color: #aed8bd; border-radius: 5px; font-size: 9px; text-transform: uppercase; }.connection-side.is-sell { background: #30241c; color: #dabda7; }
+.journal-hub > .journal-page { padding: 12px 0 0; max-width: none; }.journal-hub .journal-page .app-section-title { font-size: 20px; }.journal-hub .journal-page .app-section-sub { font-size: 12px; }
+.journal-trade-count { color: #a0abc5; font-size: 10px; }
+.journal-day-activity { padding: 14px; background: #ffffff04; border-radius: 10px; max-height: 240px; overflow-y: auto; }
+.journal-day-activity > p { color: #b2bdd7; font-size: 11px; margin-top: 0; }.journal-day-activity > div { margin-bottom: 12px; }.journal-day-activity strong { display: block; font-size: 12px; line-height: 1.5; font-weight: 500; }.journal-day-activity span, .journal-day-activity small { display: block; font-size: 10px; color: #a0a7b8; line-height: 1.7; }
+.connection-dialog { box-sizing: border-box; width: min(500px, calc(100vw - 32px)); padding: 28px; border-radius: 18px; background: #14161b; border-color: #ffffff22; overflow-y: auto; }
+.connection-dialog h2 { margin: 12px 0; font-size: 29px; font-weight: 600; line-height: 1.2; }
+.connection-dialog-wordmark { font-size: 10px; letter-spacing: .06em; font-weight: 750; }.connection-dialog-wordmark > span { color: #737c90; font-weight: 400; }
+.connection-flow-step { font-size: 9px; color: #949fb8; letter-spacing: .12em; margin-top: 28px; }
+.connection-platform-list { display: grid; gap: 10px; margin: 26px 0; }
+.connection-platform-list button { display: flex; align-items: center; gap: 14px; width: 100%; background: #1b1e26; border: 1px solid #ffffff15; border-radius: 12px; color: #e6e9f2; padding: 18px; text-align: left; cursor: pointer; font: inherit; }
+.connection-platform-list button:hover { background: #242935; border-color: #6c7895; }.connection-platform-list img { width: 42px; height: 42px; border-radius: 10px; object-fit: cover; }.connection-platform-list button > span:not(.connection-brand-us) { flex: 1; }.connection-platform-list strong { display: block; font-size: 14px; font-weight: 600; }.connection-platform-list small { display: block; margin-top: 7px; color: #a1a9bb; font-size: 10px; }
+.connection-note { background: #1c2328; border-color: #ffffff0c; color: #b7c6cb; font-size: 11px; }
+.connection-tabs { background: #0d0f13; border-radius: 10px; }.connection-tabs button[aria-pressed=true] { background: #2a303e; }
+.connection-input { background: #0e1015; border-color: #343b4b; border-radius: 9px; font-size: 13px; }.connection-wallet-option { background: #1c2029; border-color: #343a48; border-radius: 9px; }
+.connection-key-guide { display: flex; gap: 12px; margin: 18px 0; }.connection-key-guide > span { display: grid; place-items: center; flex-shrink: 0; width: 24px; height: 24px; border: 1px solid #414a5d; border-radius: 50%; font-size: 10px; color: #aab6ce; }.connection-key-guide strong { font-size: 12px; font-weight: 550; }.connection-key-guide a { display: flex; padding: 4px 0 0; font-size: 11px; }.connection-key-guide p { color: #a1a9ba; font-size: 11px; margin: 5px 0; }
+.connection-dialog button:disabled { opacity: .5; cursor: default; }
+.app-shell .connection-dialog :is(button, a, input):focus-visible, .app-shell .connections-page :is(select, a):focus-visible { outline: 2px solid #a8b6e5; outline-offset: 3px; }
+@media (max-width: 600px) {
+  .connection-header-actions { flex-wrap: wrap; width: 100%; }.connection-account-select { flex: 1; }.connection-account-select select { width: 100%; max-width: 100%; }
+  .connection-header-actions > .connection-button { flex: 1; }.connection-header-actions .connection-account-select + .connection-button { flex: initial; font-size: 11px; padding: 10px; }
+  .connection-welcome { padding-top: 32px; }.connection-welcome-benefits { flex-direction: column; gap: 12px; }
+  .connection-manage-row { gap: 12px; }.connection-row-actions { margin-left: 54px; }.connection-manage-info { min-width: 180px; }
+  .connection-settings-foot { flex-wrap: wrap; }.connection-settings-foot p { min-width: 220px; }.connection-settings-foot a { margin-left: 30px; }
+  .connection-trade-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; }.connection-trade-row > button { grid-column: 2 / -1; padding: 0; justify-self: start; }
+  .connection-dialog { padding: 22px; }.connection-dialog h2 { font-size: 26px; }.connection-input { font-size: 16px; }
+  .connection-platform-list button { padding: 15px 12px; gap: 10px; }.connection-success { flex-wrap: wrap; }
+  .journal-trade-count { font-size: 8px; }
+}

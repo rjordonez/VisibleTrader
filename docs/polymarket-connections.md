@@ -1,14 +1,19 @@
 # Polymarket account connections
 
-The Accounts page is available at `/connections` (locally `/app/connections`), with entry points in the account menu, Settings, and Journal.
+US availability fix (2026-09-11): credentials are verified through an authenticated activity read. Positions and activity load independently; failed resources are omitted and described in `resource_errors`, never reported as empty or zero. Credential rejection still fails the request. `last_synced_at` only advances after both resources succeed. Live diagnostics found activities returning 200 while positions (limits 1, 100, and no query) and balances returned 503/code 14. This isolates the observed failure to those upstream reads but does not establish a platform-wide outage.
+
+Activity history is paginated for both venues: up to 500 trades are fetched per snapshot (International uses offset pages; US uses its `nextCursor`), with an explicit limited-history flag when more remains.
+
+Connections are managed at `/settings/connections` (locally `/app/settings/connections`), with entry points in the account menu, Settings, and Journal. The legacy `/connections` route redirects there. Journal is the personal sidebar destination and contains Overview, Trades, and Calendar views.
 
 ## Current milestone
 
 - International browser-wallet connection discovers injected wallets with EIP-6963 and falls back to `window.ethereum`. The user signs a plain, tracking-only message. A five-minute, single-use server challenge binds the signature to the signed-in VisibleTrader user and signer. The server recovers the signer and resolves the associated Polymarket account wallet through Gamma's public-profile endpoint.
 - Public profile tracking accepts an account address, profile link, or exact username. A matching-profile preview precedes saving. Public tracking is explicitly unverified; supplying an address cannot claim ownership.
 - Connections persist per VisibleTrader user. The page reads the largest 100 positions and latest 50 trades, refreshing every minute while visible. It labels those limits and retains the last successful snapshot on provider errors. There is no full-history import or background sync worker in this milestone.
-- Polymarket US is a static preview. It collects no credentials and makes no US API requests.
-- Manual journal entries remain separate. No orders, token approvals, deposits, or transfers are implemented. CLOB credential derivation and order signing belong to the subsequent trading milestone; the current wallet signature grants no trading authorization.
+- Polymarket US uses a guided Key ID / Secret Key form and the existing `polymarket-us-connect` function. Platform selection, wallet/profile methods, account confirmation, pending states, errors, and success feedback share one dialog flow.
+- Journal shows current positions and the latest 50 trades per account. Reviewing a trade opens its local calendar day with recent activity and a persistent daily reflection. Manual P&L remains explicitly labeled and is not combined with trade amounts. A reflection without an amount records zero using the existing daily-entry schema. Complete historical imports, automatic realized P&L, win rate, performance charts, and individual trade tags are not implemented by this UI change.
+- No orders, token approvals, deposits, or transfers are implemented. The current wallet signature grants no trading authorization. Disconnecting does not delete manual journal entries.
 - Browser wallets with externally owned signers are supported. WalletConnect QR sessions and smart-contract signer verification are not implemented. Email/Google users can track their public profile without exporting a private key.
 
 ## Deployment
@@ -33,7 +38,7 @@ DENO_NO_PACKAGE_JSON=1 deno test --no-config --node-modules-dir=none --allow-env
 
 Backend tests cover invalid JWTs, address parsing, wrong signatures, expired challenges, replay, cross-user signature reuse, unverified tracking, failed lookups, snapshot isolation, upstream errors, and disconnection.
 
-The browser regression script uses Playwright with mocked authentication, venue responses, and wallet prompts. It checks desktop (1440px) and mobile (390px), US preview without credentials/network calls, wallet rejection/account switching, profile confirmation, restored connections, stale-data errors, disconnection, layout overflow, and runtime errors. It produces screenshots using synthetic data.
+The browser regression script uses Playwright with mocked authentication, venue responses, wallet prompts, and journal persistence. It checks desktop (1440px) and mobile (390px), platform selection, US credentials with synthetic values, wallet rejection/account switching, profile confirmation, journal review/save, restored connections, stale-data errors, disconnection, legacy redirects, layout overflow, and runtime errors. It produces screenshots using synthetic data.
 
 ```sh
 # Install outside the project to avoid changing application dependencies.
