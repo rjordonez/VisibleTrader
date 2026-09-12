@@ -43,6 +43,9 @@ export async function handleConnection(req: Request) {
       let credentials;
       try { credentials = validateCredentialInput(body); }
       catch (e) { throw new RequestError((e as Error).message); }
+      const { data: claimed } = await db.from('polymarket_us_connections').select('user_id')
+        .eq('key_id', credentials.keyId).neq('user_id', user.id).maybeSingle();
+      if (claimed) throw new RequestError('This Polymarket account is already connected to another VisibleTrader account. Disconnect it there first, then reconnect here.', 409);
       try {
         await verifyCredentials(credentials.keyId, credentials.secretKey);
       } catch (e) {
@@ -54,6 +57,9 @@ export async function handleConnection(req: Request) {
       const { data, error } = await db.from('polymarket_us_connections').upsert({
         user_id: user.id, key_id: credentials.keyId, ciphertext, kms_key_version: keyVersion,
         status: 'active', last_verified_at: new Date().toISOString(), connected_at: new Date().toISOString(),
+        // A new key means unknown history, even when replacing a key whose
+        // own backfill had already finished — never inherit that 'done'.
+        backfill_status: 'pending', backfill_cursor: null,
       }).select(fields).single();
       if (error) throw error;
       await logEvent(db, user.id, existing ? 'replaced' : 'connected');
@@ -104,6 +110,10 @@ export async function handleConnection(req: Request) {
     if (body.action === 'disconnect') {
       const { error } = await db.from('polymarket_us_connections').delete().eq('user_id', user.id);
       if (error) throw error;
+      // The journal shows synced trades independent of the live connection
+      // record, so a lingering connection isn't what makes them disappear.
+      const { error: tradesError } = await db.from('polymarket_trades').delete().eq('user_id', user.id).eq('venue', 'us');
+      if (tradesError) throw tradesError;
       await logEvent(db, user.id, 'disconnected');
       return reply({ disconnected: true });
     }
@@ -138,6 +148,12 @@ export async function handleConnection(req: Request) {
     throw new RequestError('Unknown connection action.');
   } catch (e) {
     // Never return upstream bodies, SQL details, auth headers, or credentials.
-    return reply({ error: e instanceof RequestError ? e.message : 'Could not complete the connection request. Please try again.' }, e instanceof RequestError ? e.status : 500);
+    if (e instanceof RequestError) return reply({ error: e.message }, e.status);
+    // Backstop for the rare race the pre-check misses: two connects for the
+    // same key racing past the select before either upsert commits.
+    if ((e as { code?: string })?.code === '23505') {
+      return reply({ error: 'This Polymarket account is already connected to another VisibleTrader account. Disconnect it there first, then reconnect here.' }, 409);
+    }
+    return reply({ error: 'Could not complete the connection request. Please try again.' }, 500);
   }
 }
