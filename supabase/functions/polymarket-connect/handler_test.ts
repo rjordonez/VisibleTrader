@@ -64,8 +64,16 @@ Deno.test('connection boundary: JWT, ownership, replay, expiry, isolation and up
       records.set(row.user_id, row);
       return response(request.headers.get('accept')?.includes('vnd.pgrst.object') ? row : [row]);
     }
+    if (request.method === 'GET' && url.searchParams.has('signer_address')) {
+      // The cross-user ownership-collision check: looked up by signer_address,
+      // not user_id, since it must see across the caller's own rows.
+      const signer = url.searchParams.get('signer_address')!.replace(/^eq\./, '');
+      const excludeUser = url.searchParams.get('user_id')?.replace(/^neq\./, '');
+      const match = [...records.values()].find(r => r.signer_address === signer && r.verified_at != null && r.user_id !== excludeUser) ?? null;
+      return response(request.headers.get('accept')?.includes('vnd.pgrst.object') ? match : match ? [match] : []);
+    }
     const id = url.searchParams.get('user_id')?.replace(/^eq\./, '');
-    assert.ok(id, 'every database query must be user-scoped');
+    assert.ok(id, 'every other database query must be user-scoped');
     const row = records.get(id);
     if (request.method === 'DELETE') {
       const nonce = url.searchParams.get('nonce')?.replace(/^eq\./, '');
@@ -103,6 +111,13 @@ Deno.test('connection boundary: JWT, ownership, replay, expiry, isolation and up
       assert.equal(result.data.connection.signer_address, alice.address.toLowerCase());
       assert.ok(result.data.connection.verified_at);
       assert.equal((await call(signed)).status, 400);
+    });
+    await t.step('a wallet already verified by another account cannot be claimed', async () => {
+      const challenge = (await call({ action: 'challenge', signer: alice.address }, 'other-token')).data;
+      const signature = await alice.signMessage({ message: challenge.message });
+      const result = await call({ action: 'verify', nonce: challenge.nonce, signature }, 'other-token');
+      assert.equal(result.status, 409);
+      assert.equal(connections.has(otherUser), false);
     });
     await t.step('expired challenges cannot connect', async () => {
       const challenge = (await call({ action: 'challenge', signer: alice.address })).data;

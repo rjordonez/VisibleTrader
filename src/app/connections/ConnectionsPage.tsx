@@ -329,7 +329,7 @@ export default function ConnectionsPage({ journal = false }: { journal?: boolean
           {current?.activity && (activity.length ? <div className="connection-trade-list ph-no-capture ph-mask">{activity.map((a, i) => <article className="connection-trade-row" key={`${a.transaction_hash}-${a.asset}-${i}`}><span className={`connection-side ${a.side.toLowerCase() === 'sell' ? 'is-sell' : ''}`}>{a.side}</span><div><h3>{a.title}</h3><p>{a.outcome} · {a.timestamp == null ? 'Time unavailable' : new Date(a.timestamp * 1000).toLocaleString()}</p><small>{a.size == null ? '—' : a.size.toLocaleString()} shares · {a.price == null ? 'Price unavailable' : money(a.price) + ' / share'}</small></div><strong>{money(a.amount)}</strong><button className="connection-text-link" disabled={a.timestamp == null} onClick={() => a.timestamp != null && reviewDay(a.timestamp)}>Review day <ChevronRight size={14} /></button></article>)}</div> : <div className="connection-empty"><h3>No recent trades</h3><p>Your recent activity will appear after your next trade.</p></div>)}
         </>}
       </>}
-      {tab === 'calendar' && <JournalCalendar key={noteDay ?? 'calendar'} initialDay={noteDay} />}
+      {tab === 'calendar' && <JournalCalendar key={`${noteDay ?? 'calendar'}-${usBackfillStatus ?? ''}`} initialDay={noteDay} />}
     </>}
     {venue && <ConnectDialog venue={venue} onClose={() => setVenue(null)} onConnected={connected} onConnectedUS={connectedUS} />}
   </div>
