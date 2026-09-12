@@ -18,7 +18,7 @@ export function SignalModal({ opportunity: o, onClose }: { opportunity: Opportun
       <div className="sig-modal-wrap" onClick={e => e.stopPropagation()}>
         <button className="sig-modal-close" onClick={onClose} aria-label="Close">✕</button>
         <div className="sig-modal">
-          <MarketDetailContent opportunity={o} />
+          <MarketDetailContent opportunity={o} chartVariant="minimal" />
         </div>
       </div>
     </div>
