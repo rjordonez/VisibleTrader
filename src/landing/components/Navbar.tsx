@@ -100,7 +100,7 @@ export default function Navbar() {
               ) : (
                 <>
                   <a href={appUrl('/login')} className="nav-drawer-link" onClick={close}>Log in</a>
-                  <Link to="/pricing" className="nav-drawer-cta" onClick={close}>Get Started</Link>
+                  <Link to="/signup" className="nav-drawer-cta" onClick={close}>Get Started</Link>
                 </>
               )}
             </div>
