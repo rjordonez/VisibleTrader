@@ -562,7 +562,14 @@ class Database:
     def __init__(self, database_url, pool_size=8):
         self.pool = ConnectionPool(
             database_url, min_size=pool_size, max_size=pool_size,
-            kwargs={'autocommit': False}, open=False,
+            # prepare_threshold=None disables psycopg3's server-side
+            # prepared-statement autocaching. Required behind Supavisor/
+            # PgBouncer transaction pooling, where a logical transaction
+            # can land on a different physical backend each time — a
+            # statement id cached against one backend is invalid on
+            # another, surfacing as InvalidSqlStatementName/
+            # DuplicatePreparedStatement errors.
+            kwargs={'autocommit': False, 'prepare_threshold': None}, open=False,
         )
         # open=False + explicit open(wait=True) — verified via source that
         # open=False alone leaves the pool unusable (raises PoolClosed)
