@@ -103,6 +103,9 @@ export async function handleConnection(req: Request) {
       try { recovered = await recoverMessageAddress({ message: challenge.message, signature: body.signature as `0x${string}` }); }
       catch { throw new RequestError('Could not verify that signature. Please reconnect.'); }
       if (recovered.toLowerCase() !== challenge.signer_address) throw new RequestError('The wallet changed. Connect the wallet you use on Polymarket.');
+      const { data: claimed } = await db.from('polymarket_connections').select('user_id')
+        .eq('signer_address', challenge.signer_address).not('verified_at', 'is', null).neq('user_id', user.id).maybeSingle();
+      if (claimed) throw new RequestError('This Polymarket wallet is already connected to another VisibleTrader account. Disconnect it there first, then reconnect here.', 409);
       const found = await profile(challenge.signer_address);
       // Atomic consume makes concurrent requests and captured signatures single-use.
       const { data: consumed, error: consumeError } = await db.from('polymarket_connection_challenges').delete().eq('user_id', user.id).eq('nonce', challenge.nonce).select('nonce');
@@ -152,6 +155,12 @@ export async function handleConnection(req: Request) {
     throw new RequestError('Unknown connection action.');
   } catch (e) {
     // Never return upstream bodies, SQL details, auth headers, or signatures.
-    return reply({ error: e instanceof RequestError ? e.message : 'Could not complete the connection request. Please try again.' }, e instanceof RequestError ? e.status : 500);
+    if (e instanceof RequestError) return reply({ error: e.message }, e.status);
+    // Backstop for the rare race the pre-check misses: two verifications for
+    // the same wallet racing past the select before either upsert commits.
+    if ((e as { code?: string })?.code === '23505') {
+      return reply({ error: 'This Polymarket wallet is already connected to another VisibleTrader account. Disconnect it there first, then reconnect here.' }, 409);
+    }
+    return reply({ error: 'Could not complete the connection request. Please try again.' }, 500);
   }
 }
