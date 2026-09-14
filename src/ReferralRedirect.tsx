@@ -21,6 +21,7 @@ const REFERRAL_CODES: Record<string, string> = {
   eztm6e: 'rudrapredicts',
   '2p348p': 'dretrdzzz',
   '6dek9j': 'cha0spredicts',
+  n2u7n5: 'rykertracks',
 }
 
 // `referral_link_visited` is queryable in PostHog by both the raw code and
