@@ -293,13 +293,26 @@ def load_all_users(db):
     a 1GB-RAM box, and the actual cause of a VM going unresponsive under
     memory pressure. wallet_directory already holds the same data (synced by
     scripts/sync_wallet_directory.py) and is a normal bounded query instead."""
-    rows = db.fetchall('SELECT wallet, username, best_pnl FROM wallet_directory')
-    return [{'wallet': w, 'username': u, 'best_pnl': float(p) if p is not None else None} for w, u, p in rows]
+    rows = db.fetchall('SELECT wallet, username, best_pnl, recent_pnl, recent_rank_seen FROM wallet_directory')
+    return [{
+        'wallet': w, 'username': u,
+        'best_pnl': float(p) if p is not None else None,
+        'recent_pnl': float(rp) if rp is not None else None,
+        'recent_rank_seen': bool(seen),
+    } for w, u, p, rp, seen in rows]
 
 
-def build_roster(all_users, size=ROSTER_SIZE):
-    ranked = sorted(all_users, key=lambda u: -(u['best_pnl'] if u['best_pnl'] is not None else -1e18))[:size]
-    return {u['wallet'].lower() for u in ranked}
+def build_roster(all_users, whale_size=ROSTER_SIZE, active_size=0):
+    """Two buckets, unioned: a slice of all-time-best wallets (whales — most
+    are dormant, but the rare one that wakes up and trades big is worth
+    tracking), and a slice of wallets that are actually trading right now
+    (recent_rank_seen — appeared in Polymarket's own DAY/WEEK leaderboard),
+    ranked by their recent PnL. Without the active bucket, the roster was
+    almost entirely one-hit-wonder whales who stopped trading years ago."""
+    whales = sorted(all_users, key=lambda u: -(u['best_pnl'] if u['best_pnl'] is not None else -1e18))[:whale_size]
+    active_pool = [u for u in all_users if u['recent_rank_seen']]
+    active = sorted(active_pool, key=lambda u: -(u['recent_pnl'] if u['recent_pnl'] is not None else -1e18))[:active_size]
+    return {u['wallet'].lower() for u in whales} | {u['wallet'].lower() for u in active}
 
 
 def load_config(db):
@@ -308,7 +321,8 @@ def load_config(db):
     short timer. Any failure just falls back to the hardcoded defaults, so
     this is safe even if the row is missing or the UI has never been used."""
     defaults = {
-        'roster_size': ROSTER_SIZE,
+        'whale_roster_size': ROSTER_SIZE,
+        'active_roster_size': 0,
         'tiers': list(TIERS),
         'ticker_min_usd': TICKER_MIN_USD,
         'scalp_window_minutes': SCALP_WINDOW_SECONDS // 60,
@@ -316,11 +330,12 @@ def load_config(db):
     }
     try:
         row = db.fetchone(
-            'SELECT roster_size, tiers, ticker_min_usd, scalp_window_minutes FROM app_settings WHERE id = 1'
+            'SELECT whale_roster_size, active_roster_size, tiers, ticker_min_usd, scalp_window_minutes FROM app_settings WHERE id = 1'
         )
         if row:
-            roster_size, tiers, ticker_min_usd, scalp_window_minutes = row
-            defaults['roster_size'] = roster_size
+            whale_roster_size, active_roster_size, tiers, ticker_min_usd, scalp_window_minutes = row
+            defaults['whale_roster_size'] = whale_roster_size
+            defaults['active_roster_size'] = active_roster_size
             defaults['tiers'] = list(tiers)
             defaults['ticker_min_usd'] = ticker_min_usd
             defaults['scalp_window_minutes'] = scalp_window_minutes
@@ -354,7 +369,7 @@ def apply_config(cfg, roster_set, all_users):
     TIERS = sorted(float(t) if not float(t).is_integer() else int(t) for t in cfg['tiers'])
     TICKER_MIN_USD = cfg['ticker_min_usd']
     SCALP_WINDOW_SECONDS = cfg['scalp_window_minutes'] * 60
-    new_roster = build_roster(all_users, cfg['roster_size']) | cfg.get('tracked_wallets', set())
+    new_roster = build_roster(all_users, cfg['whale_roster_size'], cfg['active_roster_size']) | cfg.get('tracked_wallets', set())
     if new_roster != roster_set:
         with state_lock:
             roster_set.clear()
@@ -1736,7 +1751,7 @@ def main():
 
     all_users = load_all_users(db)
     config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page
-    print(f'Loading roster (top {config["roster_size"]} by best_pnl)...')
+    print(f'Loading roster (top {config["whale_roster_size"]} by best_pnl + top {config["active_roster_size"]} by recent activity)...')
     roster = set()
     apply_config(config, roster, all_users)  # populates roster + sets TIERS/TICKER_MIN_USD/SCALP_WINDOW_SECONDS
     wallet_names = build_wallet_names(all_users)

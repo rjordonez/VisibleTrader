@@ -38,26 +38,31 @@ def main():
     with conn.cursor() as cur:
         batch = []
         for u in all_users:
+            recent = [r for r in u.get('rankings', []) if r.get('timePeriod') in ('DAY', 'WEEK') and r.get('pnl') is not None]
+            recent_pnl = max((r['pnl'] for r in recent), default=None)
             batch.append((
                 u['wallet'].lower(), u.get('username'), u.get('xUsername'),
                 bool(u.get('verified')), u.get('best_pnl'),
+                recent_pnl, bool(recent),
             ))
             if len(batch) >= BATCH_SIZE:
-                cur.executemany('''INSERT INTO wallet_directory (wallet, username, x_username, verified, best_pnl)
-                    VALUES (%s,%s,%s,%s,%s)
+                cur.executemany('''INSERT INTO wallet_directory (wallet, username, x_username, verified, best_pnl, recent_pnl, recent_rank_seen)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (wallet) DO UPDATE SET
                         username = EXCLUDED.username, x_username = EXCLUDED.x_username,
-                        verified = EXCLUDED.verified, best_pnl = EXCLUDED.best_pnl''', batch)
+                        verified = EXCLUDED.verified, best_pnl = EXCLUDED.best_pnl,
+                        recent_pnl = EXCLUDED.recent_pnl, recent_rank_seen = EXCLUDED.recent_rank_seen''', batch)
                 conn.commit()
                 total += len(batch)
                 print(f'  {total} synced...')
                 batch = []
         if batch:
-            cur.executemany('''INSERT INTO wallet_directory (wallet, username, x_username, verified, best_pnl)
-                VALUES (%s,%s,%s,%s,%s)
+            cur.executemany('''INSERT INTO wallet_directory (wallet, username, x_username, verified, best_pnl, recent_pnl, recent_rank_seen)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (wallet) DO UPDATE SET
                     username = EXCLUDED.username, x_username = EXCLUDED.x_username,
-                    verified = EXCLUDED.verified, best_pnl = EXCLUDED.best_pnl''', batch)
+                    verified = EXCLUDED.verified, best_pnl = EXCLUDED.best_pnl,
+                    recent_pnl = EXCLUDED.recent_pnl, recent_rank_seen = EXCLUDED.recent_rank_seen''', batch)
             conn.commit()
             total += len(batch)
 
