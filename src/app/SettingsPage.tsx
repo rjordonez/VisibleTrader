@@ -7,14 +7,16 @@ import { dashboardPath } from '../lib/domains'
 
 /* ── Settings ── */
 interface AppSettings {
-  roster_size: number
+  whale_roster_size: number
+  active_roster_size: number
   tiers: number[]
   ticker_min_usd: number
   scalp_window_minutes: number
 }
 
 const SETTINGS_DEFAULT: AppSettings = {
-  roster_size: 500,
+  whale_roster_size: 300,
+  active_roster_size: 700,
   tiers: [1000, 5000, 20000, 50000, 100000],
   ticker_min_usd: 100,
   scalp_window_minutes: 30,
@@ -102,7 +104,7 @@ function SettingsPage() {
 
   useEffect(() => {
     Promise.resolve(
-      supabase.from('app_settings').select('roster_size, tiers, ticker_min_usd, scalp_window_minutes').eq('id', 1).single()
+      supabase.from('app_settings').select('whale_roster_size, active_roster_size, tiers, ticker_min_usd, scalp_window_minutes').eq('id', 1).single()
     )
       .then(({ data, error }) => {
         if (error) throw error
@@ -125,21 +127,23 @@ function SettingsPage() {
     // the Python service trusts — same clamping the old proxy did, now here.
     const tiers = [...new Set(settings.tiers.map(Number).filter(n => Number.isFinite(n) && n >= 0))].sort((a, b) => a - b)
     const cfg: AppSettings = {
-      roster_size: Math.max(1, Math.min(2000, Math.round(Number(settings.roster_size)) || SETTINGS_DEFAULT.roster_size)),
+      whale_roster_size: Math.max(0, Math.min(2000, Math.round(Number(settings.whale_roster_size)) || SETTINGS_DEFAULT.whale_roster_size)),
+      active_roster_size: Math.max(0, Math.min(2000, Math.round(Number(settings.active_roster_size)) || SETTINGS_DEFAULT.active_roster_size)),
       tiers: tiers.length > 0 ? tiers : SETTINGS_DEFAULT.tiers,
       ticker_min_usd: Math.max(1, Math.round(Number(settings.ticker_min_usd)) || SETTINGS_DEFAULT.ticker_min_usd),
       scalp_window_minutes: Math.max(1, Math.round(Number(settings.scalp_window_minutes)) || SETTINGS_DEFAULT.scalp_window_minutes),
     }
     Promise.resolve(
       supabase.from('app_settings').update(cfg).eq('id', 1)
-        .select('roster_size, tiers, ticker_min_usd, scalp_window_minutes').single()
+        .select('whale_roster_size, active_roster_size, tiers, ticker_min_usd, scalp_window_minutes').single()
     )
       .then(({ data, error }) => {
         if (error) throw error
         setSettings(data as AppSettings)
         setSaveState('saved')
         posthog.capture('settings_saved', {
-          roster_size: data.roster_size,
+          whale_roster_size: data.whale_roster_size,
+          active_roster_size: data.active_roster_size,
           tier_count: data.tiers.length,
           ticker_min_usd: data.ticker_min_usd,
           scalp_window_minutes: data.scalp_window_minutes,
@@ -233,14 +237,26 @@ function SettingsPage() {
         {!loading && !error && (
           <>
             <div style={{ marginBottom: 24 }}>
-              <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Roster size (top N traders by best_pnl)</div>
+              <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Whale roster size (top N traders by all-time best_pnl)</div>
               <input
                 className="sig-watch-input"
                 type="number"
-                min={1}
+                min={0}
                 max={2000}
-                value={settings.roster_size}
-                onChange={e => setSettings(s => ({ ...s, roster_size: Number(e.target.value) }))}
+                value={settings.whale_roster_size}
+                onChange={e => setSettings(s => ({ ...s, whale_roster_size: Number(e.target.value) }))}
+              />
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Active roster size (top N traders by recent DAY/WEEK pnl — currently winning, not just historically)</div>
+              <input
+                className="sig-watch-input"
+                type="number"
+                min={0}
+                max={2000}
+                value={settings.active_roster_size}
+                onChange={e => setSettings(s => ({ ...s, active_roster_size: Number(e.target.value) }))}
               />
             </div>
 
