@@ -1,0 +1,57 @@
+name: Discord product update announcement
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  announce:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract Product Update section
+        id: extract
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const lines = (context.payload.pull_request.body || '').split('\n');
+            let capturing = false;
+            const out = [];
+            for (const line of lines) {
+              if (/^##\s*Product Update\s*$/i.test(line)) { capturing = true; continue; }
+              if (capturing && /^##\s/.test(line)) break;
+              if (capturing) out.push(line);
+            }
+            const content = out.join('\n').trim();
+
+            if (!content) {
+              core.setOutput('has_update', 'false');
+              return;
+            }
+
+            const truncated = content.length > 1800
+              ? content.slice(0, 1800) + '...'
+              : content;
+
+            core.setOutput('has_update', 'true');
+            core.setOutput('content', truncated);
+
+      - name: Post to Discord
+        if: steps.extract.outputs.has_update == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_UPDATES_WEBHOOK_URL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          UPDATE_TEXT: ${{ steps.extract.outputs.content }}
+        run: |
+          payload=$(jq -n \
+            --arg title "$PR_TITLE" \
+            --arg text "$UPDATE_TEXT" \
+            --arg url "$PR_URL" \
+            '{content: ("**" + $title + "**\n" + $text + "\n\n" + $url)}')
+
+          curl -sf -X POST \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            "$DISCORD_WEBHOOK_URL"
