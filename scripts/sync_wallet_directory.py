@@ -35,6 +35,24 @@ def main():
 
     conn = psycopg.connect(args.database_url)
     total = 0
+
+    def flush(cur, batch):
+        # A single multi-row INSERT, not executemany() — psycopg3's executemany
+        # sends one round-trip per row with no implicit batching (unlike
+        # psycopg2's execute_values), which took a sync of ~360k production
+        # wallets from a projected few minutes to an open-ended hang.
+        if not batch:
+            return
+        values_sql = ','.join(['(%s,%s,%s,%s,%s,%s,%s)'] * len(batch))
+        flat = [v for row in batch for v in row]
+        cur.execute(f'''INSERT INTO wallet_directory (wallet, username, x_username, verified, best_pnl, recent_pnl, recent_rank_seen)
+            VALUES {values_sql}
+            ON CONFLICT (wallet) DO UPDATE SET
+                username = EXCLUDED.username, x_username = EXCLUDED.x_username,
+                verified = EXCLUDED.verified, best_pnl = EXCLUDED.best_pnl,
+                recent_pnl = EXCLUDED.recent_pnl, recent_rank_seen = EXCLUDED.recent_rank_seen''', flat)
+        conn.commit()
+
     with conn.cursor() as cur:
         batch = []
         for u in all_users:
@@ -46,25 +64,12 @@ def main():
                 recent_pnl, bool(recent),
             ))
             if len(batch) >= BATCH_SIZE:
-                cur.executemany('''INSERT INTO wallet_directory (wallet, username, x_username, verified, best_pnl, recent_pnl, recent_rank_seen)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (wallet) DO UPDATE SET
-                        username = EXCLUDED.username, x_username = EXCLUDED.x_username,
-                        verified = EXCLUDED.verified, best_pnl = EXCLUDED.best_pnl,
-                        recent_pnl = EXCLUDED.recent_pnl, recent_rank_seen = EXCLUDED.recent_rank_seen''', batch)
-                conn.commit()
+                flush(cur, batch)
                 total += len(batch)
                 print(f'  {total} synced...')
                 batch = []
-        if batch:
-            cur.executemany('''INSERT INTO wallet_directory (wallet, username, x_username, verified, best_pnl, recent_pnl, recent_rank_seen)
-                VALUES (%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (wallet) DO UPDATE SET
-                    username = EXCLUDED.username, x_username = EXCLUDED.x_username,
-                    verified = EXCLUDED.verified, best_pnl = EXCLUDED.best_pnl,
-                    recent_pnl = EXCLUDED.recent_pnl, recent_rank_seen = EXCLUDED.recent_rank_seen''', batch)
-            conn.commit()
-            total += len(batch)
+        flush(cur, batch)
+        total += len(batch)
 
     print(f'Done. {total} wallets synced.')
     conn.close()
