@@ -22,7 +22,7 @@ extract_section() {
 pr_numbers=$(git log "${BASE_BRANCH}..${HEAD_BRANCH}" --merges --oneline \
   | grep -oE '#[0-9]+' \
   | tr -d '#' \
-  | tac)
+  | sed '1!G;h;$!d')
 
 sections=()
 for pr in $pr_numbers; do
