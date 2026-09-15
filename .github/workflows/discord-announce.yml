@@ -12,10 +12,17 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Gather Product Update sections from PRs merged to main in the last 24h
+      - name: Gather Product Update sections from PRs merged to main since the last digest
         id: gather
         run: |
-          cutoff=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          cutoff=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow discord-announce.yml \
+            --json conclusion,createdAt --limit 20 \
+            --jq '[.[] | select(.conclusion == "success")] | .[0].createdAt // empty')
+
+          if [ -z "$cutoff" ]; then
+            cutoff=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          fi
+
           gh pr list --repo "$GITHUB_REPOSITORY" --state merged --base main \
             --json number,mergedAt,body --limit 100 \
             --jq "[.[] | select(.mergedAt >= \"$cutoff\")]" > prs.json
