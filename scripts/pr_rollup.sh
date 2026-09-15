@@ -32,7 +32,7 @@ for pr in $pr_numbers; do
   section=$(printf '%s\n' "$body" | extract_section)
   [ -z "$section" ] && continue
 
-  sections+=("- (#$pr) $section")
+  sections+=("- $section")
 done
 
 if [ "${#sections[@]}" -eq 0 ]; then
