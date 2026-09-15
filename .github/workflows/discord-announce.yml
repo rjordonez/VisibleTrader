@@ -1,55 +1,61 @@
-name: Discord product update announcement
+name: Discord product update digest
 
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
+  schedule:
+    # 9am PT / 4pm UTC daily
+    - cron: '0 16 * * *'
+  workflow_dispatch: {}
 
 jobs:
-  announce:
-    if: github.event.pull_request.merged == true
+  digest:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Extract Product Update section
-        id: extract
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const lines = (context.payload.pull_request.body || '').split('\n');
-            let capturing = false;
-            const out = [];
-            for (const line of lines) {
-              if (/^##\s*Product Update\s*$/i.test(line)) { capturing = true; continue; }
-              if (capturing && /^##\s/.test(line)) break;
-              if (capturing) out.push(line);
-            }
-            const content = out.join('\n').trim();
+      - name: Gather Product Update sections from PRs merged to main in the last 24h
+        id: gather
+        run: |
+          cutoff=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          gh pr list --repo "$GITHUB_REPOSITORY" --state merged --base main \
+            --json number,mergedAt,body --limit 100 \
+            --jq "[.[] | select(.mergedAt >= \"$cutoff\")]" > prs.json
 
-            if (!content) {
-              core.setOutput('has_update', 'false');
-              return;
-            }
+          sections=()
+          count=$(jq length prs.json)
+          for i in $(seq 0 $((count - 1))); do
+            body=$(jq -r ".[$i].body" prs.json)
+            section=$(printf '%s\n' "$body" | awk '
+              /^## Product Update[[:space:]]*$/ { capture=1; next }
+              /^## / { if (capture) exit }
+              capture { print }
+            ' | sed -e '/./,$!d' -e ':a' -e '/^\n*$/{$d;N;ba' -e '}')
+            [ -z "$section" ] && continue
+            sections+=("- $section")
+          done
 
-            const truncated = content.length > 1800
-              ? content.slice(0, 1800) + '...'
-              : content;
+          if [ "${#sections[@]}" -eq 0 ]; then
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-            core.setOutput('has_update', 'true');
-            core.setOutput('content', truncated);
+          {
+            echo "has_update=true"
+            echo "content<<EOF"
+            printf '%s\n' "${sections[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Post to Discord
-        if: steps.extract.outputs.has_update == 'true'
+        if: steps.gather.outputs.has_update == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_UPDATES_WEBHOOK_URL }}
           UPDATE_NUMBER: ${{ github.run_number }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          UPDATE_TEXT: ${{ steps.extract.outputs.content }}
+          UPDATE_TEXT: ${{ steps.gather.outputs.content }}
         run: |
           payload=$(jq -n \
             --arg number "$UPDATE_NUMBER" \
             --arg text "$UPDATE_TEXT" \
-            --arg url "$PR_URL" \
-            '{content: ("**[Product Update #" + $number + "](" + $url + ")**\n" + $text)}')
+            '{content: ("**Product Update #" + $number + "**\n" + $text)}')
 
           curl -sf -X POST \
             -H "Content-Type: application/json" \
