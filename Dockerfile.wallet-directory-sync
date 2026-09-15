@@ -1,0 +1,14 @@
+# Cloud Run Job image for the daily wallet_directory sync (Polymarket
+# leaderboard scrape + sync). Isolated from live-signal-service's VM on
+# purpose — see scripts/wallet_directory_sync_entrypoint.sh.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY scripts/_env.py scripts/scrape-polymarket-users.py scripts/sync_wallet_directory.py scripts/wallet_directory_sync_entrypoint.sh scripts/
+RUN chmod +x scripts/wallet_directory_sync_entrypoint.sh
+
+CMD ["scripts/wallet_directory_sync_entrypoint.sh"]
