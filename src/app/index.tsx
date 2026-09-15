@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Newspaper, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X } from 'lucide-react'
+import { Newspaper, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X, Sparkles } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -23,6 +23,7 @@ const TraderDetailPage = lazy(() => import('./TraderDetailPage'))
 const SettingsPage = lazy(() => import('./SettingsPage'))
 const JournalPage = lazy(() => import('./JournalPage'))
 const ConnectionsPage = lazy(() => import('./connections/ConnectionsPage'))
+const AnalyzerPage = lazy(() => import('./analyzer/AnalyzerPage'))
 
 // Self-contained (own state/ref/outside-click handling) rather than driven
 // by AppShell-level state, specifically so it can be mounted twice — once
@@ -147,6 +148,7 @@ function TabLoading() {
 // the Terminal's own read-only Alerts tab: it's a notification surface,
 // not a page you navigate to browse.
 const navItems = [
+  { id: 'analyzer',    label: 'AI Analyzer', path: '/analyzer',    Icon: Sparkles },
   { id: 'profits',     label: 'Profits',     path: '/',            Icon: TrendingUp },
   { id: 'feed',        label: 'Feed',        path: '/feed',        Icon: Newspaper },
   { id: 'leaderboard', label: 'Leaderboard', path: '/leaderboard', Icon: Trophy },
@@ -350,6 +352,7 @@ export default function AppShell() {
                       (the bot's track record) and matches Profits leading the nav. */}
                   <Route index element={<ProfitsPage />} />
                   <Route path="feed" element={<HomePage alerts={alerts} />} />
+                  <Route path="analyzer" element={<AnalyzerPage />} />
                   {/* Signals was retired — its Expert Picks browser now lives on the Profits page. */}
                   <Route path="signals" element={<Navigate to={dashboardPath('/')} replace />} />
                   {/* Profits used to live at its own path; keep old links/bookmarks working. */}
