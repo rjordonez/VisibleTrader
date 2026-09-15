@@ -1,59 +1,80 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { ArrowUp, ArrowUpRight, Check, ChevronDown, FileText, Globe, ImagePlus, Link2, LoaderCircle, Plus, ScanLine, Sparkles, Square, Users, X } from 'lucide-react'
+import { ArrowUp, ArrowUpRight, Check, ChevronDown, Globe, ImagePlus, Link2, Plus, Square, Users, X } from 'lucide-react'
 import { supabase, supabaseFunctionsUrl } from '../../lib/supabase'
 import './analyzer.css'
 
+type Source = { id: number; title: string; url: string; domain: string; cited: boolean }
 type Report = {
   title: string; action: 'BUY'; outcome: string; price: number | null; reason: string; risk: string
-  evidence: { title: string; detail: string }[]
+  evidence: { title: string; detail: string; basis?: 'web' | 'market' | 'traders' | 'uncertain'; source_ids?: number[] }[]
   traders: { name: string; price: number; outcome: string; exited: boolean }[]
   image: string | null; url: string | null; asOf: string
+  sources?: Source[]; researchStatus?: 'complete' | 'unavailable' | 'no_sources'; searches?: number; positionCount?: number; investedUsd?: number | null
+  reason_source_ids?: number[]; risk_source_ids?: number[]
 }
 type Progress = {
-  stage: 'connecting' | 'market' | 'traders' | 'reasoning'
+  stage: 'connecting' | 'market' | 'traders' | 'research' | 'reasoning'
   label: string; title?: string; image?: string | null; marketVerified?: boolean
   outcomes?: { name: string; price: number | null }[]; positionCount?: number; tradersAvailable?: boolean
+  sources?: Source[]; searches?: number; researchStatus?: Report['researchStatus']
 }
 type Turn = { id: number; url: string; image: string | null; filename: string; progress: Progress; report?: Report; error?: string; example?: boolean }
 const cents = (value: number | null) => value === null ? '—' : `${Math.round(value * 100)}¢`
-const stages = ['connecting', 'market', 'traders', 'reasoning']
+const percent = (value: number | null) => value === null ? '—' : `${Math.round(value * 100)}%`
+const dollars = (value: number | null | undefined) => value && value > 0 ? `$${Math.round(value).toLocaleString()}` : '—'
+
+function Citations({ ids = [], sources = [] }: { ids?: number[]; sources?: Source[] }) {
+  return <span className="ac-citations">{ids.map(id => {
+    const source = sources.find(s => s.id === id && s.cited)
+    return source ? <a key={id} href={source.url} target="_blank" rel="noreferrer" title={source.title} aria-label={`Source ${id}: ${source.title}`}>{id}</a> : null
+  })}</span>
+}
+
+function SourceTile({ source }: { source: Source }) {
+  return <a className="ac-source-tile" href={source.url} target="_blank" rel="noreferrer">
+    <span className="ac-source-avatar">{source.domain.slice(0, 1).toUpperCase()}</span>
+    <div><span>{source.domain}</span><strong>{source.title}</strong></div><ArrowUpRight size={13} />
+  </a>
+}
 
 function Processing({ turn }: { turn: Turn }) {
   const { progress: p } = turn
-  const step = stages.indexOf(p.stage)
   const preview = p.image || turn.image
+  const sources = p.sources || []
   return <div className="ac-processing" aria-label="Analysis in progress">
-    <div className="ac-processing-title" role="status"><LoaderCircle className="ac-spin" size={17} /><strong>{p.label}</strong><span>{turn.example ? 'EXAMPLE' : 'WORKING'}</span></div>
-    <div className="ac-workbench">
-      <div className="ac-scan-document">
-        <div className="ac-document-top"><Globe size={13} /><span>{turn.url ? 'polymarket.com' : turn.example ? 'Example market' : 'Your screenshot'}</span><i /></div>
-        <div className="ac-document-body">
-          {preview ? <img src={preview} alt="Market being analyzed" /> : <div className="ac-document-placeholder"><FileText size={28} /><div /><div /><div /></div>}
-          <div className="ac-scan-beam" />
-        </div>
-        <strong>{p.title || (turn.url || turn.example ? 'Locating your market…' : 'Extracting market details…')}</strong>
-        <div className="ac-document-prices">{p.outcomes?.length ? p.outcomes.slice(0, 2).map(o => <span key={o.name}>{o.name}<b>{cents(o.price)}</b></span>) : <><i /><i /></>}</div>
+    <div className="ac-live-status" role="status"><span key={p.label}>{p.label}</span><span className="ac-search-dots" aria-hidden="true"><i /><i /><i /></span></div>
+    {(p.title || preview) && <div className="ac-market-preview">
+      {preview && <img src={preview} alt="Market being analyzed" />}
+      <div><small>{turn.example ? 'Example market' : p.marketVerified ? 'Polymarket' : 'Your screenshot'}</small><strong>{p.title || 'Reading your market…'}</strong>
+        <div className="ac-market-quotes">{p.outcomes?.slice(0, 2).map(o => <span key={o.name}>{o.name} <b>{cents(o.price)}</b></span>)}</div>
       </div>
-      <svg className="ac-connections" viewBox="0 0 120 220" preserveAspectRatio="none" fill="none" aria-hidden="true"><path d="M0 110H35Q55 110 55 75V40Q55 20 80 20H120M0 110H120M0 110H35Q55 110 55 145V180Q55 200 80 200H120" /></svg>
-      <div className="ac-work-items">
-        <div className={step >= 2 ? 'is-ready' : 'is-working'}><span className="ac-work-icon"><ScanLine size={19} /></span><section><strong>Market & price</strong><small>{step >= 2 ? p.marketVerified ? `${p.outcomes?.length ?? 0} outcomes retrieved` : 'Screenshot supplied · price unverified' : 'Reading market details'}</small></section>{step >= 2 && <Check size={15} />}</div>
-        <div className={step >= 3 ? 'is-ready' : step >= 2 ? 'is-working' : ''}><span className="ac-work-icon"><Users size={19} /></span><section><strong>Trader activity</strong><small>{step >= 3 ? p.tradersAvailable ? `${p.positionCount ?? 0} recent positions retrieved` : 'No verified position data' : step >= 2 ? 'Looking up tracked entries' : 'Waiting for the market'}</small></section>{step >= 3 && <Check size={15} />}</div>
-        <div className={step >= 3 ? 'is-working' : ''}><span className="ac-work-icon"><Sparkles size={19} /></span><section><strong>Your pick</strong><small>{step >= 3 ? 'Weighing evidence across the sides' : 'Waiting for the evidence'}</small></section>{step >= 3 && <LoaderCircle size={15} className="ac-spin" />}</div>
-      </div>
-    </div>
-    <div className="ac-processing-footer"><span className="ac-live-dot" />{step >= 3 ? 'Turning the evidence into one clear call.' : 'Bringing the market and tracked activity together.'}</div>
+    </div>}
+
+    {sources.length > 0 && <div className="ac-discoveries"><div className="ac-discoveries-heading"><Globe size={14} />Coverage found <span>{sources.length}</span></div><div className="ac-source-list">{sources.slice(-4).map(source => <SourceTile key={source.id} source={source} />)}</div></div>}
+
   </div>
 }
 
 function Result({ report, example }: { report: Report; example?: boolean }) {
+  const sources = report.sources || []
+  const webUnavailable = report.researchStatus === 'unavailable' || report.researchStatus === 'no_sources'
   return <div className="ac-result">
-    <div className="ac-result-market">{report.image && <img src={report.image} alt="" />}<span>{report.title}</span></div>
-    <div className="ac-decision"><ArrowUpRight size={25} /><h2>Buy {report.outcome}</h2>{report.price !== null && <span>{cents(report.price)}<small>quoted</small></span>}</div>
-    <p className="ac-reason">{report.reason}</p>
-    <div className="ac-reasons">{report.evidence.map((item, i) => <div key={i}><span>{String(i + 1).padStart(2, '0')}</span><p><strong>{item.title}</strong> {item.detail}</p></div>)}</div>
-    {report.traders.length > 0 && <details className="ac-trader-details"><summary><Users size={15} />{report.traders.length} tracked traders on this side<ChevronDown size={14} /></summary><div>{report.traders.map((t, i) => <div className="ac-trader" key={i}><span>{t.name.slice(0, 2).toUpperCase()}</span><strong>{t.name}</strong><small>{t.exited ? 'Exited' : 'No recorded exit'}</small><b>{cents(t.price)}</b></div>)}</div></details>}
-    <p className="ac-risk"><span>Watch for</span>{report.risk}</p>
+    <a className="ac-pick-card ac-pick-link" href={report.url || 'https://polymarket.com'} target="_blank" rel="noreferrer" aria-label={report.url ? `Open ${report.title} on Polymarket` : 'Open Polymarket'}>
+      <div className="ac-pick-brand"><span><span className="ac-brand-bars" aria-hidden="true"><i /><i /><i /></span>VisibleTrader</span></div>
+      <div className="ac-pick-market">{report.image && <img src={report.image} alt="" />}<h2>{report.title}</h2></div>
+      <div className="ac-pick-outcome"><ArrowUpRight size={23} /><span>Buy {report.outcome}</span></div>
+      <div className="ac-pick-stats"><div><span>Market price</span><strong>{percent(report.price)}</strong></div><div className="ac-expert-stat"><span>Expert traders</span><strong>{report.traders.length}</strong></div><div className="ac-invested-stat"><span>Invested on this side</span><strong>{dollars(report.investedUsd)}</strong></div></div>
+      <div className="ac-pick-bottom"><span>{example ? 'Fictional example' : 'Recommendation · no trade placed'}</span><span className="ac-pick-destination">{report.url ? 'Open market' : 'Explore Polymarket'} <ArrowUpRight size={13} /></span></div>
+    </a>
+    <p className="ac-reason">{report.reason}<Citations ids={report.reason_source_ids} sources={sources} /></p>
+    <div className="ac-reasons-row">{report.evidence.slice(0, 3).map((item, i) => {
+      return <article className="ac-reason-item" key={i}><h3>{item.title}</h3><p>{item.detail}<Citations ids={item.source_ids} sources={sources} /></p></article>
+    })}</div>
+    {webUnavailable && <p className="ac-research-warning">{report.researchStatus === 'unavailable' ? 'Web research unavailable.' : 'No usable outside sources found.'} Pick uses market context only.</p>}
+    {sources.length > 0 && <details className="ac-sources-drawer"><summary><span className="ac-source-stack">{sources.slice(0, 4).map(s => <i key={s.id}>{s.domain.slice(0, 1).toUpperCase()}</i>)}</span><span>{sources.length} sources found</span><ChevronDown size={14} /></summary><div className="ac-source-list">{sources.map(source => <div key={source.id}><SourceTile source={source} /><small>{source.cited ? 'Cited in research' : 'Search result · not cited'}</small></div>)}</div></details>}
+    {report.traders.length > 0 && <details className="ac-trader-details"><summary><Users size={15} />Expert traders on this side <b>{report.traders.length}</b><ChevronDown size={14} /></summary><div>{report.traders.map((t, i) => <div className="ac-trader" key={i}><span>{t.name.slice(0, 2).toUpperCase()}</span><strong>{t.name}</strong><small>{t.exited ? 'Exited' : 'No recorded exit'}</small><b>{percent(t.price)}</b></div>)}</div></details>}
+    <p className="ac-risk"><span>Watch for</span><span>{report.risk}<Citations ids={report.risk_source_ids} sources={sources} /></span></p>
     <footer>{example ? <span>Example · fictional data</span> : <span>{report.price === null ? 'Price unverified' : 'Price snapshot'} · {new Date(report.asOf).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}{report.url && <a href={report.url} target="_blank" rel="noreferrer">Open market <ArrowUpRight size={14} /></a>}</footer>
   </div>
 }
@@ -103,7 +124,7 @@ export default function AnalyzerPage() {
     const abort = new AbortController()
     controller.current = abort
     setTurns(current => [...current, turn]); setBusy(true); setError(''); setUrl(''); setImage(null); setFilename('')
-    const timeout = setTimeout(() => abort.abort('timeout'), 90000)
+    const timeout = setTimeout(() => abort.abort('timeout'), 145000)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Sign in to analyze a market.')
@@ -146,19 +167,24 @@ export default function AnalyzerPage() {
     setError(''); setBusy(true)
     setTurns(current => [...current, { id, url: '', image: null, filename: 'Example market', example: true, progress: { stage: 'market', label: 'Opening the example market' } }])
     const market = { title: 'Will Kansas City beat Buffalo?', outcomes: [{ name: 'Kansas City', price: .54 }, { name: 'Buffalo', price: .46 }], marketVerified: true }
+    const sources: Source[] = [
+      { id: 1, domain: 'example.com', url: 'https://example.com', title: 'Example: team availability report', cited: true },
+      { id: 2, domain: 'example.org', url: 'https://example.org', title: 'Example: matchup form guide', cited: true },
+    ]
     exampleTimers.current = [
       setTimeout(() => update(id, { progress: { ...market, stage: 'traders', label: 'Checking example positions' } }), 900),
-      setTimeout(() => update(id, { progress: { ...market, stage: 'reasoning', label: 'Comparing the example sides', positionCount: 3, tradersAvailable: true } }), 1800),
-      setTimeout(() => { update(id, { report: { title: market.title, action: 'BUY', outcome: 'Kansas City', price: .54, reason: 'The example trader activity favors Kansas City.', risk: 'A lineup change or a higher entry price.', evidence: [{ title: 'Two still holding.', detail: 'Two of three example buyers have no recorded exit.' }, { title: 'Entry matters.', detail: 'Your 54¢ quote is above the earliest example entry of 42¢.' }, { title: 'Lineup unverified.', detail: 'Check availability before acting on this example.' }], traders: [{ name: 'Field General', price: .42, outcome: 'Kansas City', exited: false }, { name: 'Sunday Sharp', price: .46, outcome: 'Kansas City', exited: false }], image: null, url: null, asOf: new Date().toISOString() } }); setBusy(false) }, 3000),
+      setTimeout(() => update(id, { progress: { ...market, stage: 'research', label: 'Finding example coverage', positionCount: 3, tradersAvailable: true, sources, searches: 2 } }), 1800),
+      setTimeout(() => update(id, { progress: { ...market, stage: 'reasoning', label: 'Weighing the example evidence', positionCount: 3, tradersAvailable: true, sources, searches: 2 } }), 3000),
+      setTimeout(() => { update(id, { report: { title: market.title, action: 'BUY', outcome: 'Kansas City', price: .54, reason: 'The example trader activity favors Kansas City.', risk: 'A lineup change or a higher entry price.', evidence: [{ title: 'Two still holding.', detail: 'Two of three example buyers have no recorded exit.', basis: 'traders' }, { title: 'Entry matters.', detail: 'Your 54¢ quote is above the earliest example entry of 42¢.', basis: 'market' }, { title: 'Lineup unverified.', detail: 'This fictional report illustrates where a linked availability update would appear.', basis: 'uncertain', source_ids: [] }], traders: [{ name: 'Field General', price: .42, outcome: 'Kansas City', exited: false }, { name: 'Sunday Sharp', price: .46, outcome: 'Kansas City', exited: false }], image: null, url: null, asOf: new Date().toISOString(), sources, searches: 2, positionCount: 3, investedUsd: 12840, researchStatus: 'complete' } }); setBusy(false) }, 4000),
     ]
   }
   return <div className={`ac-page ${turns.length ? 'ac-has-turns' : ''}`}>
-    <header className="ac-header"><span><Sparkles size={18} />Market analyzer</span><button onClick={() => { cancel(); setTurns([]); setError(''); setUrl(''); setImage(null); setFilename(''); sequence.current++ }} aria-label="New conversation"><Plus size={16} />New</button></header>
+    <header className="ac-header"><span>Market analyzer</span><button onClick={() => { cancel(); setTurns([]); setError(''); setUrl(''); setImage(null); setFilename(''); sequence.current++ }} aria-label="New conversation"><Plus size={16} />New</button></header>
     <div className="ac-thread">
-      {!turns.length && <div className="ac-empty"><div className="ac-assistant-icon"><Sparkles size={25} /></div><h1>What market are you looking at?</h1><p>Send a link or screenshot. I’ll break it down and pick a side.</p></div>}
+      {!turns.length && <div className="ac-empty"><h1>What’s your next move?</h1><p>Drop a Polymarket link or screenshot. Get a researched pick.</p></div>}
       {turns.map(turn => <section className="ac-turn" key={turn.id}>
         <div className="ac-user-message">{turn.image && <img src={turn.image} alt="Your market screenshot" />}<span>{turn.example ? 'Analyze this example market' : turn.url || turn.filename}</span>{turn.example && <small>Fictional data · preview</small>}</div>
-        <div className="ac-assistant-message"><div className="ac-assistant-label"><span className="ac-assistant-icon"><Sparkles size={14} /></span>VisibleTrader{turn.report && <small><Check size={12} />Complete</small>}</div>
+        <div className="ac-assistant-message"><div className="ac-assistant-label">VisibleTrader{turn.report && <small><Check size={12} />Complete</small>}</div>
           {turn.report ? <Result report={turn.report} example={turn.example} /> : turn.error ? <div className="ac-turn-error" role="alert"><p>{turn.error}</p><button onClick={() => { setUrl(turn.url); setImage(turn.image); setFilename(turn.filename); textInput.current?.focus() }}>Use this input again</button></div> : <Processing turn={turn} />}
         </div>
       </section>)}
