@@ -8,3 +8,9 @@ Instructions for any coding agent (Claude Code, Codex, etc.) working in this rep
 - Audience: non-technical marketers/UGC creators. Write 1-3 plain-English sentences describing what changed for the user. No implementation detail, no jargon — no file names, function names, library names, or internal system names.
 - Omit the `## Product Update` section entirely for internal/dev-only changes (refactors, tests, infra, bug fixes with no visible behavior change). Don't force boilerplate if there's nothing to announce.
 - When opening a `develop`→`main` PR specifically, run `scripts/pr_rollup.sh` first and use its output as the PR's `## Product Update` section — it gathers the accumulated sections from the individual PRs merged into `develop` since the last `main` update. If the script prints nothing, omit the heading.
+- To post a digest on demand instead of waiting for the daily schedule, manually trigger the `Discord product update digest` workflow: `gh workflow run discord-announce.yml --ref main`, or from GitHub's Actions tab → "Discord product update digest" → Run workflow.
+
+## Branching
+
+- Never push or merge code directly to `main`. Always open a PR from `develop` into `main`.
+
