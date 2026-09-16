@@ -17,7 +17,14 @@ const VB_HEIGHT = 104
 // Reserved on the right for the big endpoint-value readout (see
 // .expert-pick-plot's margin-right in pick-chart.css) — used here too so the
 // dot/selected-value x positions agree with where the SVG itself is drawn.
+// Price charts show a short "82.4%" (~70-80px at this font size), so 88px
+// of clearance was enough for the dot to sit fully past the text. A $ P&L
+// value ("+$8,784") runs wider than that -- with only 88px, the dot ended
+// up rendered UNDER the value text instead of beside it. axisTicks is the
+// same signal used for left-margin above ("this is a $ chart, not a %
+// one"), so it gets the wider reserve too.
 const RIGHT_RESERVE = 88
+const RIGHT_RESERVE_WIDE = 150
 // Reserved on the left for $ axis labels, only when axisTicks is passed
 // (the cumulative P&L charts) — price charts (cards/Terminal) never set
 // this, so their layout is untouched.
@@ -58,6 +65,7 @@ function MiniLineChart({ points: history, latestValue, label, formatValue, forma
   const clipId = `expert-chart-reveal-${useId().replace(/:/g, '')}`
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const leftReserve = axisTicks ? LEFT_RESERVE : 0
+  const rightReserve = axisTicks ? RIGHT_RESERVE_WIDE : RIGHT_RESERVE
   const { points, minV, spanV } = useMemo(() => {
     if (!history || history.length < 2) return { points: [] as (RawPoint & { x: number; y: number })[], minV: 0, spanV: 1 }
     const minT = history[0].t
@@ -81,7 +89,7 @@ function MiniLineChart({ points: history, latestValue, label, formatValue, forma
   // Same x/y mapping formula as the plotted points above, so the dot,
   // hover-selected value, and axis labels all agree with where the line
   // itself is actually drawn.
-  const xToLeft = (x: number) => `calc(${leftReserve}px + (100% - ${leftReserve + RIGHT_RESERVE}px) * ${x / 320})`
+  const xToLeft = (x: number) => `calc(${leftReserve}px + (100% - ${leftReserve + rightReserve}px) * ${x / 320})`
   const yToTop = (y: number) => `${8 + (y / VB_HEIGHT) * height}px`
   // The dot is drawn as an HTML element, not an SVG <circle>, so it stays a
   // round dot instead of stretching into an ellipse when the viewBox is
@@ -95,7 +103,7 @@ function MiniLineChart({ points: history, latestValue, label, formatValue, forma
 
   return (
     <div className={`expert-pick-chart${bordered ? ' is-bordered' : ''}`} style={{ ...(height === VB_HEIGHT ? undefined : { height }), ...accentStyle }}>
-      <div className="expert-pick-plot" style={{ ...(height === VB_HEIGHT ? undefined : { height }), marginLeft: leftReserve || undefined }}>
+      <div className="expert-pick-plot" style={{ ...(height === VB_HEIGHT ? undefined : { height }), marginLeft: leftReserve || undefined, marginRight: axisTicks ? rightReserve : undefined }}>
         {endpoint ? (
           <svg viewBox="0 0 320 104" role="slider" tabIndex={0}
             aria-label={`${label} history. Use arrow keys to explore.`}
