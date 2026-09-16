@@ -8,9 +8,16 @@
    sign), so the price-chart callers are unaffected. */
 .expert-pick-chart { position: relative; height: 104px; margin-top: auto; padding-top: 8px; box-sizing: content-box; color: var(--pick-chart-color, #7196ff); }
 /* Trader Profile's P&L chart doesn't already sit inside a card the way
-   Profit Bot's does, so CumulativePickChart's `bordered` prop opts into
-   this -- same surface-2/border/radius treatment as .sig-drill-card. */
-.expert-pick-chart.is-bordered { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--ui-radius-card); padding: 20px 24px 16px; margin-top: 0; }
+   Profit Bot's does, so CumulativePickChart's `bordered` prop wraps
+   .expert-pick-chart in this -- same surface-2/border/radius treatment as
+   .sig-drill-card. A separate element on purpose: every position formula
+   in PickChart.tsx (the dot, the endpoint value, the axis labels) is a
+   percentage of .expert-pick-chart's own box, so padding placed directly
+   on that element shifts where the SVG visually renders without those
+   formulas knowing -- .expert-pick-chart stays padding-free here exactly
+   like the unbordered case, and this wrapper carries the padding instead. */
+.expert-pick-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--ui-radius-card); padding: 20px 24px 16px; }
+.expert-pick-card .expert-pick-chart { margin-top: 0; }
 .expert-pick-plot { height: 104px; margin-right: 88px; }
 .expert-pick-plot > span { display: grid; place-items: center; height: 100%; color: var(--text-faint); font-size: 12px; }
 .expert-pick-plot svg { cursor: crosshair; touch-action: pan-y; }
