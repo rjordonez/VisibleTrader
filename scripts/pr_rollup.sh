@@ -20,7 +20,7 @@ extract_section() {
 }
 
 pr_numbers=$(git log "${BASE_BRANCH}..${HEAD_BRANCH}" --merges --oneline \
-  | grep -oE '#[0-9]+' \
+  | { grep -oE '#[0-9]+' || true; } \
   | tr -d '#' \
   | sed '1!G;h;$!d')
 
