@@ -1,8 +1,11 @@
-/* PickChart — the hand-drawn SVG price chart used on the ExpertPickCard
-   grids (Profits) and, via MarketDetailContent's `minimal` variant, on the
-   Terminal market page. Lives in its own file so both surfaces load exactly
-   these styles and neither can drift from the other. */
-.expert-pick-chart { position: relative; height: 104px; margin-top: auto; padding-top: 8px; box-sizing: content-box; color: #7196ff; }
+/* PickChart — the hand-drawn SVG chart used on the ExpertPickCard grids
+   (Profits), via MarketDetailContent's `minimal` variant on the Terminal
+   market page, and (as CumulativePickChart) Profit Bot's hero P&L chart.
+   Lives in its own file so all three surfaces load exactly these styles and
+   none can drift from the others. --pick-chart-color/-bright default to the
+   original hardcoded blue below -- only CumulativePickChart overrides them
+   (green/red by P&L sign), so the price-chart callers are unaffected. */
+.expert-pick-chart { position: relative; height: 104px; margin-top: auto; padding-top: 8px; box-sizing: content-box; color: var(--pick-chart-color, #7196ff); }
 .expert-pick-plot { height: 104px; margin-right: 88px; }
 .expert-pick-plot > span { display: grid; place-items: center; height: 100%; color: var(--text-faint); font-size: 12px; }
 .expert-pick-plot svg { cursor: crosshair; touch-action: pan-y; }
@@ -10,7 +13,7 @@
 .expert-pick-chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .expert-pick-endpoint-price {
   position: absolute; right: 0; width: 76px; transform: translateY(-50%);
-  color: #7b9eff; font-size: 27px; line-height: 1; letter-spacing: -0.05em;
+  color: var(--pick-chart-color-bright, #7b9eff); font-size: 27px; line-height: 1; letter-spacing: -0.05em;
   font-variant-numeric: tabular-nums; white-space: nowrap;
   pointer-events: none; text-shadow: 0 0 4px var(--surface-2), 0 0 8px var(--surface-2);
 }
@@ -20,11 +23,11 @@
    stretched non-uniformly to fill a wide/tall container. */
 .expert-pick-endpoint-dot {
   position: absolute; width: 9px; height: 9px; border-radius: 50%;
-  background: #7b9eff; transform: translate(-50%, -50%);
-  box-shadow: 0 0 0 5px rgba(123, 158, 255, 0.16);
+  background: var(--pick-chart-color-bright, #7b9eff); transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--pick-chart-color-bright, #7b9eff) 16%, transparent);
   pointer-events: none;
 }
-.expert-pick-endpoint-dot.is-hover { box-shadow: 0 0 0 4px rgba(123, 158, 255, 0.22); }
+.expert-pick-endpoint-dot.is-hover { box-shadow: 0 0 0 4px color-mix(in srgb, var(--pick-chart-color-bright, #7b9eff) 22%, transparent); }
 /* Thinner than the 2px price line and dimmer, so the grid stays in the
    background. vector-effect (also set as an attr in PickChart.tsx) keeps
    the 1px stroke and dash pattern from scaling up with the stretched

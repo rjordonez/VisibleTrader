@@ -3,7 +3,7 @@ import { Cpu, ChevronDown, HelpCircle, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
 import { fmtSigned, timeAgo, categoryLabel } from './helpers'
-import { CumulativeChart } from './PriceChart'
+import { CumulativePickChart } from './PickChart'
 import { ExpertPickCard } from './ExpertPickCard'
 import { SignalModal } from './SignalModal'
 import type { Opportunity } from './types'
@@ -156,7 +156,7 @@ export default function ProfitBot() {
         <div className="profits-chart-area">
           <p className="profits-chart-label">Cumulative P&amp;L, flat $100 per pick</p>
           {cumulative.length > 1
-            ? <CumulativeChart data={cumulative} height={250} bold />
+            ? <CumulativePickChart data={cumulative} height={250} />
             : <p className="profits-notice">The curve appears once picks span more than one day.</p>}
         </div>
 

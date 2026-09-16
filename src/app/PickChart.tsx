@@ -1,29 +1,53 @@
-import { useId, useMemo, useState } from 'react'
+import { useId, useMemo, useState, type CSSProperties } from 'react'
 import type { ChartPoint } from './types'
+import { fmtSigned } from './helpers'
 import './pick-chart.css'
 
-// The hand-drawn SVG price chart: a single reveal-animated polyline with a
-// pointer/keyboard scrubber and a big current-price readout pinned to the
-// right. Shared by the Signals "vetted" cards (ExpertPickCard) and the
-// Terminal market page (MarketDetailContent's `minimal` chart variant).
-// `history` is null while loading, [] (or <2 points) when there's nothing
-// to draw.
+// The hand-drawn SVG chart: a single reveal-animated polyline with a
+// pointer/keyboard scrubber and a big current-value readout pinned to the
+// right. Shared by the Signals "vetted" cards (ExpertPickCard), the Terminal
+// market page (MarketDetailContent's `minimal` chart variant), and Profit
+// Bot's cumulative P&L chart -- one rendering path so all three stay
+// visually identical instead of drifting apart.
 // The SVG's viewBox stays 320x104 and stretches to the container via
 // preserveAspectRatio="none"; `height` just makes that container taller
 // (the Terminal passes a bigger value than the Signals cards' default).
 const VB_HEIGHT = 104
 
-export function PickChart({ history, outcome, price, error, onRetry, height = VB_HEIGHT }: { history: ChartPoint[] | null; outcome: string; price: number; error: boolean; onRetry: () => void; height?: number }) {
+interface RawPoint { t: number; v: number }
+
+interface MiniLineChartProps {
+  // null while loading, [] (or <2 points) when there's nothing to draw.
+  points: RawPoint[] | null
+  // Latest real value to show when nothing's hovered -- kept separate from
+  // points.at(-1).v since a caller's "current" value can be fresher than
+  // its last plotted history point (e.g. a live market price).
+  latestValue: number
+  // Screen-reader label for what the line represents ("Yes chance",
+  // "Cumulative P&L") -- read as "<label>: <formatted value>".
+  label: string
+  formatValue: (v: number) => { main: string; unit?: string }
+  formatTime: (t: number) => string
+  error: boolean
+  onRetry: () => void
+  height?: number
+  // CSS custom properties, not a literal color prop -- pick-chart.css reads
+  // these with a fallback to the original hardcoded blue, so every existing
+  // caller (unset) renders byte-identical to before this was generalized.
+  accent?: { line: string; bright: string }
+}
+
+function MiniLineChart({ points: history, latestValue, label, formatValue, formatTime, error, onRetry, height = VB_HEIGHT, accent }: MiniLineChartProps) {
   const clipId = `expert-chart-reveal-${useId().replace(/:/g, '')}`
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const points = useMemo(() => {
     if (!history || history.length < 2) return []
     const minT = history[0].t
     const spanT = Math.max(1, history[history.length - 1].t - minT)
-    const prices = history.map(p => p.p)
-    const minP = Math.min(...prices)
-    const spanP = Math.max(0.04, Math.max(...prices) - minP)
-    return history.map(p => ({ ...p, x: 6 + (p.t - minT) / spanT * 308, y: 88 - (p.p - minP) / spanP * 72 }))
+    const values = history.map(p => p.v)
+    const minV = Math.min(...values)
+    const spanV = Math.max(0.04, Math.max(...values) - minV)
+    return history.map(p => ({ ...p, x: 6 + (p.t - minT) / spanT * 308, y: 88 - (p.v - minV) / spanV * 72 }))
   }, [history])
   const line = useMemo(() => points.map(p => `${p.x},${p.y}`).join(' '), [points])
   const endpoint = points.at(-1)
@@ -41,18 +65,18 @@ export function PickChart({ history, outcome, price, error, onRetry, height = VB
     top: `${8 + (p.y / VB_HEIGHT) * height}px`,
   })
   const selected = hoverIndex === null ? null : points[Math.min(hoverIndex, points.length - 1)]
-  const displayedPrice = Number(((selected?.p ?? price) * 100).toFixed(1))
-  const visiblePrice = displayedPrice
-  const selectedTime = selected ? new Date(selected.t * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : undefined
+  const displayedValue = formatValue(selected?.v ?? latestValue)
+  const selectedTime = selected ? formatTime(selected.t) : undefined
+  const accentStyle = accent ? ({ '--pick-chart-color': accent.line, '--pick-chart-color-bright': accent.bright } as CSSProperties) : undefined
 
   return (
-    <div className="expert-pick-chart" style={height === VB_HEIGHT ? undefined : { height }}>
+    <div className="expert-pick-chart" style={{ ...(height === VB_HEIGHT ? undefined : { height }), ...accentStyle }}>
       <div className="expert-pick-plot" style={height === VB_HEIGHT ? undefined : { height }}>
         {endpoint ? (
           <svg viewBox="0 0 320 104" role="slider" tabIndex={0}
-            aria-label={`${outcome} price history. Use arrow keys to explore.`}
+            aria-label={`${label} history. Use arrow keys to explore.`}
             aria-valuemin={0} aria-valuemax={points.length - 1} aria-valuenow={selected ? hoverIndex! : points.length - 1}
-            aria-valuetext={selected ? `${selectedTime}: ${displayedPrice}%` : `${displayedPrice}% latest`}
+            aria-valuetext={selected ? `${selectedTime}: ${displayedValue.main}${displayedValue.unit ?? ''}` : `${displayedValue.main}${displayedValue.unit ?? ''} latest`}
             preserveAspectRatio="none"
             onPointerMove={event => {
               const rect = event.currentTarget.getBoundingClientRect()
@@ -88,20 +112,65 @@ export function PickChart({ history, outcome, price, error, onRetry, height = VB
             </g>
           </svg>
         ) : history === null ? (
-          <svg className="expert-pick-chart-skeleton" viewBox="0 0 320 104" aria-label="Loading price chart" role="img" preserveAspectRatio="none">
+          <svg className="expert-pick-chart-skeleton" viewBox="0 0 320 104" aria-label="Loading chart" role="img" preserveAspectRatio="none">
             {gridYs.map(y => <line key={y} x1="0" x2="320" y1={y} y2={y} vectorEffect="non-scaling-stroke" />)}
           </svg>
-        ) : <span role="status">{error ? 'Couldn’t load chart' : 'Not enough price history yet'}<button type="button" className="expert-chart-retry" onClick={onRetry}>Retry</button></span>}
+        ) : <span role="status">{error ? 'Couldn’t load chart' : 'Not enough history yet'}<button type="button" className="expert-chart-retry" onClick={onRetry}>Retry</button></span>}
       </div>
       {endpoint && !selected && <span className="expert-pick-endpoint-dot" style={dotStyle(endpoint)} aria-hidden="true" />}
       {selected && <span className="expert-pick-endpoint-dot is-hover" style={dotStyle(selected)} aria-hidden="true" />}
       <strong className="expert-pick-endpoint-price" style={{
         top: `${8 + (selected?.y ?? endpoint?.y ?? 52) / VB_HEIGHT * height}px`,
         ...(selected ? { left: `calc((100% - 88px) * ${selected.x / 320} + 12px)`, right: 'auto' } : {}),
-      }} aria-label={`${outcome} chance: ${displayedPrice}%`}>
-        {visiblePrice}<small>%</small>
+      }} aria-label={`${label}: ${displayedValue.main}${displayedValue.unit ?? ''}`}>
+        {displayedValue.main}{displayedValue.unit && <small>{displayedValue.unit}</small>}
       </strong>
       {selectedTime && <span className="expert-pick-hover-time">{selectedTime}</span>}
     </div>
+  )
+}
+
+export function PickChart({ history, outcome, price, error, onRetry, height = VB_HEIGHT }: { history: ChartPoint[] | null; outcome: string; price: number; error: boolean; onRetry: () => void; height?: number }) {
+  return (
+    <MiniLineChart
+      points={history ? history.map(p => ({ t: p.t, v: p.p })) : null}
+      latestValue={price}
+      label={`${outcome} chance`}
+      formatValue={v => ({ main: String(Number((v * 100).toFixed(1))), unit: '%' })}
+      formatTime={t => new Date(t * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+      error={error}
+      onRetry={onRetry}
+      height={height}
+    />
+  )
+}
+
+// Same rendering as PickChart above, sized for cumulative $ P&L over days
+// (Profit Bot's hero chart) instead of a 0-100% market price -- negative
+// values and the day-string x-axis both fall out of MiniLineChart's
+// existing min/max normalization for free, no change needed there. Colored
+// green/red by whether the series ends up or down, matching the meaning
+// the old Recharts CumulativeChart conveyed with its line color.
+export function CumulativePickChart({ data, height = VB_HEIGHT }: { data: { d: string; cum: number }[]; height?: number }) {
+  const last = data.at(-1)?.cum ?? 0
+  const up = last >= 0
+  if (data.length < 2) return null
+  return (
+    <MiniLineChart
+      points={data.map((d, i) => ({ t: i, v: d.cum }))}
+      latestValue={last}
+      label="Cumulative P&L"
+      formatValue={v => ({ main: fmtSigned(v) })}
+      formatTime={i => {
+        const raw = data[Math.round(i)]?.d
+        if (!raw) return ''
+        const dt = new Date(raw)
+        return Number.isNaN(dt.getTime()) ? raw : dt.toLocaleDateString([], { month: 'short', day: 'numeric' })
+      }}
+      error={false}
+      onRetry={() => {}}
+      height={height}
+      accent={up ? { line: '#00d17a', bright: '#00d17a' } : { line: '#ff3b5c', bright: '#ff3b5c' }}
+    />
   )
 }
