@@ -101,8 +101,20 @@ function MiniLineChart({ points: history, latestValue, label, formatValue, forma
   const accentStyle = accent ? ({ '--pick-chart-color': accent.line, '--pick-chart-color-bright': accent.bright } as CSSProperties) : undefined
   const tickRows = axisTicks?.map(t => ({ ...t, y: 88 - (t.value - minV) / spanV * 72 }))
 
-  return (
-    <div className={`expert-pick-chart${bordered ? ' is-bordered' : ''}`} style={{ ...(height === VB_HEIGHT ? undefined : { height }), ...accentStyle }}>
+  // Every position formula below (dot, endpoint value, axis labels) is
+  // computed as a percentage of .expert-pick-chart's own box -- adding
+  // padding directly on that element (as an earlier version of this did,
+  // via an .is-bordered modifier on this same div) shifts where the SVG
+  // visually renders without the formulas knowing, throwing the dot and
+  // axis labels out of sync with the actual line (reported: the dot
+  // floating away from the plotted line's real endpoint, the hover-date
+  // label rendering above the card's visible border). Padding/border/
+  // background instead live on a separate outer wrapper that `bordered`
+  // charts render inside -- .expert-pick-chart itself stays padding-free
+  // in both cases, so this math is identical to every other PickChart
+  // caller regardless of whether a border is drawn around it.
+  const chart = (
+    <div className="expert-pick-chart" style={{ ...(height === VB_HEIGHT ? undefined : { height }), ...accentStyle }}>
       <div className="expert-pick-plot" style={{ ...(height === VB_HEIGHT ? undefined : { height }), marginLeft: leftReserve || undefined, marginRight: axisTicks ? rightReserve : undefined }}>
         {endpoint ? (
           <svg viewBox="0 0 320 104" role="slider" tabIndex={0}
@@ -163,6 +175,7 @@ function MiniLineChart({ points: history, latestValue, label, formatValue, forma
       {selectedTime && <span className="expert-pick-hover-time">{selectedTime}</span>}
     </div>
   )
+  return bordered ? <div className="expert-pick-card">{chart}</div> : chart
 }
 
 export function PickChart({ history, outcome, price, error, onRetry, height = VB_HEIGHT }: { history: ChartPoint[] | null; outcome: string; price: number; error: boolean; onRetry: () => void; height?: number }) {
