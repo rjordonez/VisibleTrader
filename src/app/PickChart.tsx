@@ -6,13 +6,22 @@ import './pick-chart.css'
 // The hand-drawn SVG chart: a single reveal-animated polyline with a
 // pointer/keyboard scrubber and a big current-value readout pinned to the
 // right. Shared by the Signals "vetted" cards (ExpertPickCard), the Terminal
-// market page (MarketDetailContent's `minimal` chart variant), and Profit
-// Bot's cumulative P&L chart -- one rendering path so all three stay
-// visually identical instead of drifting apart.
+// market page (MarketDetailContent's `minimal` chart variant), and both
+// cumulative $ P&L charts (Profit Bot's hero, Trader Profile) -- one
+// rendering path so all of these stay visually identical instead of
+// drifting apart.
 // The SVG's viewBox stays 320x104 and stretches to the container via
 // preserveAspectRatio="none"; `height` just makes that container taller
 // (the Terminal passes a bigger value than the Signals cards' default).
 const VB_HEIGHT = 104
+// Reserved on the right for the big endpoint-value readout (see
+// .expert-pick-plot's margin-right in pick-chart.css) — used here too so the
+// dot/selected-value x positions agree with where the SVG itself is drawn.
+const RIGHT_RESERVE = 88
+// Reserved on the left for $ axis labels, only when axisTicks is passed
+// (the cumulative P&L charts) — price charts (cards/Terminal) never set
+// this, so their layout is untouched.
+const LEFT_RESERVE = 52
 
 interface RawPoint { t: number; v: number }
 
@@ -35,19 +44,31 @@ interface MiniLineChartProps {
   // these with a fallback to the original hardcoded blue, so every existing
   // caller (unset) renders byte-identical to before this was generalized.
   accent?: { line: string; bright: string }
+  // $ (or other unit) tick labels drawn along the left edge, at the same
+  // y-scale as the plotted line -- only the cumulative P&L charts pass
+  // this; price charts stay exactly as they were (no axis at all).
+  axisTicks?: { value: number; text: string }[]
+  // Wraps the whole thing in a bordered card. Profit Bot's hero chart
+  // already sits inside its own card, so it passes false; Trader Profile's
+  // chart doesn't have one of its own, so it passes true.
+  bordered?: boolean
 }
 
-function MiniLineChart({ points: history, latestValue, label, formatValue, formatTime, error, onRetry, height = VB_HEIGHT, accent }: MiniLineChartProps) {
+function MiniLineChart({ points: history, latestValue, label, formatValue, formatTime, error, onRetry, height = VB_HEIGHT, accent, axisTicks, bordered }: MiniLineChartProps) {
   const clipId = `expert-chart-reveal-${useId().replace(/:/g, '')}`
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
-  const points = useMemo(() => {
-    if (!history || history.length < 2) return []
+  const leftReserve = axisTicks ? LEFT_RESERVE : 0
+  const { points, minV, spanV } = useMemo(() => {
+    if (!history || history.length < 2) return { points: [] as (RawPoint & { x: number; y: number })[], minV: 0, spanV: 1 }
     const minT = history[0].t
     const spanT = Math.max(1, history[history.length - 1].t - minT)
     const values = history.map(p => p.v)
     const minV = Math.min(...values)
     const spanV = Math.max(0.04, Math.max(...values) - minV)
-    return history.map(p => ({ ...p, x: 6 + (p.t - minT) / spanT * 308, y: 88 - (p.v - minV) / spanV * 72 }))
+    return {
+      minV, spanV,
+      points: history.map(p => ({ ...p, x: 6 + (p.t - minT) / spanT * 308, y: 88 - (p.v - minV) / spanV * 72 })),
+    }
   }, [history])
   const line = useMemo(() => points.map(p => `${p.x},${p.y}`).join(' '), [points])
   const endpoint = points.at(-1)
@@ -57,21 +78,24 @@ function MiniLineChart({ points: history, latestValue, label, formatValue, forma
     const rows = Math.max(3, Math.round(height / 52))
     return Array.from({ length: rows }, (_, i) => Math.round(((i + 0.5) / rows) * VB_HEIGHT))
   }, [height])
+  // Same x/y mapping formula as the plotted points above, so the dot,
+  // hover-selected value, and axis labels all agree with where the line
+  // itself is actually drawn.
+  const xToLeft = (x: number) => `calc(${leftReserve}px + (100% - ${leftReserve + RIGHT_RESERVE}px) * ${x / 320})`
+  const yToTop = (y: number) => `${8 + (y / VB_HEIGHT) * height}px`
   // The dot is drawn as an HTML element, not an SVG <circle>, so it stays a
   // round dot instead of stretching into an ellipse when the viewBox is
   // scaled non-uniformly to fill a wide/tall container.
-  const dotStyle = (p: { x: number; y: number }) => ({
-    left: `calc((100% - 88px) * ${p.x / 320})`,
-    top: `${8 + (p.y / VB_HEIGHT) * height}px`,
-  })
+  const dotStyle = (p: { x: number; y: number }) => ({ left: xToLeft(p.x), top: yToTop(p.y) })
   const selected = hoverIndex === null ? null : points[Math.min(hoverIndex, points.length - 1)]
   const displayedValue = formatValue(selected?.v ?? latestValue)
   const selectedTime = selected ? formatTime(selected.t) : undefined
   const accentStyle = accent ? ({ '--pick-chart-color': accent.line, '--pick-chart-color-bright': accent.bright } as CSSProperties) : undefined
+  const tickRows = axisTicks?.map(t => ({ ...t, y: 88 - (t.value - minV) / spanV * 72 }))
 
   return (
-    <div className="expert-pick-chart" style={{ ...(height === VB_HEIGHT ? undefined : { height }), ...accentStyle }}>
-      <div className="expert-pick-plot" style={height === VB_HEIGHT ? undefined : { height }}>
+    <div className={`expert-pick-chart${bordered ? ' is-bordered' : ''}`} style={{ ...(height === VB_HEIGHT ? undefined : { height }), ...accentStyle }}>
+      <div className="expert-pick-plot" style={{ ...(height === VB_HEIGHT ? undefined : { height }), marginLeft: leftReserve || undefined }}>
         {endpoint ? (
           <svg viewBox="0 0 320 104" role="slider" tabIndex={0}
             aria-label={`${label} history. Use arrow keys to explore.`}
@@ -117,11 +141,14 @@ function MiniLineChart({ points: history, latestValue, label, formatValue, forma
           </svg>
         ) : <span role="status">{error ? 'Couldn’t load chart' : 'Not enough history yet'}<button type="button" className="expert-chart-retry" onClick={onRetry}>Retry</button></span>}
       </div>
+      {tickRows?.map(t => (
+        <span key={t.value} className="expert-pick-axis-label" style={{ top: yToTop(t.y) }}>{t.text}</span>
+      ))}
       {endpoint && !selected && <span className="expert-pick-endpoint-dot" style={dotStyle(endpoint)} aria-hidden="true" />}
       {selected && <span className="expert-pick-endpoint-dot is-hover" style={dotStyle(selected)} aria-hidden="true" />}
       <strong className="expert-pick-endpoint-price" style={{
-        top: `${8 + (selected?.y ?? endpoint?.y ?? 52) / VB_HEIGHT * height}px`,
-        ...(selected ? { left: `calc((100% - 88px) * ${selected.x / 320} + 12px)`, right: 'auto' } : {}),
+        top: yToTop(selected?.y ?? endpoint?.y ?? 52),
+        ...(selected ? { left: `calc(${xToLeft(selected.x)} + 12px)`, right: 'auto' } : {}),
       }} aria-label={`${label}: ${displayedValue.main}${displayedValue.unit ?? ''}`}>
         {displayedValue.main}{displayedValue.unit && <small>{displayedValue.unit}</small>}
       </strong>
@@ -146,15 +173,29 @@ export function PickChart({ history, outcome, price, error, onRetry, height = VB
 }
 
 // Same rendering as PickChart above, sized for cumulative $ P&L over days
-// (Profit Bot's hero chart) instead of a 0-100% market price -- negative
-// values and the day-string x-axis both fall out of MiniLineChart's
-// existing min/max normalization for free, no change needed there. Colored
-// green/red by whether the series ends up or down, matching the meaning
-// the old Recharts CumulativeChart conveyed with its line color.
-export function CumulativePickChart({ data, height = VB_HEIGHT }: { data: { d: string; cum: number }[]; height?: number }) {
+// instead of a 0-100% market price -- negative values and the day-string
+// x-axis both fall out of MiniLineChart's existing min/max normalization
+// for free. Colored green/red by whether the series ends up or down.
+// Unlike a price chart's short "82.4%" (always ~5 characters), a $ P&L
+// figure can run to 6-7+ digits, so this always passes labeled axis ticks
+// (a bare unlabeled line reads as meaningless at that scale) and the
+// endpoint value's width is no longer hardcoded (see pick-chart.css) --
+// both were breaking specifically on wide numbers before this.
+export function CumulativePickChart({ data, height = VB_HEIGHT, bordered = false }: { data: { d: string; cum: number }[]; height?: number; bordered?: boolean }) {
   const last = data.at(-1)?.cum ?? 0
   const up = last >= 0
   if (data.length < 2) return null
+  const values = data.map(d => d.cum)
+  const minV = Math.min(...values)
+  const maxV = Math.max(...values)
+  // 4 evenly-spaced rows across the real data range (not forced through
+  // $0 -- matches MiniLineChart's own scaling, which is also pure
+  // data-range, not zero-anchored).
+  const tickCount = 4
+  const axisTicks = Array.from({ length: tickCount }, (_, i) => {
+    const value = minV + (maxV - minV) * (i / (tickCount - 1))
+    return { value, text: fmtSigned(value) }
+  }).reverse()
   return (
     <MiniLineChart
       points={data.map((d, i) => ({ t: i, v: d.cum }))}
@@ -171,6 +212,8 @@ export function CumulativePickChart({ data, height = VB_HEIGHT }: { data: { d: s
       onRetry={() => {}}
       height={height}
       accent={up ? { line: '#00d17a', bright: '#00d17a' } : { line: '#ff3b5c', bright: '#ff3b5c' }}
+      axisTicks={axisTicks}
+      bordered={bordered}
     />
   )
 }
