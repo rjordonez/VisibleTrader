@@ -1,5 +1,5 @@
 import { categoryLabel, fmtSigned, fmtAbbrevSigned, traderLabel } from './helpers'
-import { CumulativeChart } from './PriceChart'
+import { CumulativePickChart } from './PickChart'
 import { SkelBlock, SkelTableRows } from './Skeleton'
 
 // Shared by SearchPage.tsx (public, entitlement-gated) and TraderDetailPage.tsx
@@ -16,7 +16,7 @@ export function CumulativeChartSection({ data, label, height = 220 }: { data: { 
     <>
       <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>{label}</div>
       <div style={{ marginBottom: 24 }}>
-        <CumulativeChart data={data} height={height} />
+        <CumulativePickChart data={data} height={height} />
       </div>
     </>
   )
