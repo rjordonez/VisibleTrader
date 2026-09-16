@@ -38,10 +38,22 @@ export function useHomeTrades(tab: 'following' | 'discover', wallets: string[]) 
         // global ticker window that could omit every followed wallet.
         const recordsQuery = supabase.from('leaderboard').select('wallet,wallet_name,won,lost,net_profit')
         const recordResult = await (tab === 'discover'
-          ? recordsQuery.gt('net_profit', 0).order('net_profit', { ascending: false }).order('wallet').limit(100)
+          // net_profit alone let a wallet with a poor win rate but one huge
+          // win onto "Discover" (copy reads "profitable tracked traders",
+          // which readers take to mean a good win rate too, not just net
+          // profit) -- fetch a wider net_profit-ranked candidate pool, then
+          // apply the same 60%+ win rate / 10+ resolved bar client-side
+          // (PostgREST can't filter on the computed won/(won+lost) ratio
+          // directly) before taking the top 100.
+          ? recordsQuery.gt('net_profit', 0).order('net_profit', { ascending: false }).order('wallet').limit(400)
           : recordsQuery.in('wallet', watched))
         if (recordResult.error) throw recordResult.error
-        const records = (recordResult.data ?? []) as TraderRecord[]
+        const rawRecords = (recordResult.data ?? []) as TraderRecord[]
+        const records = tab === 'discover'
+          ? rawRecords
+              .filter(r => r.won + r.lost >= 10 && r.won / (r.won + r.lost) >= 0.6)
+              .slice(0, 100)
+          : rawRecords
         const addresses = tab === 'discover' ? records.map(r => r.wallet) : watched
         const tradeResult = addresses.length === 0 ? { data: [], error: null }
           : await supabase.from('ticker').select('*').in('wallet', addresses)
