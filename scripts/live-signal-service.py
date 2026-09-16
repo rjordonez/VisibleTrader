@@ -971,33 +971,53 @@ def refresh_profit_bot(db):
 
 def refresh_wallet_category_breakdown(db):
     """Runs periodically (WALLET_CATEGORY_REFRESH_SECONDS, see main()) —
-    recomputes wallet_category_breakdown_cache, the table the
-    `wallet_category_breakdown` view now just passes through. This used to
-    be a live GROUP BY joining opportunity_wallets against a re-aggregated
-    "one category per market" subquery over the *entire* opportunities
-    table, recomputed from scratch on every single call regardless of which
-    wallet was asked about — see
+    updates wallet_category_breakdown_cache, the table the
+    `wallet_category_breakdown` view now just passes through.
+
+    Incremental as of the active-roster rollout: opportunity_wallets grew
+    fast enough (more actively-trading roster wallets -> far more rows)
+    that the old full-table GROUP BY on every call became the single
+    biggest consumer of DB compute (~14s/call, ~20h cumulative in one day
+    per pg_stat_statements). wallet_category_breakdown_refresh_state tracks
+    the high-water mark (max resolved_ts already folded into the cache) so
+    each run only aggregates positions resolved since last time and adds
+    the delta onto the existing cache row instead of recomputing from the
+    full multi-million-row table. See
     supabase/migrations/20260830010000_precompute_wallet_category_breakdown_and_index.sql
-    for the full story and the query this mirrors."""
+    for the original full-recompute query this replaces."""
     now = datetime.now(timezone.utc)
-    db.execute('''
-        INSERT INTO wallet_category_breakdown_cache (wallet, category, n, won, lost, profit, updated_at)
-        SELECT ow.wallet, COALESCE(o.category, 'other'),
-          COUNT(*),
-          SUM(CASE WHEN ow.resolved_win = true THEN 1 ELSE 0 END),
-          SUM(CASE WHEN ow.resolved_win = false THEN 1 ELSE 0 END),
-          SUM(CASE WHEN ow.resolved_win = true THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END),
-          %s
-        FROM opportunity_wallets ow
-        JOIN (SELECT condition_id, outcome, MAX(category) AS category FROM opportunities GROUP BY condition_id, outcome) o
-          ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
-        WHERE ow.market_closed = true
-        GROUP BY ow.wallet, COALESCE(o.category, 'other')
-        ON CONFLICT (wallet, category) DO UPDATE SET
-          n = EXCLUDED.n, won = EXCLUDED.won, lost = EXCLUDED.lost, profit = EXCLUDED.profit,
-          updated_at = EXCLUDED.updated_at
-    ''', (now,))
-    print('  [aggregates] refreshed wallet_category_breakdown_cache')
+    row = db.fetchone('SELECT last_resolved_ts FROM wallet_category_breakdown_refresh_state WHERE id = true')
+    last_ts = row[0] if row else datetime.min.replace(tzinfo=timezone.utc)
+    max_ts, n_updated = db.fetchone('''
+        WITH deltas AS (
+          SELECT ow.wallet, COALESCE(o.category, 'other') AS category,
+            COUNT(*) AS n,
+            SUM(CASE WHEN ow.resolved_win = true THEN 1 ELSE 0 END) AS won,
+            SUM(CASE WHEN ow.resolved_win = false THEN 1 ELSE 0 END) AS lost,
+            SUM(CASE WHEN ow.resolved_win = true THEN (ow.usd / ow.price) - ow.usd ELSE -ow.usd END) AS profit,
+            MAX(ow.resolved_ts) AS max_resolved_ts
+          FROM opportunity_wallets ow
+          JOIN (SELECT condition_id, outcome, MAX(category) AS category FROM opportunities GROUP BY condition_id, outcome) o
+            ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
+          WHERE ow.market_closed = true AND ow.resolved_ts > %s
+          GROUP BY ow.wallet, COALESCE(o.category, 'other')
+        ),
+        upserted AS (
+          INSERT INTO wallet_category_breakdown_cache (wallet, category, n, won, lost, profit, updated_at)
+          SELECT wallet, category, n, won, lost, profit, %s FROM deltas
+          ON CONFLICT (wallet, category) DO UPDATE SET
+            n = wallet_category_breakdown_cache.n + EXCLUDED.n,
+            won = wallet_category_breakdown_cache.won + EXCLUDED.won,
+            lost = wallet_category_breakdown_cache.lost + EXCLUDED.lost,
+            profit = wallet_category_breakdown_cache.profit + EXCLUDED.profit,
+            updated_at = EXCLUDED.updated_at
+          RETURNING 1
+        )
+        SELECT (SELECT MAX(max_resolved_ts) FROM deltas), (SELECT count(*) FROM upserted)
+    ''', (last_ts, now))
+    if max_ts:
+        db.execute('UPDATE wallet_category_breakdown_refresh_state SET last_resolved_ts = %s WHERE id = true', (max_ts,))
+    print(f'  [aggregates] refreshed wallet_category_breakdown_cache ({n_updated} wallet/category rows updated)')
 
 
 def sweep_resolved_positions(db):

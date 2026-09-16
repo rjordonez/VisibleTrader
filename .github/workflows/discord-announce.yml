@@ -1,0 +1,70 @@
+name: Discord product update digest
+
+on:
+  schedule:
+    # 9am PT / 4pm UTC daily
+    - cron: '0 16 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Gather Product Update sections from PRs merged to main since the last digest
+        id: gather
+        run: |
+          cutoff=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow discord-announce.yml \
+            --json conclusion,createdAt --limit 20 \
+            --jq '[.[] | select(.conclusion == "success")] | .[0].createdAt // empty')
+
+          if [ -z "$cutoff" ]; then
+            cutoff=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          fi
+
+          gh pr list --repo "$GITHUB_REPOSITORY" --state merged --base main \
+            --json number,mergedAt,body --limit 100 \
+            --jq "[.[] | select(.mergedAt >= \"$cutoff\")]" > prs.json
+
+          sections=()
+          count=$(jq length prs.json)
+          for i in $(seq 0 $((count - 1))); do
+            body=$(jq -r ".[$i].body" prs.json)
+            section=$(printf '%s\n' "$body" | awk '
+              /^## Product Update[[:space:]]*$/ { capture=1; next }
+              /^## / { if (capture) exit }
+              capture { print }
+            ' | sed -e '/./,$!d' -e ':a' -e '/^\n*$/{$d;N;ba' -e '}')
+            [ -z "$section" ] && continue
+            sections+=("- $section")
+          done
+
+          if [ "${#sections[@]}" -eq 0 ]; then
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "has_update=true"
+            echo "content<<EOF"
+            printf '%s\n' "${sections[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post to Discord
+        if: steps.gather.outputs.has_update == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_UPDATES_WEBHOOK_URL }}
+          UPDATE_NUMBER: ${{ github.run_number }}
+          UPDATE_TEXT: ${{ steps.gather.outputs.content }}
+        run: |
+          payload=$(jq -n \
+            --arg number "$UPDATE_NUMBER" \
+            --arg text "$UPDATE_TEXT" \
+            '{content: ("**Product Update #" + $number + "**\n" + $text)}')
+
+          curl -sf -X POST \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            "$DISCORD_WEBHOOK_URL"
