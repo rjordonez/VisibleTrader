@@ -1,24 +1,46 @@
 /* PickChart — the hand-drawn SVG chart used on the ExpertPickCard grids
    (Profits), via MarketDetailContent's `minimal` variant on the Terminal
-   market page, and (as CumulativePickChart) Profit Bot's hero P&L chart.
-   Lives in its own file so all three surfaces load exactly these styles and
-   none can drift from the others. --pick-chart-color/-bright default to the
-   original hardcoded blue below -- only CumulativePickChart overrides them
-   (green/red by P&L sign), so the price-chart callers are unaffected. */
+   market page, and (as CumulativePickChart) both cumulative $ P&L charts
+   (Profit Bot's hero, Trader Profile). Lives in its own file so all of
+   these surfaces load exactly these styles and none can drift from the
+   others. --pick-chart-color/-bright default to the original hardcoded
+   blue below -- only CumulativePickChart overrides them (green/red by P&L
+   sign), so the price-chart callers are unaffected. */
 .expert-pick-chart { position: relative; height: 104px; margin-top: auto; padding-top: 8px; box-sizing: content-box; color: var(--pick-chart-color, #7196ff); }
+/* Trader Profile's P&L chart doesn't already sit inside a card the way
+   Profit Bot's does, so CumulativePickChart's `bordered` prop opts into
+   this -- same surface-2/border/radius treatment as .sig-drill-card. */
+.expert-pick-chart.is-bordered { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--ui-radius-card); padding: 20px 24px 16px; margin-top: 0; }
 .expert-pick-plot { height: 104px; margin-right: 88px; }
 .expert-pick-plot > span { display: grid; place-items: center; height: 100%; color: var(--text-faint); font-size: 12px; }
 .expert-pick-plot svg { cursor: crosshair; touch-action: pan-y; }
 .expert-pick-plot svg:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
 .expert-pick-chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+/* width was a fixed 76px, fine for a price chart's short "82.4%" but not
+   for a $ P&L figure that can run to 6-7+ digits ("+$1,890,928") -- at a
+   fixed width too narrow for its content, the nowrap text overflowed
+   rightward past this element's own right:0 edge and into whatever sat
+   next to the chart (e.g. a sidebar card). max-content sizes the box to
+   its actual text instead, so with right:0 still pinning the right edge,
+   a long value grows leftward -- toward the chart's own empty space --
+   rather than out past the component's right boundary. */
 .expert-pick-endpoint-price {
-  position: absolute; right: 0; width: 76px; transform: translateY(-50%);
+  position: absolute; right: 0; width: max-content; max-width: 220px; text-align: right; transform: translateY(-50%);
   color: var(--pick-chart-color-bright, #7b9eff); font-size: 27px; line-height: 1; letter-spacing: -0.05em;
   font-variant-numeric: tabular-nums; white-space: nowrap;
   pointer-events: none; text-shadow: 0 0 4px var(--surface-2), 0 0 8px var(--surface-2);
 }
 .expert-pick-endpoint-price small { font-size: 20px; margin-left: 1px; }
 .expert-pick-hover-time { position: absolute; top: -9px; left: 0; color: var(--text-dim); font-size: 10px; pointer-events: none; }
+/* $ tick labels for the cumulative P&L charts -- CumulativePickChart always
+   passes axisTicks, which reserves LEFT_RESERVE (52px) of left margin on
+   .expert-pick-plot for these to sit in; price charts never pass axisTicks
+   so this class never renders for them. */
+.expert-pick-axis-label {
+  position: absolute; left: 0; width: 46px; text-align: right; transform: translateY(-50%);
+  color: var(--text-faint); font-size: 10px; font-variant-numeric: tabular-nums;
+  white-space: nowrap; pointer-events: none;
+}
 /* HTML dot (not an SVG circle) so it stays round when the viewBox is
    stretched non-uniformly to fill a wide/tall container. */
 .expert-pick-endpoint-dot {

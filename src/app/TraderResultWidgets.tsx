@@ -16,7 +16,7 @@ export function CumulativeChartSection({ data, label, height = 220 }: { data: { 
     <>
       <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>{label}</div>
       <div style={{ marginBottom: 24 }}>
-        <CumulativePickChart data={data} height={height} />
+        <CumulativePickChart data={data} height={height} bordered />
       </div>
     </>
   )
