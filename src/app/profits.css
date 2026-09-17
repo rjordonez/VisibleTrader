@@ -96,6 +96,19 @@
 .pbot-help strong { color: var(--text); font-weight: 650; }
 .pbot-help-foot { margin: 12px 0 0 !important; font-size: 11px !important; color: var(--text-faint) !important; }
 
+/* Bet size slider — scales every displayed $ figure on the page. */
+.pbot-betsize { margin: 4px 0 18px; }
+.pbot-betsize > label {
+  display: block; font-size: 10.5px; font-weight: 650; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
+}
+.pbot-betsize-row { display: flex; align-items: center; gap: 10px; }
+.pbot-betsize-track { width: 160px; flex: none; }
+.pbot-betsize-value {
+  min-width: 60px; text-align: right; font-size: 13px; font-weight: 700;
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+
 /* Ongoing picks reuse .expert-picks-grid / ExpertPickCard. Header controls: */
 .pbot-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pbot-sort { display: inline-flex; border: 1px solid #30303d; border-radius: 12px; overflow: hidden; }

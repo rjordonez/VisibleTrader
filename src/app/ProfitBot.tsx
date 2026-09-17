@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Cpu, ChevronDown, HelpCircle, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
-import { fmtSigned, timeAgo, categoryLabel } from './helpers'
+import { fmtFull, fmtSigned, timeAgo, categoryLabel } from './helpers'
 import { CumulativePickChart } from './PickChart'
 import { ExpertPickCard } from './ExpertPickCard'
 import { SignalModal } from './SignalModal'
@@ -55,6 +55,10 @@ export default function ProfitBot() {
   const [sort, setSort] = useState<'recent' | 'profitable'>('recent')
   const [helpOpen, setHelpOpen] = useState(false)
   const [modalOpp, setModalOpp] = useState<Opportunity | null>(null)
+  // All the bot's numbers are backtested flat $100/pick server-side; scale
+  // them linearly for display so the user can see them at their own size.
+  const [betSize, setBetSize] = useState(1000)
+  const betMultiplier = betSize / 100
 
   useEffect(() => {
     let cancelled = false
@@ -90,7 +94,7 @@ export default function ProfitBot() {
   }, [])
 
   const cumulative = daily.reduce<{ d: string; cum: number }[]>((acc, day) => {
-    acc.push({ d: day.d, cum: (acc.at(-1)?.cum ?? 0) + Number(day.day_pnl) })
+    acc.push({ d: day.d, cum: (acc.at(-1)?.cum ?? 0) + Number(day.day_pnl) * betMultiplier })
     return acc
   }, [])
   // `since` is a bare date; parse at midday so it doesn't shift a day back
@@ -98,7 +102,7 @@ export default function ProfitBot() {
   const sinceLabel = perf
     ? new Date(`${perf.since}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
     : ''
-  const flat100Pnl = perf ? fmtSigned(perf.flat100_pnl) : null
+  const scaledPnl = perf ? fmtSigned(perf.flat100_pnl * betMultiplier) : null
 
   if (loading) {
     return <div className="profits-overview-skeleton sig-skel" aria-busy="true" aria-label="Loading Profit Bot" />
@@ -137,15 +141,36 @@ export default function ProfitBot() {
             </ul>
             <p className="pbot-help-foot">
               Backtested on every resolved pick since {sinceLabel}: {perf.win_rate}% win rate,
-              {' '}{flat100Pnl} on a flat $100 per pick. Past results don&rsquo;t predict future ones. Not financial advice.
+              {' '}{scaledPnl} on a flat {fmtFull(betSize)} per pick. Past results don&rsquo;t predict future ones. Not financial advice.
             </p>
           </div>
         )}
 
+        <div className="pbot-betsize" role="group" aria-label="Bet size per pick">
+          <label htmlFor="pbot-bet-slider">Bet size per pick</label>
+          <div className="pbot-betsize-row">
+            <div className="sig-range-track-wrap pbot-betsize-track">
+              <div className="sig-range-track" />
+              <div className="sig-range-fill" style={{ left: '0%', right: `${100 - (betSize - 100) / 9900 * 100}%` }} />
+              <input
+                id="pbot-bet-slider"
+                type="range"
+                className="sig-range-input"
+                min={100}
+                max={10000}
+                step={100}
+                value={betSize}
+                onChange={e => setBetSize(Number(e.target.value))}
+              />
+            </div>
+            <span className="pbot-betsize-value">{fmtFull(betSize)}</span>
+          </div>
+        </div>
+
         <div className="profits-net-heading">
           <div>
-            <h2 id="pbot-title">If you&rsquo;d staked $100 a pick</h2>
-            <strong className={`profits-net-value ${perf.flat100_pnl >= 0 ? 'is-positive' : 'is-negative'}`}>{flat100Pnl}</strong>
+            <h2 id="pbot-title">If you&rsquo;d staked {fmtFull(betSize)} a pick</h2>
+            <strong className={`profits-net-value ${perf.flat100_pnl >= 0 ? 'is-positive' : 'is-negative'}`}>{scaledPnl}</strong>
           </div>
           <div className="profits-net-context">
             <strong>{perf.picks.toLocaleString()}</strong>
@@ -154,7 +179,7 @@ export default function ProfitBot() {
         </div>
 
         <div className="profits-chart-area">
-          <p className="profits-chart-label">Cumulative P&amp;L, flat $100 per pick</p>
+          <p className="profits-chart-label">Cumulative P&amp;L, flat {fmtFull(betSize)} per pick</p>
           {cumulative.length > 1
             ? <CumulativePickChart data={cumulative} height={250} />
             : <p className="profits-notice">The curve appears once picks span more than one day.</p>}
@@ -190,7 +215,7 @@ export default function ProfitBot() {
             <p>
               {view === 'ongoing'
                 ? 'Open markets where the rules are satisfied right now.'
-                : 'How the bot’s picks have settled, most recent first. Flat $100 per pick.'}
+                : `How the bot’s picks have settled, most recent first. Flat ${fmtFull(betSize)} per pick.`}
             </p>
           </div>
           <div className="pbot-controls">
@@ -214,7 +239,7 @@ export default function ProfitBot() {
           <div className="profits-list-head" aria-hidden="true">
             <span>Market &amp; side</span>
             <span>Avg entry</span>
-            <span>Result ($100)</span>
+            <span>Result ({fmtFull(betSize)})</span>
           </div>
         )}
 
@@ -255,7 +280,7 @@ export default function ProfitBot() {
                       (that's the proof), the exact payout is what's
                       blurred — same idea as the chart on ongoing picks. */}
                   <div className="profits-result-value">
-                    <strong className={`${r.pnl >= 0 ? 'is-positive' : 'is-negative'} ${locked ? 'is-blurred' : ''}`}>{fmtSigned(r.pnl)}</strong>
+                    <strong className={`${r.pnl >= 0 ? 'is-positive' : 'is-negative'} ${locked ? 'is-blurred' : ''}`}>{fmtSigned(r.pnl * betMultiplier)}</strong>
                     <span>
                       <span className={r.won ? 'is-positive' : 'is-negative'}>{r.won ? 'Won' : 'Lost'}</span>
                       {' · '}<time dateTime={r.resolved_ts}>{timeAgo(r.resolved_ts)}</time>
