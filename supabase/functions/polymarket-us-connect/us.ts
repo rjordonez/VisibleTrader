@@ -5,7 +5,6 @@
 // endpoint is called anywhere in this file.
 import { finiteNumber, money, unixSeconds } from './domain.ts';
 
-
 export class USApiError extends Error {
   constructor(message: string, readonly status?: number) { super(message); }
 }
@@ -96,12 +95,16 @@ export async function fetchActivity(keyId: string, secretKey: string) {
     if (data.eof === true || typeof data.nextCursor !== 'string' || !data.nextCursor || data.activities.length < 100) { complete = true; break; }
     cursor = data.nextCursor;
   }
-  const trades = mapActivities(activities).map(t => ({
+  const records = mapActivities(activities);
+  const trades = records.map(t => ({
     transaction_hash: t.external_id, asset: t.asset, timestamp: unixSeconds(t.occurred_at),
     title: t.title, outcome: t.outcome, side: t.side, amount: t.amount,
     pnl: t.realized_pnl, size: t.size, price: t.price,
   }));
-  return { trades, limited: !complete };
+  // `records` (the pre-reshape TradeRecord form, with order_id intact) lets a
+  // caller persist this same fetch into polymarket_trades — no separate
+  // Polymarket API call needed just to keep that table current.
+  return { trades, records, limited: !complete };
 }
 
 export interface TradeRecord {
@@ -195,6 +198,7 @@ export async function fetchPortfolio(keyId: string, secretKey: string) {
   return {
     positions: positions.status === 'fulfilled' ? positions.value : undefined,
     activity: activity.status === 'fulfilled' ? activity.value.trades : undefined,
+    activity_records: activity.status === 'fulfilled' ? activity.value.records : undefined,
     activity_limited: activity.status === 'fulfilled' && activity.value.limited,
     positions_limited: positions.status === 'fulfilled' && positions.value.length === 100,
     resource_errors: {
