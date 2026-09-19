@@ -34,8 +34,12 @@
 .journal-page .journal-cell-amt { font-size: clamp(12px, 1.4vw, 17px); font-weight: 700; letter-spacing: -.03em; align-self: flex-start; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .journal-page .journal-cell-win { background: #12201c; }
 .journal-page .journal-cell-loss { background: #25171e; }
+.journal-page .journal-cell-pending { background: #12202f; border-color: #2c4a6e; }
+.journal-page .journal-cell-open-label { color: #7db8ea; }
+.journal-page .journal-cell-open-dot { position: absolute; top: 15px; left: 12px; width: 7px; height: 7px; border-radius: 50%; background: #5b9bd8; }
 .journal-page .journal-cell-note { position: absolute; top: 13px; right: 10px; color: var(--text-dim); }
 .journal-page .journal-trade-count { display: inline-flex; align-self: flex-start; padding: 3px 6px; border-radius: 5px; background: #26344b; color: #b9c9ec; font-size: 10px; font-weight: 650; }
+.journal-page .journal-trade-count-open { background: #1c3654; color: #8fc0ee; }
 .journal-page .journal-activity-pnl { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }.journal-page .journal-trade-market { display: block; max-width: 100%; overflow: hidden; color: #a6adbf; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .journal-page .journal-cell-add { font-size: 19px; color: #a9aabd; opacity: 0; }
 .journal-page .journal-cell:hover .journal-cell-add, .journal-page .journal-cell:focus-visible .journal-cell-add { opacity: 1; }
@@ -69,12 +73,14 @@
 .journal-page .journal-day-tabs button[aria-selected=true], .journal-page .journal-range-tabs button[aria-selected=true] { background: #292936; color: #f0f0ff; }
 .journal-page .journal-summary-main .journal-range-tabs { margin: 0 0 14px; max-width: 280px; }
 .journal-page .journal-day-trades { padding: 6px 2px 2px; max-height: 320px; overflow-y: auto; }
-.journal-page .journal-day-trade-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #ffffff0d; }
+.journal-page .journal-day-trade-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 10px; margin: 0 -10px; border-bottom: 1px solid #ffffff0d; border-radius: 10px; color: inherit; text-decoration: none; transition: background .15s; }
+.journal-page .journal-day-trade-row:hover { background: #ffffff0a; }
 .journal-page .journal-day-trade-row:last-child { border-bottom: 0; }
 .journal-page .journal-day-trade-row > div { min-width: 0; }
 .journal-page .journal-day-trade-row strong { display: block; font-size: 13px; font-weight: 550; overflow-wrap: anywhere; }
 .journal-page .journal-day-trade-row span { display: block; font-size: 11px; color: #9a9aac; margin-top: 3px; }
 .journal-page .journal-day-trade-row > strong { flex-shrink: 0; font-size: 14px; }
+.journal-page .journal-day-trade-arrow { flex-shrink: 0; color: #9a9aac; }
 .journal-page .journal-editor { max-width: 460px; }
 .journal-page .journal-editor::backdrop { background: #0009; backdrop-filter: blur(5px); }
 .journal-page .journal-editor-head { gap: 10px; }
@@ -112,6 +118,7 @@
   .journal-page .journal-cell-day { font-size: 11px; }
   .journal-page .journal-cell-amt { font-size: 10px; letter-spacing: -.045em; }
   .journal-page .journal-cell-note { width: 8px; height: 8px; top: 8px; right: 3px; }
+  .journal-page .journal-cell-open-dot { width: 6px; height: 6px; top: 8px; left: 4px; }
   .journal-page .journal-entry-row { gap: 10px; }
   .journal-page .journal-entry-note { font-size: 12px; }
   .journal-page .journal-entry-amount { font-size: 16px; }

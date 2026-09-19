@@ -5,6 +5,7 @@
 // endpoint is called anywhere in this file.
 import { finiteNumber, money, unixSeconds } from './domain.ts';
 
+
 export class USApiError extends Error {
   constructor(message: string, readonly status?: number) { super(message); }
 }
