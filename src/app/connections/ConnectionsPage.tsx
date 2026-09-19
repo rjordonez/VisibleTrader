@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowUpRight, Check, ChevronRight, Plus, RefreshCw, Settings2, ShieldCheck, Unplug, Wallet } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, Check, ChevronRight, Globe2, Plus, RefreshCw, Settings2, ShieldCheck, Unplug, Wallet } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import ConnectDialog from './ConnectDialog'
 import { connectionRequest, loadConnection, loadUSConnection, money, shortAddress } from './api'
@@ -17,8 +17,8 @@ export default function ConnectionsPage({ journal = false }: { journal?: boolean
   const [error, setError] = useState('')
   const [syncError, setSyncError] = useState('')
   const [venue, setVenue] = useState<'international' | 'us' | 'choose' | null>(null)
-  const [tab, setTab] = useState<'overview' | 'trades' | 'calendar'>('overview')
-  const [account, setAccount] = useState<'international' | 'us'>('international')
+  const [tab, setTab] = useState<'overview' | 'trades'>('overview')
+  const [account, setAccount] = useState<'international' | 'us'>('us')
   const [noteDay, setNoteDay] = useState<string>()
   const [notice, setNotice] = useState('')
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
@@ -255,7 +255,7 @@ export default function ConnectionsPage({ journal = false }: { journal?: boolean
   const reviewDay = (timestamp: number) => {
     const date = new Date(timestamp * 1000)
     setNoteDay(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`)
-    setTab('calendar')
+    setTab('overview')
   }
 
   return <div className={`sig-page connections-page ${journal ? 'journal-hub' : 'connection-settings'}`}>
@@ -264,8 +264,8 @@ export default function ConnectionsPage({ journal = false }: { journal?: boolean
       <div><span className="connection-eyebrow">{journal ? 'YOUR TRADING, IN PERSPECTIVE' : 'SETTINGS / CONNECTIONS'}</span><h1 className="app-section-title">{journal ? 'Journal' : 'Connections'}</h1><p className="app-section-sub">{journal ? 'Follow your positions. Reflect on your decisions.' : 'The accounts behind your trading journal.'}</p></div>
       <div className="connection-header-actions">
         {journal && hasAccount && <label className="connection-account-select"><Wallet size={15} /><select aria-label="Trading account" value={selected} onChange={e => setAccount(e.target.value as 'international' | 'us')}>
-          {connection && <option value="international">Polymarket · {connection.display_name}</option>}
           {usConnection && <option value="us">Polymarket US</option>}
+          {connection && <option value="international">Polymarket · {connection.display_name}</option>}
         </select></label>}
         <button className="connection-button" disabled={loading || Boolean(error)} onClick={() => setVenue('choose')}><Plus size={16} /> Connect account</button>
         {journal && <Link className="connection-icon-button" aria-label="Manage connections" title="Manage connections" to={dashboardPath('/settings/connections')}><Settings2 size={18} /></Link>}
@@ -279,17 +279,6 @@ export default function ConnectionsPage({ journal = false }: { journal?: boolean
     {!journal && !loading && <div className="connection-manage-list">
       <section className="connection-manage-row">
         <img className="connection-brand" src="/polymarket.png" alt="" />
-        <div className="connection-manage-info"><h2>Polymarket <span>International</span></h2><p className="ph-no-capture ph-mask">{connection ? `${connection.display_name} · ${shortAddress(connection.wallet_address)}` : 'Connect a wallet or follow a public profile.'}</p>
-          {connection && <span className="connection-status"><span />{connection.verified_at ? 'Wallet verified' : 'Public profile · ownership not verified'}</span>}
-        </div>
-        <div className="connection-row-actions">{connection ? <>
-          {!connection.verified_at && <button className="connection-button" onClick={() => setVenue('international')}>Verify wallet</button>}
-          <button className="connection-icon-button" disabled={disconnecting} aria-label="Disconnect Polymarket" onClick={() => setConfirmDisconnect(true)}><Unplug size={17} /></button>
-        </> : <button className="connection-button" disabled={Boolean(error)} onClick={() => setVenue('international')}>Connect <ChevronRight size={15} /></button>}</div>
-        {confirmDisconnect && <div className="connection-disconnect"><p>Disconnect Polymarket? Account activity will stop appearing here. Your saved daily entries and funds are unaffected.</p><div><button className="connection-button" disabled={disconnecting} onClick={() => void disconnect()}>{disconnecting ? 'Disconnecting…' : 'Disconnect'}</button><button className="connection-text-link" disabled={disconnecting} onClick={() => setConfirmDisconnect(false)}>Cancel</button></div></div>}
-      </section>
-      <section className="connection-manage-row">
-        <span className="connection-brand connection-brand-us">US</span>
         <div className="connection-manage-info"><h2>Polymarket US</h2><p>{usConnection ? 'Linked with a dedicated API key' : 'Bring your US positions and recent activity into Journal.'}</p>
           {usConnection && <span className={`connection-status ${usConnection.status !== 'active' ? 'needs-attention' : ''}`}><span />{usConnection.status === 'active' ? 'Connected' : 'Reconnect to restore access'}</span>}
         </div>
@@ -300,20 +289,31 @@ export default function ConnectionsPage({ journal = false }: { journal?: boolean
         {usConfirmDisconnect && <div className="connection-disconnect"><p>Disconnect Polymarket US? Your saved daily entries and funds are unaffected.</p><div><button className="connection-button" disabled={usDisconnecting} onClick={() => void disconnectUS()}>{usDisconnecting ? 'Disconnecting…' : 'Disconnect'}</button><button className="connection-text-link" disabled={usDisconnecting} onClick={() => setUsConfirmDisconnect(false)}>Cancel</button></div></div>}
         {usSyncError && <p className="connection-error" role="alert">{usSyncError}</p>}
       </section>
+      <section className="connection-manage-row">
+        <span className="connection-brand connection-brand-intl"><Globe2 size={20} /></span>
+        <div className="connection-manage-info"><h2>Polymarket <span>International</span></h2><p className="ph-no-capture ph-mask">{connection ? `${connection.display_name} · ${shortAddress(connection.wallet_address)}` : 'Connect a wallet or follow a public profile.'}</p>
+          {connection && <span className="connection-status"><span />{connection.verified_at ? 'Wallet verified' : 'Public profile · ownership not verified'}</span>}
+        </div>
+        <div className="connection-row-actions">{connection ? <>
+          {!connection.verified_at && <button className="connection-button" onClick={() => setVenue('international')}>Verify wallet</button>}
+          <button className="connection-icon-button" disabled={disconnecting} aria-label="Disconnect Polymarket" onClick={() => setConfirmDisconnect(true)}><Unplug size={17} /></button>
+        </> : <button className="connection-button" disabled={Boolean(error)} onClick={() => setVenue('international')}>Connect <ChevronRight size={15} /></button>}</div>
+        {confirmDisconnect && <div className="connection-disconnect"><p>Disconnect Polymarket? Account activity will stop appearing here. Your saved daily entries and funds are unaffected.</p><div><button className="connection-button" disabled={disconnecting} onClick={() => void disconnect()}>{disconnecting ? 'Disconnecting…' : 'Disconnect'}</button><button className="connection-text-link" disabled={disconnecting} onClick={() => setConfirmDisconnect(false)}>Cancel</button></div></div>}
+      </section>
       <div className="connection-settings-foot"><ShieldCheck size={18} /><p>These connections are used to read positions and activity. VisibleTrader does not place trades or move funds through this connection.</p><Link className="connection-text-link" to={dashboardPath('/journal')}>Go to Journal <ArrowUpRight size={14} /></Link></div>
     </div>}
 
     {journal && <>
       {resourceErrors && Object.entries(resourceErrors).map(([resource, message]) => <div className="connection-error" role="status" key={resource}>{message}</div>)}
-      <nav className="journal-view-tabs" aria-label="Journal views">{(['overview', 'trades', 'calendar'] as const).map(view => <button key={view} aria-current={tab === view ? 'page' : undefined} onClick={() => { setNoteDay(undefined); setTab(view) }}>{view === 'overview' ? 'Overview' : view === 'trades' ? 'Trades' : 'Calendar'}</button>)}</nav>
-      {!loading && !error && !hasAccount && tab !== 'calendar' && <section className="connection-welcome">
+      <nav className="journal-view-tabs" aria-label="Journal views">{(['overview', 'trades'] as const).map(view => <button key={view} aria-current={tab === view ? 'page' : undefined} onClick={() => { setNoteDay(undefined); setTab(view) }}>{view === 'overview' ? 'Overview' : 'Trades'}</button>)}</nav>
+      {tab === 'overview' && <JournalCalendar key={`${noteDay ?? 'calendar'}-${usBackfillStatus ?? ''}`} initialDay={noteDay} />}
+      {!loading && !error && !hasAccount && <section className="connection-welcome">
         <div className="connection-welcome-mark"><Wallet size={28} /></div><span className="connection-eyebrow">A LITTLE CONTEXT GOES A LONG WAY</span>
         <h2>Your trading story<br />starts here.</h2><p>Connect Polymarket to see your positions and recent trades alongside your daily journal.</p>
         <button className="connection-button connection-button-primary" onClick={() => setVenue('choose')}>Connect your account <ArrowUpRight size={17} /></button>
-        <button className="connection-text-link" onClick={() => setTab('calendar')}>Start with a manual entry</button>
         <div className="connection-welcome-benefits"><span>01 &nbsp; See your positions</span><span>02 &nbsp; Review your trades</span><span>03 &nbsp; Record what you learned</span></div>
       </section>}
-      {hasAccount && tab !== 'calendar' && <>
+      {hasAccount && <>
         <div className="connection-sync-row"><span className={`connection-status ${currentError || partial ? 'needs-attention' : ''}`}><span />{isRefreshing ? 'Updating account…' : currentError ? 'Update interrupted' : partial ? 'Account connected · partial update' : current?.fetched_at ? `Updated ${new Date(current.fetched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Waiting for account data'}</span><button className="connection-text-link" disabled={isRefreshing} onClick={() => void (selected === 'us' ? usRefresh() : refresh())}><RefreshCw size={14} className={isRefreshing ? 'connection-spin' : ''} /> Refresh</button></div>
         {selected === 'us' && usConnection?.status !== 'active' && <div className="connection-error">Your US account needs to be reconnected. <button className="connection-text-link" onClick={() => setVenue('us')}>Reconnect</button></div>}
         {currentError && <div className="connection-error" role="alert">{currentError} {current ? 'Showing the last successful update.' : 'Try refreshing your account.'}</div>}
@@ -322,14 +322,19 @@ export default function ConnectionsPage({ journal = false }: { journal?: boolean
           <div className="connection-metrics ph-no-capture ph-mask"><div><span>Displayed position value</span><strong>{current?.positions ? money(value) : '—'}</strong></div><div><span>Positions displayed</span><strong>{current?.positions ? positions.length : '—'}</strong></div><div><span>Recent trades available</span><strong>{current?.activity ? activity.length : '—'}</strong></div></div>
           <div className="connection-section-heading"><h2>Positions</h2><span>{selected === 'us' ? 'Polymarket US' : 'Polymarket'}</span></div>
           {current?.positions_limited && <p className="connection-small">Showing up to 100 positions. Value covers displayed positions only.</p>}
-          {current?.positions && (positions.length ? <div className="connection-table-wrap ph-no-capture ph-mask"><table><thead><tr><th>Market / outcome</th><th>Shares</th><th>Value</th><th>Position P&amp;L</th></tr></thead><tbody>{positions.map((p, i) => <tr key={`${p.asset}-${i}`}><td><strong>{p.title}</strong><span>{p.outcome}{p.redeemable ? ' · Redeemable' : ''}</span></td><td>{p.size?.toLocaleString(undefined, { maximumFractionDigits: 2 }) ?? '—'}</td><td>{money(p.current_value)}</td><td className={(p.cash_pnl ?? 0) < 0 ? 'negative' : 'positive'}>{money(p.cash_pnl)}</td></tr>)}</tbody></table></div> : <div className="connection-empty"><Wallet size={24} /><h3>No positions right now</h3><p>Your account is connected. Positions will appear here when reported.</p></div>)}
-          <button className="journal-reflection-prompt" onClick={() => { setNoteDay(undefined); setTab('calendar') }}><div><span>MAKE IT A HABIT</span><h3>What did you learn today?</h3><p>Add a daily reflection and log your result.</p></div><ChevronRight size={22} /></button>
+          {current?.positions && (positions.length ? <div className="connection-table-wrap ph-no-capture ph-mask"><table><thead><tr><th>Market / outcome</th><th>Shares</th><th>Value</th><th>Position P&amp;L</th></tr></thead><tbody>{positions.map((p, i) => {
+            const marketUrl = `https://${selected === 'us' ? 'polymarket.us' : 'polymarket.com'}/event/${p.asset}`
+            return <tr key={`${p.asset}-${i}`} className="connection-position-row" tabIndex={0} role="link" aria-label={`View ${p.title} on Polymarket`}
+              onClick={() => window.open(marketUrl, '_blank', 'noopener,noreferrer')}
+              onKeyDown={e => { if (e.key === 'Enter') window.open(marketUrl, '_blank', 'noopener,noreferrer') }}>
+              <td><strong>{p.title}</strong><span>{p.outcome}{p.redeemable ? ' · Redeemable' : ''}</span></td><td>{p.size?.toLocaleString(undefined, { maximumFractionDigits: 2 }) ?? '—'}</td><td>{money(p.current_value)}</td><td className={(p.cash_pnl ?? 0) < 0 ? 'negative' : 'positive'}>{money(p.cash_pnl)}</td>
+            </tr>
+          })}</tbody></table></div> : <div className="connection-empty"><Wallet size={24} /><h3>No positions right now</h3><p>Your account is connected. Positions will appear here when reported.</p></div>)}
         </>}
         {tab === 'trades' && <><div className="connection-section-heading"><h2>Recent trades</h2><span>{current?.activity_limited ? 'Latest 500 per account' : 'History loaded'}</span></div><p className="connection-small">Review a trade to see its day in your journal and add a reflection. Trade amounts are not realized P&amp;L.{current?.activity_limited ? ' The provider limited this history window; older trades may not be available.' : ''}</p>
-          {current?.activity && (activity.length ? <div className="connection-trade-list ph-no-capture ph-mask">{activity.map((a, i) => <article className="connection-trade-row" key={`${a.transaction_hash}-${a.asset}-${i}`}><span className={`connection-side ${a.side.toLowerCase() === 'sell' ? 'is-sell' : ''}`}>{a.side}</span><div><h3>{a.title}</h3><p>{a.outcome} · {a.timestamp == null ? 'Time unavailable' : new Date(a.timestamp * 1000).toLocaleString()}</p><small>{a.size == null ? '—' : a.size.toLocaleString()} shares · {a.price == null ? 'Price unavailable' : money(a.price) + ' / share'}</small></div><strong>{money(a.amount)}</strong><button className="connection-text-link" disabled={a.timestamp == null} onClick={() => a.timestamp != null && reviewDay(a.timestamp)}>Review day <ChevronRight size={14} /></button></article>)}</div> : <div className="connection-empty"><h3>No recent trades</h3><p>Your recent activity will appear after your next trade.</p></div>)}
+          {current?.activity && (activity.length ? <div className="connection-trade-list ph-no-capture ph-mask">{activity.map((a, i) => <article className="connection-trade-row" key={`${a.transaction_hash}-${a.asset}-${i}`}><a className="connection-trade-link" href={`https://${selected === 'us' ? 'polymarket.us' : 'polymarket.com'}/event/${a.asset}`} target="_blank" rel="noopener noreferrer"><span className={`connection-side ${a.side.toLowerCase() === 'sell' ? 'is-sell' : ''}`}>{a.side}</span><div><h3>{a.title}</h3><p>{a.outcome} · {a.timestamp == null ? 'Time unavailable' : new Date(a.timestamp * 1000).toLocaleString()}</p><small>{a.size == null ? '—' : a.size.toLocaleString()} shares · {a.price == null ? 'Price unavailable' : money(a.price) + ' / share'}</small></div><strong>{money(a.amount)}</strong></a><button className="connection-text-link" disabled={a.timestamp == null} onClick={() => a.timestamp != null && reviewDay(a.timestamp)}>Review day <ChevronRight size={14} /></button></article>)}</div> : <div className="connection-empty"><h3>No recent trades</h3><p>Your recent activity will appear after your next trade.</p></div>)}
         </>}
       </>}
-      {tab === 'calendar' && <JournalCalendar key={`${noteDay ?? 'calendar'}-${usBackfillStatus ?? ''}`} initialDay={noteDay} />}
     </>}
     {venue && <ConnectDialog venue={venue} onClose={() => setVenue(null)} onConnected={connected} onConnectedUS={connectedUS} />}
   </div>

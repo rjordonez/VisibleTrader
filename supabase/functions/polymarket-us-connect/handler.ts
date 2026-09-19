@@ -139,10 +139,20 @@ export async function handleConnection(req: Request) {
       if (Object.keys(portfolio.resource_errors).length === 0) {
         await db.from('polymarket_us_connections').update({ last_synced_at: new Date().toISOString() }).eq('user_id', user.id);
       }
+      // Keep the calendar's trade history current with every live snapshot,
+      // not just the one-time historical backfill — this is the same fetch
+      // already made above for the Trades tab, just also persisted. A failed
+      // write here shouldn't fail the snapshot itself; the next poll retries.
+      const { activity_records, ...portfolioResponse } = portfolio;
+      if (activity_records?.length) {
+        await db.from('polymarket_trades')
+          .upsert(activity_records.map(t => ({ user_id: user.id, venue: 'us', ...t })), { onConflict: 'user_id,venue,external_id', ignoreDuplicates: true })
+          .then(({ error: syncError }) => { if (syncError) console.error('polymarket-us-connect trade sync failed', syncError.message); });
+      }
       const { data: publicConnection } = await db.from('polymarket_us_connections').select(fields).eq('user_id', user.id).single();
       return reply({
         connection: publicConnection, fetched_at: new Date().toISOString(),
-        ...portfolio,
+        ...portfolioResponse,
       });
     }
     throw new RequestError('Unknown connection action.');

@@ -128,8 +128,8 @@ export default function ConnectDialog({ venue: initialVenue, onClose, onConnecte
     {venue === 'choose' ? <>
       <p>Choose where you trade. Your positions and recent activity will appear in Journal.</p>
       <div className="connection-platform-list">
-        <button type="button" onClick={() => setVenue('international')}><img src="/polymarket.png" alt="" /><span><strong>Polymarket</strong><small>International · Wallet or public profile</small></span><ArrowUpRight size={18} /></button>
-        <button type="button" onClick={() => setVenue('us')}><span className="connection-brand-us">US</span><span><strong>Polymarket US</strong><small>United States · API key</small></span><ArrowUpRight size={18} /></button>
+        <button type="button" onClick={() => setVenue('us')}><img src="/polymarket.png" alt="" /><span><strong>Polymarket US</strong><small>United States · API key</small></span><ArrowUpRight size={18} /></button>
+        <button type="button" onClick={() => setVenue('international')}><span className="connection-brand-intl"><Globe2 size={20} /></span><span><strong>Polymarket</strong><small>International · Wallet or public profile</small></span><ArrowUpRight size={18} /></button>
       </div>
       <div className="connection-dialog-footer"><ShieldCheck size={16} /> Used for tracking. No trades or transfers.</div>
     </> : venue === 'us' ? <>
