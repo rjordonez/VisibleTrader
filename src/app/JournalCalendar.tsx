@@ -252,6 +252,16 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
   // above), summed per day rather than one source overriding the other.
   const realizedOn = (date: string) => (tradesByDay.get(date) ?? []).reduce((s, t) => s + (t.realized_pnl ?? 0), 0)
   const loggedDays = new Set([...entries.keys(), ...tradesByDay.keys()])
+  // A position's entry and its settlement can land on different calendar
+  // days. Grouping trades per-day (below) only sees whichever side fell on
+  // that specific day, so an entry day can't tell on its own whether the
+  // position is still open or was already closed elsewhere this month —
+  // this cross-day index is what makes that distinguishable.
+  const settledAssets = useMemo(() => {
+    const out = new Set<string>()
+    for (const rows of tradesByDay.values()) for (const row of rows) if (row.side === 'Settlement') out.add(row.asset)
+    return out
+  }, [tradesByDay])
   const combinedOn = (date: string) => (entries.get(date)?.amount ?? 0) + realizedOn(date)
   const monthTotal = Array.from(loggedDays).reduce((s, d) => s + combinedOn(d), 0)
   const profitableDays = Array.from(loggedDays).filter(d => combinedOn(d) > 0).length
@@ -378,22 +388,32 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
             const entry = entries.get(iso)
             const hasData = loggedDays.has(iso)
             const combined = combinedOn(iso)
+            // Grouped the same way the day editor groups trades, so a day's
+            // color always reflects realized results only — an open position
+            // with no result yet must not paint the cell green/red/gray.
+            const dayGroups = groupTrades(tradesByDay.get(iso) ?? [])
+            const openCount = dayGroups.filter(g => g.side === 'Entry' && !settledAssets.has(g.key)).length
+            const hasRealized = Boolean(entry) || dayGroups.some(g => g.realized_pnl != null)
+            const pendingOnly = openCount > 0 && !hasRealized
+            const resultClass = pendingOnly ? 'journal-cell-pending' : hasData ? (combined > 0 ? 'journal-cell-win' : combined < 0 ? 'journal-cell-loss' : 'journal-cell-even') : ''
+            const openLabel = openCount > 0 ? `${openCount} open position${openCount === 1 ? '' : 's'}` : ''
+            const resultLabel = pendingOnly ? `${openLabel}. Edit entry` : hasData ? `${fmtSigned(combined)}${entry?.note ? ', has note' : ''}${!pendingOnly && openLabel ? `, ${openLabel}` : ''}. Edit entry` : 'Log profit or loss'
             return (
               <button
                 type="button"
                 key={iso}
-                className={`journal-cell ${iso === todayISO ? 'journal-cell-today' : ''} ${hasData ? (combined > 0 ? 'journal-cell-win' : combined < 0 ? 'journal-cell-loss' : 'journal-cell-even') : ''}`}
+                className={`journal-cell ${iso === todayISO ? 'journal-cell-today' : ''} ${resultClass} ${!pendingOnly && openCount > 0 ? 'journal-cell-has-open' : ''}`}
                 onClick={() => openDay(day)}
                 disabled={loading || loadError || !userId}
-                aria-label={`${new Date(year, month, day).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}: ${hasData ? `${fmtSigned(combined)}${entry?.note ? ', has note' : ''}. Edit entry` : 'Log profit or loss'}`}
+                aria-label={`${new Date(year, month, day).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}: ${resultLabel}`}
                 aria-current={iso === todayISO ? 'date' : undefined}
               >
                 <span className="journal-cell-day">{day}</span>
-                {hasData ? <><span className="journal-cell-amt">{fmtSigned(combined)}</span>{entry?.note && <MessageSquare className="journal-cell-note" size={12} aria-hidden="true" />}</> : <span className="journal-cell-add" aria-hidden="true">+</span>}
-                {(() => {
-                  const count = groupTrades(tradesByDay.get(iso) ?? []).length
-                  return count > 0 && <small className="journal-trade-count">{count} {count === 1 ? 'trade' : 'trades'}</small>
-                })()}
+                {!pendingOnly && openCount > 0 && <span className="journal-cell-open-dot" aria-hidden="true" />}
+                {pendingOnly
+                  ? <span className="journal-cell-amt journal-cell-open-label">Open</span>
+                  : hasData ? <><span className="journal-cell-amt">{fmtSigned(combined)}</span>{entry?.note && <MessageSquare className="journal-cell-note" size={12} aria-hidden="true" />}</> : <span className="journal-cell-add" aria-hidden="true">+</span>}
+                {dayGroups.length > 0 && <small className={`journal-trade-count ${openCount > 0 ? 'journal-trade-count-open' : ''}`}>{dayGroups.length} {dayGroups.length === 1 ? 'trade' : 'trades'}{!pendingOnly && openCount > 0 ? ` · ${openCount} open` : ''}</small>}
               </button>
             )
           })}
@@ -404,7 +424,7 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
 
       {!loading && !loadError && <section className="journal-entries" aria-labelledby="journal-entries-title">
         <div className="journal-entries-heading"><h2 id="journal-entries-title">Your entries</h2><span>{monthLabel}</span></div>
-        {monthEntries.length === 0 ? <div className="journal-empty"><h3>A little reflection goes a long way.</h3><p>Log a day's result and what you learned. Your entries will appear here.</p></div> : <div>{monthEntries.map(entry => <button className="journal-entry-row" type="button" key={entry.entry_date} onClick={() => openDay(Number(entry.entry_date.slice(-2)))}>
+        {monthEntries.length === 0 ? null : <div>{monthEntries.map(entry => <button className="journal-entry-row" type="button" key={entry.entry_date} onClick={() => openDay(Number(entry.entry_date.slice(-2)))}>
           <span className="journal-entry-date"><strong>{new Date(entry.entry_date + 'T00:00:00').getDate()}</strong><small>{new Date(entry.entry_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })}</small></span>
           <span className="journal-entry-note">{entry.note || 'No note added'}</span>
           <strong className={`journal-entry-amount ${entry.amount > 0 ? 'g' : entry.amount < 0 ? 'r' : ''}`}>{fmtSigned(entry.amount)}</strong><ArrowUpRight size={16} aria-hidden="true" />
@@ -428,10 +448,11 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
               <button type="button" role="tab" aria-selected={dayTab === 'manual'} onClick={() => setDayTab('manual')}>Manual entry{entries.has(editingDate) ? ' •' : ''}</button>
             </div>
             {dayTab === 'trades' ? <div className="journal-day-trades">
-              {dayGroups.length === 0 ? <p className="connection-small">No trades recorded for this day.</p> : dayGroups.map(group => <div className="journal-day-trade-row" key={group.key}>
+              {dayGroups.length === 0 ? <p className="connection-small">No trades recorded for this day.</p> : dayGroups.map(group => <a className="journal-day-trade-row" key={group.key} href={`https://polymarket.us/event/${group.key}`} target="_blank" rel="noopener noreferrer">
                 <div><strong>{group.title}</strong><span>{group.side === 'Settlement' ? 'Settlement' : group.side === 'Position' ? `Closed${group.fills > 1 ? ` · ${group.fills} fills` : ''}` : `Entry${group.fills > 1 ? ` · ${group.fills} fills` : ''}${group.size != null ? ` · ${group.size.toLocaleString(undefined, { maximumFractionDigits: 2 })} shares` : ''}`} · {new Date(group.occurred_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>
                 <strong className={group.realized_pnl == null ? '' : group.realized_pnl > 0 ? 'g' : group.realized_pnl < 0 ? 'r' : ''}>{group.realized_pnl == null ? '—' : fmtSigned(group.realized_pnl)}</strong>
-              </div>)}
+                <ArrowUpRight className="journal-day-trade-arrow" size={15} aria-hidden="true" />
+              </a>)}
             </div> : <form onSubmit={e => { e.preventDefault(); saveEntry() }}>
               {dayGroups.length > 0 && <p className="connection-small">Your connected account already logged {fmtSigned(realizedOn(editingDate))} in realized P&amp;L for this day (see Trades). Anything entered below is added on top of that, not a replacement for it.</p>}
               <label className="journal-input-label" htmlFor="journal-amount">Manually logged profit / loss ($)</label>
