@@ -15,7 +15,7 @@ is psycopg for the Postgres connection.
 import argparse, bisect, json, os, socket, ssl, struct, base64, threading, time, urllib.error, urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -1839,8 +1839,14 @@ def fetch_onchain_fills_via_rpc(db):
 
 
 def prune_onchain_fills(db):
-    cutoff = datetime.now(timezone.utc).timestamp() - ONCHAIN_FILLS_RETENTION_SECONDS
-    db.execute('DELETE FROM onchain_fills WHERE processed = true AND EXTRACT(EPOCH FROM received_at) < %s', (cutoff,))
+    # received_at is timestamptz — compare directly against a timestamptz
+    # cutoff rather than EXTRACT(EPOCH FROM received_at) < %s (a numeric
+    # cutoff), which isn't sargable: Postgres can't use an index on
+    # received_at when the column is wrapped in a function, so this was a
+    # full table scan on every call. See
+    # onchain_fills_unprocessed_received_at_idx.
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=ONCHAIN_FILLS_RETENTION_SECONDS)
+    db.execute('DELETE FROM onchain_fills WHERE processed = true AND received_at < %s', (cutoff,))
 
 
 def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor, trade_db=None):
