@@ -945,30 +945,39 @@ def refresh_opportunity_aggregates(db):
     if not rows:
         print('  [aggregates] no dirty pairs, skipping best_win_rate / best_bet_ratio')
         return
-    pairs = tuple((r[0], r[1]) for r in rows)
+    # Unlike psycopg2, psycopg3 doesn't adapt a Python tuple-of-tuples into
+    # composite "IN ((a,b),(c,d))" SQL — it binds it as one opaque parameter,
+    # which is a syntax error against `IN %s`. unnest() over two parallel
+    # arrays sidesteps that: each array adapts to a plain text[] parameter,
+    # and unnest(a, b) reconstitutes them as (condition_id, outcome) rows to
+    # join against.
+    dirty_cids = [r[0] for r in rows]
+    dirty_outcomes = [r[1] for r in rows]
     db.execute('''
         INSERT INTO opportunity_best_win_rate (condition_id, outcome, best_win_rate, updated_at)
         SELECT oc.condition_id, oc.outcome,
           MAX(CASE WHEN (ls.won + ls.lost) > 0 THEN ls.won::numeric / (ls.won + ls.lost)::numeric ELSE NULL END),
           %s
         FROM opportunity_contributors oc
+        JOIN unnest(%s::text[], %s::text[]) AS dirty(condition_id, outcome)
+          ON dirty.condition_id = oc.condition_id AND dirty.outcome = oc.outcome
         LEFT JOIN leaderboard ls ON ls.wallet = oc.wallet
-        WHERE (oc.condition_id, oc.outcome) IN %s
         GROUP BY oc.condition_id, oc.outcome
         ON CONFLICT (condition_id, outcome) DO UPDATE SET
           best_win_rate = EXCLUDED.best_win_rate, updated_at = EXCLUDED.updated_at
-    ''', (now, pairs))
+    ''', (now, dirty_cids, dirty_outcomes))
     db.execute('''
         INSERT INTO opportunity_best_bet_ratio (condition_id, outcome, best_bet_ratio, updated_at)
         SELECT ow.condition_id, ow.outcome, MAX(ow.usd / wb.usdc_balance), %s
         FROM opportunity_wallets ow
+        JOIN unnest(%s::text[], %s::text[]) AS dirty(condition_id, outcome)
+          ON dirty.condition_id = ow.condition_id AND dirty.outcome = ow.outcome
         JOIN wallet_balances wb ON wb.wallet = ow.wallet AND wb.usdc_balance >= 1
-        WHERE (ow.condition_id, ow.outcome) IN %s
         GROUP BY ow.condition_id, ow.outcome
         ON CONFLICT (condition_id, outcome) DO UPDATE SET
           best_bet_ratio = EXCLUDED.best_bet_ratio, updated_at = EXCLUDED.updated_at
-    ''', (now, pairs))
-    print(f'  [aggregates] refreshed best_win_rate / best_bet_ratio for {len(pairs)} dirty pairs')
+    ''', (now, dirty_cids, dirty_outcomes))
+    print(f'  [aggregates] refreshed best_win_rate / best_bet_ratio for {len(rows)} dirty pairs')
 
 
 def refresh_leaderboard(db):
