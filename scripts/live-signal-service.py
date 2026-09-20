@@ -34,9 +34,23 @@ RPC_PROVIDERS = [
 USDC_CONTRACT = '0x2791bca1f2de4661ed88a30c99a7a9449aa84174'
 BALANCE_OF_SELECTOR = '0x70a08231'  # balanceOf(address)
 BALANCE_REFRESH_SECONDS = 15 * 60
-AGGREGATE_REFRESH_SECONDS = 90  # opportunities_live's best_win_rate/best_bet_ratio join — see refresh_opportunity_aggregates()
-LEADERBOARD_REFRESH_SECONDS = 120  # leaderboard_cache — see refresh_leaderboard()
-WALLET_CATEGORY_REFRESH_SECONDS = 180  # wallet_category_breakdown_cache — see refresh_wallet_category_breakdown()
+# AGGREGATE_REFRESH_SECONDS / LEADERBOARD_REFRESH_SECONDS / WALLET_CATEGORY_REFRESH_SECONDS
+# were 90/120/180 back when each run was a full-table recompute — the interval was
+# doing double duty as a cost throttle. Now that refresh_opportunity_aggregates,
+# refresh_leaderboard, and refresh_wallet_category_breakdown are all incremental
+# (bounded by what actually changed, not table size — an empty/near-empty run costs
+# ~25 in EXPLAIN, effectively free), the interval only needs to reflect how fresh the
+# UI should feel, not how expensive the query is. Shrunk accordingly for a more
+# realtime feel; watch reconcile_caches()'s drift logging after deploying — a shorter
+# interval means more opportunities for a race between concurrent updates, which is
+# exactly what that safety net exists to catch.
+AGGREGATE_REFRESH_SECONDS = 15  # opportunities_live's best_win_rate/best_bet_ratio join — see refresh_opportunity_aggregates()
+LEADERBOARD_REFRESH_SECONDS = 15  # leaderboard_cache — see refresh_leaderboard()
+WALLET_CATEGORY_REFRESH_SECONDS = 30  # wallet_category_breakdown_cache — see refresh_wallet_category_breakdown()
+# PROFIT_BOT_REFRESH_SECONDS is NOT incremental yet (refresh_profit_bot still does a
+# full 5-pass recompute per call) — left untouched. Shrinking this one would make the
+# original I/O problem worse, not better; it needs the same incremental treatment
+# before its interval can safely come down.
 PROFIT_BOT_REFRESH_SECONDS = 120  # profit_bot_*_cache — see refresh_profit_bot()
 RECONCILE_INTERVAL_SECONDS = 60 * 60  # correction pass for the incremental leaderboard/aggregate refreshes — see reconcile_caches()
 WARM_SEARCH_SECONDS = 4 * 60  # keeps the wallet-search Edge Function's isolate warm — see ping_wallet_search()
