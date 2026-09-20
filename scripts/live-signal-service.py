@@ -925,34 +925,57 @@ def refresh_opportunity_aggregates(db):
 
 def refresh_leaderboard(db):
     """Runs periodically (LEADERBOARD_REFRESH_SECONDS, see main()) —
-    recomputes leaderboard_cache, the table the `leaderboard` view now just
-    passes through. This used to be a live SUM/COUNT GROUP BY over the full
-    opportunity_wallets table (650k+ rows and growing) computed on every
-    single read of it, including the Leaderboard page itself and every join
-    against it elsewhere (opportunities_live, wallet_balances). Precomputing
-    here turns every one of those reads into a plain indexed lookup — see
-    supabase/migrations/20260830000000_precompute_leaderboard.sql for the
-    full story and the query this mirrors."""
+    updates leaderboard_cache, the table the `leaderboard` view now just
+    passes through. This used to be a full SUM/COUNT GROUP BY over the whole
+    opportunity_wallets table (650k+ rows and growing) on every call — the
+    single biggest disk I/O consumer in the project per pg_stat_statements.
+
+    Incremental as of leaderboard_refresh_state: same pattern as
+    refresh_wallet_category_breakdown — leaderboard_refresh_state tracks the
+    high-water mark (max resolved_ts already folded into leaderboard_cache)
+    so each run only aggregates positions resolved since last time and adds
+    the delta onto the existing cache row instead of recomputing from the
+    full table. resolved_ts is set exactly once, by sweep_resolved_positions,
+    so filtering on it (rather than id/ts, which are set at insert time and
+    would miss the later resolution update) captures each row exactly once.
+    See supabase/migrations/20260830000000_precompute_leaderboard.sql for the
+    original full-recompute query this replaces."""
     now = datetime.now(timezone.utc)
-    db.execute('''
-        INSERT INTO leaderboard_cache (wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit, updated_at)
-        SELECT wallet, MAX(wallet_name),
-          COUNT(*),
-          SUM(CASE WHEN resolved_win = true THEN 1 ELSE 0 END),
-          SUM(CASE WHEN resolved_win = false THEN 1 ELSE 0 END),
-          SUM(usd),
-          SUM(CASE WHEN resolved_win = true THEN usd ELSE 0 END),
-          SUM(CASE WHEN resolved_win = true THEN (usd / price) - usd ELSE -usd END),
-          %s
-        FROM opportunity_wallets
-        WHERE market_closed = true AND wallet IS NOT NULL
-        GROUP BY wallet
-        ON CONFLICT (wallet) DO UPDATE SET
-          wallet_name = EXCLUDED.wallet_name, n = EXCLUDED.n, won = EXCLUDED.won, lost = EXCLUDED.lost,
-          deployed = EXCLUDED.deployed, won_usd = EXCLUDED.won_usd, net_profit = EXCLUDED.net_profit,
-          updated_at = EXCLUDED.updated_at
-    ''', (now,))
-    print('  [aggregates] refreshed leaderboard_cache')
+    row = db.fetchone('SELECT last_resolved_ts FROM leaderboard_refresh_state WHERE id = true')
+    last_ts = row[0] if row else datetime.min.replace(tzinfo=timezone.utc)
+    max_ts, n_updated = db.fetchone('''
+        WITH deltas AS (
+          SELECT wallet, MAX(wallet_name) AS wallet_name,
+            COUNT(*) AS n,
+            SUM(CASE WHEN resolved_win = true THEN 1 ELSE 0 END) AS won,
+            SUM(CASE WHEN resolved_win = false THEN 1 ELSE 0 END) AS lost,
+            SUM(usd) AS deployed,
+            SUM(CASE WHEN resolved_win = true THEN usd ELSE 0 END) AS won_usd,
+            SUM(CASE WHEN resolved_win = true THEN (usd / price) - usd ELSE -usd END) AS net_profit,
+            MAX(resolved_ts) AS max_resolved_ts
+          FROM opportunity_wallets
+          WHERE market_closed = true AND wallet IS NOT NULL AND resolved_ts > %s
+          GROUP BY wallet
+        ),
+        upserted AS (
+          INSERT INTO leaderboard_cache (wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit, updated_at)
+          SELECT wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit, %s FROM deltas
+          ON CONFLICT (wallet) DO UPDATE SET
+            wallet_name = COALESCE(EXCLUDED.wallet_name, leaderboard_cache.wallet_name),
+            n = leaderboard_cache.n + EXCLUDED.n,
+            won = leaderboard_cache.won + EXCLUDED.won,
+            lost = leaderboard_cache.lost + EXCLUDED.lost,
+            deployed = leaderboard_cache.deployed + EXCLUDED.deployed,
+            won_usd = leaderboard_cache.won_usd + EXCLUDED.won_usd,
+            net_profit = leaderboard_cache.net_profit + EXCLUDED.net_profit,
+            updated_at = EXCLUDED.updated_at
+          RETURNING 1
+        )
+        SELECT (SELECT MAX(max_resolved_ts) FROM deltas), (SELECT count(*) FROM upserted)
+    ''', (last_ts, now))
+    if max_ts:
+        db.execute('UPDATE leaderboard_refresh_state SET last_resolved_ts = %s WHERE id = true', (max_ts,))
+    print(f'  [aggregates] refreshed leaderboard_cache ({n_updated} wallet rows updated)')
 
 
 def refresh_profit_bot(db):
