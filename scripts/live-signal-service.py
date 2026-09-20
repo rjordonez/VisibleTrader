@@ -38,6 +38,7 @@ AGGREGATE_REFRESH_SECONDS = 90  # opportunities_live's best_win_rate/best_bet_ra
 LEADERBOARD_REFRESH_SECONDS = 120  # leaderboard_cache — see refresh_leaderboard()
 WALLET_CATEGORY_REFRESH_SECONDS = 180  # wallet_category_breakdown_cache — see refresh_wallet_category_breakdown()
 PROFIT_BOT_REFRESH_SECONDS = 120  # profit_bot_*_cache — see refresh_profit_bot()
+RECONCILE_INTERVAL_SECONDS = 60 * 60  # correction pass for the incremental leaderboard/aggregate refreshes — see reconcile_caches()
 WARM_SEARCH_SECONDS = 4 * 60  # keeps the wallet-search Edge Function's isolate warm — see ping_wallet_search()
 BROADCAST_INTERVAL_SECONDS = 5  # batches opportunities/ticker changes into one Realtime broadcast per window —
 # see flush_dirty_broadcast(). Replaces per-row postgres_changes delivery on these two tables, which was blowing
@@ -1024,6 +1025,123 @@ def refresh_leaderboard(db):
     print(f'  [aggregates] refreshed leaderboard_cache ({n_updated} wallet rows updated)')
 
 
+def reconcile_caches(db):
+    """Runs periodically (RECONCILE_INTERVAL_SECONDS, see main()) — a full
+    recompute of leaderboard_cache, opportunity_best_win_rate, and
+    opportunity_best_bet_ratio, used only as a correction pass for
+    refresh_leaderboard and refresh_opportunity_aggregates.
+
+    Those two trade a small ongoing risk of drift (a missed dirty mark in
+    opportunity_aggregate_dirty, a high-water mark that isn't quite right)
+    for a large cut in disk I/O by only ever touching what they believe
+    changed. That's fine as long as it's actually true, but a bug there
+    would otherwise cause silent, permanent staleness with no signal —
+    the queries still run fine, they're just computing from an incomplete
+    view of what changed. This runs the original full-table queries (see
+    supabase/migrations/20260830000000_precompute_leaderboard.sql and
+    20260817010000_precompute_opportunity_aggregates.sql) at a much lower
+    frequency than the incremental passes, diffs the result against what's
+    currently cached BEFORE overwriting, and logs how many rows actually
+    disagreed — a nonzero count here means the incremental/dirty-tracking
+    logic missed something and needs investigating, not just a shrug.
+    Applies the recomputed values as the source of truth (overwrite, not
+    additive — this pass computes true current values from scratch), then
+    resets the incremental high-water mark and drains any pending dirty
+    pairs so the next incremental pass starts clean instead of redoing
+    work this pass already covered."""
+    now = datetime.now(timezone.utc)
+
+    # --- leaderboard_cache ---
+    fresh_lb = db.fetchall('''
+        SELECT wallet, MAX(wallet_name) AS wallet_name,
+          COUNT(*) AS n,
+          SUM(CASE WHEN resolved_win = true THEN 1 ELSE 0 END) AS won,
+          SUM(CASE WHEN resolved_win = false THEN 1 ELSE 0 END) AS lost,
+          SUM(usd) AS deployed,
+          SUM(CASE WHEN resolved_win = true THEN usd ELSE 0 END) AS won_usd,
+          SUM(CASE WHEN resolved_win = true THEN (usd / price) - usd ELSE -usd END) AS net_profit
+        FROM opportunity_wallets
+        WHERE market_closed = true AND wallet IS NOT NULL
+        GROUP BY wallet
+    ''')
+    fresh_lb_map = {r[0]: r[1:] for r in fresh_lb}
+    cached_lb = db.fetchall('SELECT wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit FROM leaderboard_cache')
+    cached_lb_map = {r[0]: tuple(r[1:]) for r in cached_lb}
+    lb_drift = sum(1 for w, v in fresh_lb_map.items() if cached_lb_map.get(w) != v)
+    lb_drift += sum(1 for w in cached_lb_map if w not in fresh_lb_map)
+
+    db.execute('''DELETE FROM leaderboard_cache lc WHERE NOT EXISTS (
+        SELECT 1 FROM opportunity_wallets ow WHERE ow.wallet = lc.wallet AND ow.market_closed = true)''')
+    db.executemany('''
+        INSERT INTO leaderboard_cache (wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit, updated_at)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT (wallet) DO UPDATE SET
+          wallet_name = EXCLUDED.wallet_name, n = EXCLUDED.n, won = EXCLUDED.won, lost = EXCLUDED.lost,
+          deployed = EXCLUDED.deployed, won_usd = EXCLUDED.won_usd, net_profit = EXCLUDED.net_profit,
+          updated_at = EXCLUDED.updated_at
+    ''', [(w, *v, now) for w, v in fresh_lb_map.items()])
+
+    max_resolved = db.fetchone('SELECT MAX(resolved_ts) FROM opportunity_wallets WHERE market_closed = true')[0]
+    if max_resolved:
+        db.execute('UPDATE leaderboard_refresh_state SET last_resolved_ts = %s WHERE id = true', (max_resolved,))
+
+    if lb_drift:
+        print(f'  [reconcile] leaderboard_cache: CORRECTED {lb_drift} row(s) that had drifted from the incremental refresh')
+    else:
+        print('  [reconcile] leaderboard_cache: no drift found')
+
+    # --- opportunity_best_win_rate / opportunity_best_bet_ratio ---
+    fresh_bwr = db.fetchall('''
+        SELECT oc.condition_id, oc.outcome,
+          MAX(CASE WHEN (ls.won + ls.lost) > 0 THEN ls.won::numeric / (ls.won + ls.lost)::numeric ELSE NULL END)
+        FROM opportunity_contributors oc
+        LEFT JOIN leaderboard ls ON ls.wallet = oc.wallet
+        GROUP BY oc.condition_id, oc.outcome
+    ''')
+    fresh_bwr_map = {(r[0], r[1]): r[2] for r in fresh_bwr}
+    cached_bwr = db.fetchall('SELECT condition_id, outcome, best_win_rate FROM opportunity_best_win_rate')
+    cached_bwr_map = {(r[0], r[1]): r[2] for r in cached_bwr}
+    bwr_drift = sum(1 for k, v in fresh_bwr_map.items() if cached_bwr_map.get(k) != v)
+    bwr_drift += sum(1 for k in cached_bwr_map if k not in fresh_bwr_map)
+
+    fresh_bbr = db.fetchall('''
+        SELECT ow.condition_id, ow.outcome, MAX(ow.usd / wb.usdc_balance)
+        FROM opportunity_wallets ow
+        JOIN wallet_balances wb ON wb.wallet = ow.wallet AND wb.usdc_balance >= 1
+        GROUP BY ow.condition_id, ow.outcome
+    ''')
+    fresh_bbr_map = {(r[0], r[1]): r[2] for r in fresh_bbr}
+    cached_bbr = db.fetchall('SELECT condition_id, outcome, best_bet_ratio FROM opportunity_best_bet_ratio')
+    cached_bbr_map = {(r[0], r[1]): r[2] for r in cached_bbr}
+    bbr_drift = sum(1 for k, v in fresh_bbr_map.items() if cached_bbr_map.get(k) != v)
+    bbr_drift += sum(1 for k in cached_bbr_map if k not in fresh_bbr_map)
+
+    db.execute('''DELETE FROM opportunity_best_win_rate bwr WHERE NOT EXISTS (
+        SELECT 1 FROM opportunity_contributors oc WHERE oc.condition_id = bwr.condition_id AND oc.outcome = bwr.outcome)''')
+    db.executemany('''
+        INSERT INTO opportunity_best_win_rate (condition_id, outcome, best_win_rate, updated_at)
+        VALUES (%s,%s,%s,%s)
+        ON CONFLICT (condition_id, outcome) DO UPDATE SET
+          best_win_rate = EXCLUDED.best_win_rate, updated_at = EXCLUDED.updated_at
+    ''', [(cid, outcome, bwr, now) for (cid, outcome), bwr in fresh_bwr_map.items()])
+
+    db.execute('''DELETE FROM opportunity_best_bet_ratio bbr WHERE NOT EXISTS (
+        SELECT 1 FROM opportunity_wallets ow WHERE ow.condition_id = bbr.condition_id AND ow.outcome = bbr.outcome)''')
+    db.executemany('''
+        INSERT INTO opportunity_best_bet_ratio (condition_id, outcome, best_bet_ratio, updated_at)
+        VALUES (%s,%s,%s,%s)
+        ON CONFLICT (condition_id, outcome) DO UPDATE SET
+          best_bet_ratio = EXCLUDED.best_bet_ratio, updated_at = EXCLUDED.updated_at
+    ''', [(cid, outcome, bbr, now) for (cid, outcome), bbr in fresh_bbr_map.items()])
+
+    db.execute('DELETE FROM opportunity_aggregate_dirty')
+
+    if bwr_drift or bbr_drift:
+        print(f'  [reconcile] opportunity aggregates: CORRECTED {bwr_drift} best_win_rate + {bbr_drift} best_bet_ratio row(s) that had drifted')
+    else:
+        print('  [reconcile] opportunity aggregates: no drift found')
+
+
 def refresh_profit_bot(db):
     """Runs periodically (PROFIT_BOT_REFRESH_SECONDS, see main()) — recomputes
     the profit_bot_*_cache tables the four profit_bot_* RPCs now just read.
@@ -1890,6 +2008,7 @@ def main():
     last_leaderboard_refresh = 0.0  # fire once on startup, not just after the first interval
     last_wallet_category_refresh = 0.0  # fire once on startup, not just after the first interval
     last_profit_bot_refresh = 0.0  # fire once on startup, not just after the first interval
+    last_reconcile = time.time()  # don't fire on startup — let the incremental passes run first
     last_warm_search = 0.0  # fire once on startup, not just after the first interval
     last_broadcast_flush = time.time()
     last_price_flush = 0.0
@@ -2006,6 +2125,10 @@ def main():
                 if now - last_profit_bot_refresh > PROFIT_BOT_REFRESH_SECONDS:  # profit_bot_*_cache
                     maintenance_jobs.submit('profit-bot', refresh_profit_bot, maintenance_db)
                     last_profit_bot_refresh = now
+
+                if now - last_reconcile > RECONCILE_INTERVAL_SECONDS:  # correction pass for the incremental refreshes above
+                    maintenance_jobs.submit('reconcile', reconcile_caches, maintenance_db)
+                    last_reconcile = now
 
                 if now - last_warm_search > WARM_SEARCH_SECONDS:  # keeps wallet-search's Edge Function isolate warm
                     maintenance_jobs.submit('warm-search', ping_wallet_search)
