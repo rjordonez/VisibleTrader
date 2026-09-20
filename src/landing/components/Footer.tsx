@@ -32,6 +32,7 @@ export default function Footer() {
                 <li><Link to="/blog">Blog</Link></li>
                 <li><Link to="/careers">Careers</Link></li>
                 <li><Link to="/affiliates">Affiliates</Link></li>
+                <li><a href="mailto:hq@visibletrader.com">hq@visibletrader.com</a></li>
               </ul>
             </div>
 
