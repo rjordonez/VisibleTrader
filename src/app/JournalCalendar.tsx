@@ -339,7 +339,6 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
       <div className="app-section-header journal-header">
         <div>
           <h2 className="app-section-title">Your daily record</h2>
-          <p className="app-section-sub">Review your activity and capture what you learned.</p>
         </div>
         <button type="button" className="journal-add-button" disabled={!userId || loading || loadError} onClick={() => openDay(year === new Date().getFullYear() && month === new Date().getMonth() ? new Date().getDate() : 1)}><Plus size={18} /> Log a day</button>
       </div>

@@ -261,13 +261,14 @@ export default function ConnectionsPage({ journal = false }: { journal?: boolean
   return <div className={`sig-page connections-page ${journal ? 'journal-hub' : 'connection-settings'}`}>
     {!journal && <Link className="connection-text-link" to={dashboardPath('/settings')}><ArrowLeft size={15} /> Settings</Link>}
     <header className="app-section-header">
-      <div><span className="connection-eyebrow">{journal ? 'YOUR TRADING, IN PERSPECTIVE' : 'SETTINGS / CONNECTIONS'}</span><h1 className="app-section-title">{journal ? 'Journal' : 'Connections'}</h1><p className="app-section-sub">{journal ? 'Follow your positions. Reflect on your decisions.' : 'The accounts behind your trading journal.'}</p></div>
+      <div>{!journal && <span className="connection-eyebrow">SETTINGS / CONNECTIONS</span>}<h1 className="app-section-title">{journal ? 'Journal' : 'Connections'}</h1>{!journal && <p className="app-section-sub">The accounts behind your trading journal.</p>}</div>
       <div className="connection-header-actions">
-        {journal && hasAccount && <label className="connection-account-select"><Wallet size={15} /><select aria-label="Trading account" value={selected} onChange={e => setAccount(e.target.value as 'international' | 'us')}>
-          {usConnection && <option value="us">Polymarket US</option>}
-          {connection && <option value="international">Polymarket · {connection.display_name}</option>}
+        {journal && hasAccount && connection && usConnection && <label className="connection-account-select"><Wallet size={15} /><select aria-label="Trading account" value={selected} onChange={e => setAccount(e.target.value as 'international' | 'us')}>
+          <option value="us">Polymarket US</option>
+          <option value="international">Polymarket · {connection.display_name}</option>
         </select></label>}
-        <button className="connection-button" disabled={loading || Boolean(error)} onClick={() => setVenue('choose')}><Plus size={16} /> Connect account</button>
+        {journal && hasAccount && !(connection && usConnection) && <span className="connection-account-connected">Connected</span>}
+        {(!journal || !hasAccount) && <button className="connection-button" disabled={loading || Boolean(error)} onClick={() => setVenue('choose')}><Plus size={16} /> Connect account</button>}
         {journal && <Link className="connection-icon-button" aria-label="Manage connections" title="Manage connections" to={dashboardPath('/settings/connections')}><Settings2 size={18} /></Link>}
       </div>
     </header>
