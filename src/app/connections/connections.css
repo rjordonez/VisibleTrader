@@ -115,6 +115,7 @@
 .connection-account-select { display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid #ffffff1c; border-radius: 9px; min-width: 0; }
 .connection-account-select select { min-height: 44px; max-width: 190px; background: #111216; color: #e5e6ed; border: 0; font: inherit; font-size: 12px; }
 .connection-account-select option { background: #17181c; }
+.connection-account-connected { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border: 1px solid #2a4937; border-radius: 9px; background: #14231c; color: #b8ddc4; font-size: 12px; font-weight: 650; }
 .connection-loading { display: flex; gap: 12px; padding: 36px 0; color: #a3a5b0; font-size: 13px; }
 .connection-success { display: flex; align-items: center; gap: 10px; background: #14231c; border: 1px solid #2a4937; color: #b8ddc4; padding: 14px 18px; margin-bottom: 24px; border-radius: 10px; font-size: 12px; line-height: 1.7; }
 .connection-success > svg { flex-shrink: 0; }
@@ -179,7 +180,7 @@
 .connection-dialog button:disabled { opacity: .5; cursor: default; }
 .app-shell .connection-dialog :is(button, a, input):focus-visible, .app-shell .connections-page :is(select, a):focus-visible { outline: 2px solid #a8b6e5; outline-offset: 3px; }
 @media (max-width: 600px) {
-  .connection-header-actions { flex-wrap: wrap; width: 100%; }.connection-account-select { flex: 1; }.connection-account-select select { width: 100%; max-width: 100%; }
+  .connection-header-actions { flex-wrap: wrap; width: 100%; }.connection-account-select, .connection-account-connected { flex: 1; }.connection-account-select select { width: 100%; max-width: 100%; }
   .connection-header-actions > .connection-button { flex: 1; }.connection-header-actions .connection-account-select + .connection-button { flex: initial; font-size: 11px; padding: 10px; }
   .connection-welcome { padding-top: 32px; }.connection-welcome-benefits { flex-direction: column; gap: 12px; }
   .connection-manage-row { gap: 12px; }.connection-row-actions { margin-left: 54px; }.connection-manage-info { min-width: 180px; }
