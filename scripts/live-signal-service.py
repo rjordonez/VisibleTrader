@@ -700,6 +700,11 @@ def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, pri
         cur = conn.execute('''INSERT INTO opportunity_contributors (condition_id, outcome, wallet)
             VALUES (%s,%s,%s) ON CONFLICT DO NOTHING RETURNING 1''', (condition_id, outcome, wallet))
         is_new_wallet = 1 if cur.fetchone() is not None else 0
+        # A new contribution can move both best_win_rate (new candidate
+        # wallet) and best_bet_ratio (new usd/balance candidate) for this
+        # pair — see opportunity_aggregate_dirty / refresh_opportunity_aggregates.
+        conn.execute('''INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
+            VALUES (%s,%s) ON CONFLICT DO NOTHING''', (condition_id, outcome))
         conn.execute('''INSERT INTO opportunity_stats
                 (condition_id, outcome, entries, wallet_count, cumulative_usd, open_shares_sum, open_invested_usd, updated_at)
             VALUES (%s,%s,1,%s,%s,%s,%s,%s)
@@ -857,6 +862,14 @@ def refresh_wallet_balances(db, wallets):
             VALUES (%s,%s,%s)
             ON CONFLICT (wallet) DO UPDATE SET usdc_balance=EXCLUDED.usdc_balance, updated_at=EXCLUDED.updated_at''',
             (wallet, bal, now))
+    # best_bet_ratio (usd / usdc_balance) moves whenever a contributing
+    # wallet's balance changes, independent of any new opportunity_wallets
+    # row — mark every pair these wallets contribute to dirty so the next
+    # refresh_opportunity_aggregates pass picks them up. See
+    # opportunity_aggregate_dirty.
+    db.execute('''INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
+        SELECT condition_id, outcome FROM opportunity_contributors WHERE wallet = ANY(%s)
+        ON CONFLICT DO NOTHING''', (list(results.keys()),))
     print(f'  [balances] refreshed {len(results)}/{len(wallets)} wallet balances')
 
 
@@ -889,7 +902,7 @@ def ping_wallet_search():
 
 
 def refresh_opportunity_aggregates(db):
-    """Runs periodically (AGGREGATE_REFRESH_SECONDS, see main()) — recomputes
+    """Runs periodically (AGGREGATE_REFRESH_SECONDS, see main()) — updates
     the two per-(condition_id, outcome) aggregates opportunities_live joins
     against (best_win_rate, best_bet_ratio). These used to be computed
     inline in that view via CTEs re-aggregated on every single API request;
@@ -898,8 +911,26 @@ def refresh_opportunity_aggregates(db):
     letting the view do a plain indexed join instead keeps every request
     fast regardless of connection/cache state — see
     supabase/migrations/20260817010000_precompute_opportunity_aggregates.sql
-    for the full story and the query this mirrors."""
+    for the full story and the query this mirrors.
+
+    Dirty-group as of opportunity_aggregate_dirty: both aggregates are
+    MAX(...), not SUM/COUNT, so unlike refresh_leaderboard this can't be a
+    running-total delta (a MAX can only be pushed up by new data, never
+    down — the true group max can *decrease*, e.g. a wallet's balance
+    drops). Instead of a full GROUP BY over every (condition_id, outcome)
+    pair on every run, opportunity_aggregate_dirty tracks which specific
+    pairs changed (new contribution, a contributing wallet's balance moved,
+    or a contributing wallet's win rate moved — see record_contribution,
+    refresh_wallet_balances, refresh_leaderboard) and this recomputes the
+    true MAX for just those pairs each run, claiming them via a single
+    DELETE ... RETURNING so a pair can't be silently dropped between the
+    claim and the recompute."""
     now = datetime.now(timezone.utc)
+    rows = db.fetchall('DELETE FROM opportunity_aggregate_dirty RETURNING condition_id, outcome')
+    if not rows:
+        print('  [aggregates] no dirty pairs, skipping best_win_rate / best_bet_ratio')
+        return
+    pairs = tuple((r[0], r[1]) for r in rows)
     db.execute('''
         INSERT INTO opportunity_best_win_rate (condition_id, outcome, best_win_rate, updated_at)
         SELECT oc.condition_id, oc.outcome,
@@ -907,20 +938,22 @@ def refresh_opportunity_aggregates(db):
           %s
         FROM opportunity_contributors oc
         LEFT JOIN leaderboard ls ON ls.wallet = oc.wallet
+        WHERE (oc.condition_id, oc.outcome) IN %s
         GROUP BY oc.condition_id, oc.outcome
         ON CONFLICT (condition_id, outcome) DO UPDATE SET
           best_win_rate = EXCLUDED.best_win_rate, updated_at = EXCLUDED.updated_at
-    ''', (now,))
+    ''', (now, pairs))
     db.execute('''
         INSERT INTO opportunity_best_bet_ratio (condition_id, outcome, best_bet_ratio, updated_at)
         SELECT ow.condition_id, ow.outcome, MAX(ow.usd / wb.usdc_balance), %s
         FROM opportunity_wallets ow
         JOIN wallet_balances wb ON wb.wallet = ow.wallet AND wb.usdc_balance >= 1
+        WHERE (ow.condition_id, ow.outcome) IN %s
         GROUP BY ow.condition_id, ow.outcome
         ON CONFLICT (condition_id, outcome) DO UPDATE SET
           best_bet_ratio = EXCLUDED.best_bet_ratio, updated_at = EXCLUDED.updated_at
-    ''', (now,))
-    print('  [aggregates] refreshed best_win_rate / best_bet_ratio')
+    ''', (now, pairs))
+    print(f'  [aggregates] refreshed best_win_rate / best_bet_ratio for {len(pairs)} dirty pairs')
 
 
 def refresh_leaderboard(db):
@@ -969,6 +1002,19 @@ def refresh_leaderboard(db):
             won_usd = leaderboard_cache.won_usd + EXCLUDED.won_usd,
             net_profit = leaderboard_cache.net_profit + EXCLUDED.net_profit,
             updated_at = EXCLUDED.updated_at
+          RETURNING 1
+        ),
+        -- best_win_rate is keyed off each wallet's overall win rate
+        -- (leaderboard_cache), so any wallet this pass touched can move
+        -- best_win_rate for every (condition_id, outcome) it contributes
+        -- to — mark those pairs dirty for refresh_opportunity_aggregates.
+        -- See opportunity_aggregate_dirty.
+        dirty AS (
+          INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
+          SELECT DISTINCT oc.condition_id, oc.outcome
+          FROM opportunity_contributors oc
+          WHERE oc.wallet IN (SELECT wallet FROM deltas)
+          ON CONFLICT DO NOTHING
           RETURNING 1
         )
         SELECT (SELECT MAX(max_resolved_ts) FROM deltas), (SELECT count(*) FROM upserted)
