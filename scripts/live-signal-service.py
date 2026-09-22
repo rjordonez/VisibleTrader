@@ -1291,10 +1291,19 @@ def sweep_resolved_positions(db):
     """Runs periodically (not per-trade — this is a network call per distinct open
     market, too slow to do inline). Finds every market with still-open positions,
     checks whether it has resolved, and closes out all its open rows at once."""
-    rows = db.fetchall('''SELECT DISTINCT ow.condition_id, ow.outcome, o.slug
-        FROM opportunity_wallets ow
-        JOIN opportunities o ON o.condition_id = ow.condition_id AND o.outcome = ow.outcome
-        WHERE ow.exit_ts IS NULL AND (ow.market_closed IS NULL OR ow.market_closed = false)''')
+    # Deriving the small distinct (condition_id, outcome) set from
+    # opportunity_wallets first, then joining to opportunities, lets Postgres
+    # use a cheap merge join. Joining the other way round (opportunities
+    # driving a per-row probe into opportunity_wallets) made the planner loop
+    # 150k+ times through a thrashing cache — confirmed live via EXPLAIN
+    # ANALYZE this was the single largest disk-I/O query in the project.
+    rows = db.fetchall('''SELECT DISTINCT dc.condition_id, dc.outcome, o.slug
+        FROM (
+            SELECT DISTINCT condition_id, outcome
+            FROM opportunity_wallets
+            WHERE exit_ts IS NULL AND (market_closed IS NULL OR market_closed = false)
+        ) dc
+        JOIN opportunities o ON o.condition_id = dc.condition_id AND o.outcome = dc.outcome''')
 
     distinct_slugs = list({slug for _, _, slug in rows})
     # One HTTP call per distinct slug — confirmed live this backlog can be
