@@ -720,6 +720,18 @@ def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, pri
         # pair — see opportunity_aggregate_dirty / refresh_opportunity_aggregates.
         conn.execute('''INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
             VALUES (%s,%s) ON CONFLICT DO NOTHING''', (condition_id, outcome))
+        # opportunity_wallet_max_usd: this wallet's largest trade in this
+        # market so far. O(1) regardless of how many trades this market has
+        # ever had — usd is immutable once inserted, so a wallet's max in a
+        # market only ever grows, never needs to shrink. This is what lets
+        # refresh_opportunity_aggregates recompute best_bet_ratio by scanning
+        # a market's distinct wallets instead of rescanning every trade row —
+        # see supabase/migrations/20260921120000_opportunity_wallet_max_usd_rollup.sql.
+        conn.execute('''INSERT INTO opportunity_wallet_max_usd (condition_id, outcome, wallet, max_usd)
+            VALUES (%s,%s,%s,%s)
+            ON CONFLICT (condition_id, outcome, wallet) DO UPDATE SET
+              max_usd = GREATEST(opportunity_wallet_max_usd.max_usd, EXCLUDED.max_usd)''',
+            (condition_id, outcome, wallet, usd))
         conn.execute('''INSERT INTO opportunity_stats
                 (condition_id, outcome, entries, wallet_count, cumulative_usd, open_shares_sum, open_invested_usd, updated_at)
             VALUES (%s,%s,1,%s,%s,%s,%s,%s)
@@ -872,20 +884,33 @@ def refresh_wallet_balances(db, wallets):
     if not results:
         return
     now = datetime.now(timezone.utc)
+    # Only wallets whose balance actually changed can move best_bet_ratio —
+    # read the previous values first so unchanged wallets (the common case:
+    # most balances don't move within a 15-min window) don't get marked
+    # dirty at all. Marking unconditionally on every successful fetch (the
+    # original behavior) meant every roster wallet's entire contribution
+    # history got re-marked every BALANCE_REFRESH_SECONDS regardless of
+    # whether anything changed — a recurring burst that, combined with
+    # refresh_opportunity_aggregates claiming its whole dirty set
+    # unconditionally, was the root cause of the statement-timeout/lost-batch
+    # issue described in refresh_opportunity_aggregates's docstring.
+    previous = dict(db.fetchall('SELECT wallet, usdc_balance FROM wallet_balances WHERE wallet = ANY(%s)', (list(results.keys()),)))
     for wallet, bal in results.items():
         db.execute('''INSERT INTO wallet_balances (wallet, usdc_balance, updated_at)
             VALUES (%s,%s,%s)
             ON CONFLICT (wallet) DO UPDATE SET usdc_balance=EXCLUDED.usdc_balance, updated_at=EXCLUDED.updated_at''',
             (wallet, bal, now))
-    # best_bet_ratio (usd / usdc_balance) moves whenever a contributing
-    # wallet's balance changes, independent of any new opportunity_wallets
-    # row — mark every pair these wallets contribute to dirty so the next
-    # refresh_opportunity_aggregates pass picks them up. See
-    # opportunity_aggregate_dirty.
-    db.execute('''INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
-        SELECT condition_id, outcome FROM opportunity_contributors WHERE wallet = ANY(%s)
-        ON CONFLICT DO NOTHING''', (list(results.keys()),))
-    print(f'  [balances] refreshed {len(results)}/{len(wallets)} wallet balances')
+    changed_wallets = [w for w, bal in results.items() if previous.get(w) != bal]
+    if changed_wallets:
+        # best_bet_ratio (usd / usdc_balance) moves whenever a contributing
+        # wallet's balance changes, independent of any new opportunity_wallets
+        # row — mark every pair these wallets contribute to dirty so the next
+        # refresh_opportunity_aggregates pass picks them up. See
+        # opportunity_aggregate_dirty.
+        db.execute('''INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
+            SELECT condition_id, outcome FROM opportunity_contributors WHERE wallet = ANY(%s)
+            ON CONFLICT DO NOTHING''', (changed_wallets,))
+    print(f'  [balances] refreshed {len(results)}/{len(wallets)} wallet balances ({len(changed_wallets)} changed)')
 
 
 # The publishable/anon key — same one already shipped to every browser in
@@ -937,11 +962,35 @@ def refresh_opportunity_aggregates(db):
     pairs changed (new contribution, a contributing wallet's balance moved,
     or a contributing wallet's win rate moved — see record_contribution,
     refresh_wallet_balances, refresh_leaderboard) and this recomputes the
-    true MAX for just those pairs each run, claiming them via a single
-    DELETE ... RETURNING so a pair can't be silently dropped between the
-    claim and the recompute."""
+    true MAX for just those pairs each run, claiming a bounded batch via a
+    single DELETE ... RETURNING so a claimed pair can't be silently dropped
+    between the claim and the recompute.
+
+    DIRTY_BATCH_LIMIT: an earlier version claimed the *entire* dirty set
+    unconditionally every call. In production this caused recurring
+    statement-timeout failures — a handful of heavily-traded markets have
+    thousands of opportunity_wallets rows, and if even one or two landed in
+    a claimed batch the recompute (which joined against opportunity_wallets
+    directly) could blow past the 2-minute statement_timeout. Since the
+    DELETE had already committed, that whole batch was then silently lost —
+    the incremental path effectively never ran for best_bet_ratio, and the
+    hourly reconcile_caches() was doing all the real work (confirmed via
+    its drift logging: 7,000-9,000+ best_bet_ratio rows corrected every
+    single hour). Capping the claim bounds worst-case per-call cost well
+    under the timeout regardless of which pairs are in it; a larger backlog
+    just drains over more 15s cycles instead of one slow call. Combined
+    with the opportunity_wallet_max_usd rollup below (which fixed the
+    actual root cause — see that query's comment), this is now just cheap
+    insurance against any future unexpected spike, not load-bearing."""
+    DIRTY_BATCH_LIMIT = 300
     now = datetime.now(timezone.utc)
-    rows = db.fetchall('DELETE FROM opportunity_aggregate_dirty RETURNING condition_id, outcome')
+    rows = db.fetchall('''
+        DELETE FROM opportunity_aggregate_dirty
+        WHERE (condition_id, outcome) IN (
+          SELECT condition_id, outcome FROM opportunity_aggregate_dirty LIMIT %s
+        )
+        RETURNING condition_id, outcome
+    ''', (DIRTY_BATCH_LIMIT,))
     if not rows:
         print('  [aggregates] no dirty pairs, skipping best_win_rate / best_bet_ratio')
         return
@@ -966,14 +1015,22 @@ def refresh_opportunity_aggregates(db):
         ON CONFLICT (condition_id, outcome) DO UPDATE SET
           best_win_rate = EXCLUDED.best_win_rate, updated_at = EXCLUDED.updated_at
     ''', (now, dirty_cids, dirty_outcomes))
+    # Reads from opportunity_wallet_max_usd (each wallet's largest trade per
+    # market, maintained incrementally in record_contribution) instead of
+    # rescanning opportunity_wallets directly — scans a market's distinct
+    # wallets instead of its full trade history. A handful of heavily-traded
+    # markets have thousands of trade rows but far fewer distinct wallets
+    # (confirmed against real data: a 98,669-row market had only 28 distinct
+    # wallets) — rescanning the raw table was the actual cause of the
+    # statement-timeout/lost-batch issue described above, not batch size.
     db.execute('''
         INSERT INTO opportunity_best_bet_ratio (condition_id, outcome, best_bet_ratio, updated_at)
-        SELECT ow.condition_id, ow.outcome, MAX(ow.usd / wb.usdc_balance), %s
-        FROM opportunity_wallets ow
+        SELECT m.condition_id, m.outcome, MAX(m.max_usd / wb.usdc_balance), %s
+        FROM opportunity_wallet_max_usd m
         JOIN unnest(%s::text[], %s::text[]) AS dirty(condition_id, outcome)
-          ON dirty.condition_id = ow.condition_id AND dirty.outcome = ow.outcome
-        JOIN wallet_balances wb ON wb.wallet = ow.wallet AND wb.usdc_balance >= 1
-        GROUP BY ow.condition_id, ow.outcome
+          ON dirty.condition_id = m.condition_id AND dirty.outcome = m.outcome
+        JOIN wallet_balances wb ON wb.wallet = m.wallet AND wb.usdc_balance >= 1
+        GROUP BY m.condition_id, m.outcome
         ON CONFLICT (condition_id, outcome) DO UPDATE SET
           best_bet_ratio = EXCLUDED.best_bet_ratio, updated_at = EXCLUDED.updated_at
     ''', (now, dirty_cids, dirty_outcomes))
