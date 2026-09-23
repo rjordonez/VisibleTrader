@@ -19,3 +19,7 @@ verify_jwt = false
 # signature check (see index.ts) is the real security boundary, replacing
 # the platform-level JWT gate.
 verify_jwt = false
+
+[functions.analyze-market]
+# Validates the caller with auth.getUser and checks their subscription.
+verify_jwt = false
