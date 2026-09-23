@@ -21,6 +21,7 @@ type Progress = {
   outcomes?: { name: string; price: number | null }[]; positionCount?: number; tradersAvailable?: boolean
   sources?: Source[]; searches?: number; researchStatus?: Report['researchStatus']
 }
+type PickOption = { url: string; title: string; images: (string | null)[]; outcomes: { name: string; price: number | null }[]; group: string }
 const cents = (value: number | null) => value === null ? '—' : `${Math.round(value * 100)}¢`
 const percent = (value: number | null) => value === null ? '—' : `${Math.round(value * 100)}%`
 const dollars = (value: number | null | undefined) => value && value > 0 ? `$${Math.round(value).toLocaleString()}` : '—'
@@ -82,6 +83,42 @@ function Processing({ progress, image }: { progress: Progress; image: string | n
   </div>
 }
 
+// A pasted event link can't point at one specific sub-market — Polymarket's
+// spread/total lines are tabs on one page, the URL never changes — so when
+// the backend can't narrow to a single market it hands back every market in
+// the event instead of silently guessing one. This lets the user say which
+// one they meant; picking a row resubmits with that market's own link,
+// which resolves unambiguously.
+function MarketPick({ options, onPick }: { options: PickOption[]; onPick: (url: string) => void }) {
+  // Options arrive already grouped consecutively by market family (Moneyline
+  // / Spread / Totals / Other) — folding them into sections here keeps both
+  // teams' sides of the same spread line together instead of scattered
+  // across the grid by price or volume.
+  const sections: { group: string; items: PickOption[] }[] = []
+  for (const option of options) {
+    const last = sections[sections.length - 1]
+    if (last?.group === option.group) last.items.push(option)
+    else sections.push({ group: option.group, items: [option] })
+  }
+  return <div className="ac-market-pick" aria-label="Choose a market to analyze">
+    <h1 className="ac-market-pick-heading">Pick a Market</h1>
+    {sections.map(section => (
+      <div className="ac-market-pick-section" key={section.group}>
+        {sections.length > 1 && <h2 className="ac-market-pick-group">{section.group}</h2>}
+        <div className="ac-market-pick-grid" role="list">
+          {section.items.map((option, i) => (
+            <button type="button" className="ac-market-pick-item" key={i} onClick={() => onPick(option.url)} role="listitem">
+              {option.images.some(Boolean) && <div className="ac-market-pick-logos">{option.images.filter(Boolean).slice(0, 2).map((src, j) => <img key={j} src={src!} alt="" />)}</div>}
+              <strong>{option.title}</strong>
+              <div className="ac-market-quotes">{option.outcomes.slice(0, 2).map(o => <span key={o.name}>{o.name} <b>{cents(o.price)}</b></span>)}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+}
+
 // Mirrors ExpertPickCard's visual language (src/app/expert-pick-card.css) —
 // flat bordered surface, topline + title, 3-stat row, colored bet pill —
 // so a market analyzed here looks like it belongs next to the tracked-trader
@@ -124,6 +161,7 @@ export default function AnalyzerPage() {
   const [submittedImage, setSubmittedImage] = useState<string | null>(null)
   const [progress, setProgress] = useState<Progress | null>(null)
   const [report, setReport] = useState<Report | null>(null)
+  const [pickOptions, setPickOptions] = useState<PickOption[] | null>(null)
   const [runError, setRunError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [inputError, setInputError] = useState('')
@@ -134,14 +172,14 @@ export default function AnalyzerPage() {
   const bottom = useRef<HTMLDivElement>(null)
   const controller = useRef<AbortController | null>(null)
   useEffect(() => () => controller.current?.abort(), [])
-  useEffect(() => { if (progress || report || runError) bottom.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'end' }) }, [progress, report, runError])
+  useEffect(() => { if (progress || report || runError || pickOptions) bottom.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'end' }) }, [progress, report, runError, pickOptions])
 
   const run = async (runUrl: string, runImage: string | null) => {
     const abort = new AbortController()
     controller.current = abort
     setSubmittedImage(runImage)
     setProgress({ stage: 'connecting', label: 'Connecting to your market' })
-    setReport(null); setRunError(null); setBusy(true); setInputError('')
+    setReport(null); setRunError(null); setPickOptions(null); setBusy(true); setInputError('')
     setUrl('')
     const timeout = setTimeout(() => abort.abort('timeout'), 145000)
     try {
@@ -167,6 +205,7 @@ export default function AnalyzerPage() {
             const message = JSON.parse(line)
             if (message.type === 'error') throw new Error(message.error)
             if (message.type === 'progress') setProgress(current => ({ ...current, ...message } as Progress))
+            if (message.type === 'choose') { setPickOptions(message.markets); setProgress(null); completed = true }
             if (message.type === 'result') {
               const result = message.report
               if (result?.action !== 'BUY' || typeof result.outcome !== 'string' || !Array.isArray(result.evidence) || !Array.isArray(result.traders)) throw new Error('The result could not be read. Try again.')
@@ -211,14 +250,14 @@ export default function AnalyzerPage() {
     if (!trimmed) { setInputError('Paste a market link or drop a screenshot.'); return }
     // Accepts both polymarket.com and polymarket.us — which one is invisible
     // to the user, the backend picks the right API for whichever they paste.
-    // .com always uses /event/{slug} or /market/{slug}; .us uses category-
-    // prefixed paths too (e.g. /sports/mlb/{slug}), so only .com gets the
-    // stricter prefix check — .us just needs a real trailing slug segment.
+    // .com uses /event/{slug} and /market/{slug}, but also category-prefixed
+    // paths like /sports/mlb/{slug} (confirmed live) — same shape .us always
+    // uses — so both just need a real trailing path segment.
     try {
       const p = new URL(trimmed)
       const isUS = p.hostname === 'polymarket.us' || p.hostname === 'www.polymarket.us'
       const validHost = isUS || p.hostname === 'polymarket.com' || p.hostname === 'www.polymarket.com'
-      const pathOk = isUS ? p.pathname.split('/').filter(Boolean).length >= 1 : /^\/(event|market)\/[^/]+/.test(p.pathname)
+      const pathOk = p.pathname.split('/').filter(Boolean).length >= 1
       if (p.protocol !== 'https:' || !validHost || !pathOk) throw new Error()
     }
     catch { setInputError('Use a full Polymarket event or market link.'); return }
@@ -233,10 +272,10 @@ export default function AnalyzerPage() {
   const reset = () => {
     cancel()
     setUrl(''); setSubmittedImage(null)
-    setProgress(null); setReport(null); setRunError(null); setInputError(''); setStarting(false)
+    setProgress(null); setReport(null); setRunError(null); setPickOptions(null); setInputError(''); setStarting(false)
   }
 
-  const hasRun = !!(progress || report || runError)
+  const hasRun = !!(progress || report || runError || pickOptions)
   return <div className={`ac-page ${hasRun ? 'ac-has-run' : ''}`}>
     {!hasRun && <div className="ac-start">
       <h1>Analyze any Polymarket pick</h1>
@@ -266,6 +305,7 @@ export default function AnalyzerPage() {
     {hasRun && <div className="ac-output">
       {report ? <Result report={report} onReset={reset} />
         : runError ? <div className="ac-run-error" role="alert"><p>{runError}</p><button onClick={reset}><RotateCcw size={14} />Try again</button></div>
+        : pickOptions ? <MarketPick options={pickOptions} onPick={pickUrl => { setPickOptions(null); start(pickUrl, null) }} />
         : progress ? <><Processing progress={progress} image={submittedImage} /><button type="button" className="ac-stop" onClick={cancel}><Square size={12} fill="currentColor" />Stop</button></> : null}
     </div>}
     <div ref={bottom} />

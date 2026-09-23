@@ -54,6 +54,19 @@
 .ac-stop { display:flex; align-items:center; gap:7px; margin:0 auto; border:1px solid var(--ac-border); border-radius:9px; background:none; color:#a4a4b0; padding:8px 13px; font-size:13px; }
 .ac-stop:hover { border-color:#515169; color:#e9e9ee; }
 
+/* ---- Market picker: shown when a pasted link can't be narrowed to one market ---- */
+.ac-market-pick { max-width:920px; margin:0 auto; padding:8px 0 20px; animation:ac-in .3s ease both; }
+.ac-market-pick-heading { font-size:26px; font-weight:750; letter-spacing:-0.8px; color:#f2f2f6; text-align:center; margin:0 0 22px; }
+.ac-market-pick-section { margin-bottom:28px; }
+.ac-market-pick-section:last-child { margin-bottom:0; }
+.ac-market-pick-group { font-size:13px; font-weight:650; color:var(--ac-muted); letter-spacing:.2px; margin:0 0 12px; padding-bottom:8px; border-bottom:1px solid var(--ac-border); }
+.ac-market-pick-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; }
+.ac-market-pick-item { display:flex; flex-direction:column; align-items:flex-start; gap:10px; width:100%; padding:18px; border:1px solid var(--ac-border); border-radius:14px; background:var(--ac-surface); color:var(--ac-text); text-align:left; transition:border-color .15s ease; }
+.ac-market-pick-item:hover,.ac-market-pick-item:focus-visible { border-color:#6370ff55; }
+.ac-market-pick-logos { display:flex; gap:6px; }
+.ac-market-pick-logos img { width:40px; height:40px; border-radius:9px; object-fit:cover; }
+.ac-market-pick-item>strong { font-size:15px; font-weight:600; line-height:1.4; overflow-wrap:anywhere; }
+
 /* ---- Result: matches ExpertPickCard's flat bordered card language ---- */
 .ac-result { max-width:600px; margin:0 auto; padding:12px 0 20px; animation:ac-in .3s ease both; }
 .ac-pick-card { display:flex; flex-direction:column; border:1px solid var(--ac-border); border-radius:18px; background:var(--ac-surface-2); padding:24px; }
@@ -138,4 +151,9 @@
   .ac-reason-item { scroll-snap-align:start; }
   .ac-source-list { grid-template-columns:1fr; }
   .ac-trader small { margin-left:0; }
+  .ac-market-pick-heading { font-size:22px; }
+  .ac-market-pick-grid { grid-template-columns:1fr; }
+}
+@media(min-width:641px) and (max-width:860px) {
+  .ac-market-pick-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }
 }
