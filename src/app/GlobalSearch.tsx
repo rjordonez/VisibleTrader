@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import HoverLord from './HoverLord'
@@ -138,7 +139,7 @@ export default function GlobalSearch({
         <span>{label}</span>
       </button>
 
-      {open && (
+      {open && createPortal(
         <div className="gsearch-backdrop" onClick={close}>
           <div className="gsearch-panel" onClick={e => e.stopPropagation()}>
             <div className="gsearch-input-row">
@@ -202,7 +203,8 @@ export default function GlobalSearch({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )

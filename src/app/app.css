@@ -1089,6 +1089,34 @@
 
 .sig-table-wrap { border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; scrollbar-width: none; }
 .sig-table-wrap::-webkit-scrollbar { display: none; }
+
+/* Search/sort controls sitting above a .sig-table-wrap (trader-detail
+   positions table, etc.) — plain text input and native select styled to
+   match the table/card chrome around them. */
+.sig-filter-input {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; font: inherit; font-size: 0.875rem; color: var(--text);
+}
+.sig-filter-input::placeholder { color: var(--text-faint); }
+.sig-filter-input:focus { outline: none; border-color: var(--blue); }
+
+.sig-sort-btn { display: flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }
+.sig-sort-dir { display: inline-flex; color: var(--text-dim); border-radius: 4px; padding: 2px; }
+.sig-sort-dir:hover { color: var(--text); background: var(--border); }
+.sig-sort-backdrop { position: fixed; inset: 0; z-index: 20; }
+.sig-sort-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 21; min-width: 160px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 6px; display: flex; flex-direction: column; gap: 2px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+.sig-sort-menu-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: none; border: none; border-radius: 6px; padding: 8px 10px;
+  font: inherit; font-size: 0.875rem; color: var(--text); text-align: left; cursor: pointer;
+}
+.sig-sort-menu-item:hover { background: var(--border); }
+.sig-sort-menu-item.active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); flex-shrink: 0; }
 .sig-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .sig-table th {
   text-align: left; font-size: 11px; font-weight: 600; color: var(--text-dim);
@@ -1544,8 +1572,15 @@
 /* Mobile: sit near the top, use the whole width, let long titles wrap to
    two lines instead of a hard ellipsis. */
 @media (max-width: 640px) {
-  .gsearch-backdrop { padding: 10px 10px 16px; align-items: stretch; }
-  .gsearch-panel { max-height: calc(100dvh - 26px); border-radius: 12px; }
+  /* Edge-to-edge, not a padded card — this is reached from the mobile
+     hamburger drawer, which closes itself the instant search opens (see
+     GlobalSearch's onOpen). A portal keeps this from sliding off-canvas
+     with the closing drawer (position: fixed's containing block becomes
+     whatever transformed ancestor it's nested in otherwise), so it's free
+     to fill the whole viewport here instead of sitting as a centered
+     dialog on top of empty space. */
+  .gsearch-backdrop { padding: 0; align-items: stretch; }
+  .gsearch-panel { max-width: 100%; max-height: 100dvh; height: 100dvh; border-radius: 0; }
   .gsearch-input-row { padding: 13px 14px; }
   .gsearch-body { padding: 14px 14px 18px; }
   .gsearch-trader-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

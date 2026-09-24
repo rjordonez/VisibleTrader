@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { ArrowUp, ArrowDown } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { traderLabel, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './helpers'
@@ -50,6 +51,7 @@ interface LivePosition {
   cashPnl: number
   realizedPnl: number
   redeemable: boolean
+  size?: number
 }
 
 interface LiveClosedPosition {
@@ -112,6 +114,61 @@ async function findSimilarTraders(
     .slice(0, 5)
 }
 
+// A single button doubling as two controls, same as Polymarket's own
+// positions sort: the arrow icon on the left flips ascending/descending in
+// place (stopPropagation so it doesn't also open the menu), the rest of the
+// button opens a dropdown to pick which field drives the sort.
+function SortControl<T extends string>({ options, value, onChange, dir, onToggleDir }: {
+  options: { value: T; label: string }[]
+  value: T
+  onChange: (v: T) => void
+  dir: 'asc' | 'desc'
+  onToggleDir: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const currentLabel = options.find(o => o.value === value)?.label ?? ''
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        type="button" className="sig-filter-input sig-sort-btn"
+        onClick={() => setOpen(o => !o)}
+      >
+        <span
+          role="button" tabIndex={0} title={dir === 'desc' ? 'Descending — click to flip' : 'Ascending — click to flip'}
+          className="sig-sort-dir"
+          onClick={e => { e.stopPropagation(); onToggleDir() }}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onToggleDir() } }}
+        >
+          {dir === 'desc' ? <ArrowDown size={14} /> : <ArrowUp size={14} />}
+        </span>
+        {currentLabel}
+      </button>
+      {open && (
+        <>
+          <div className="sig-sort-backdrop" onClick={() => setOpen(false)} />
+          <div className="sig-sort-menu">
+            {options.map(o => (
+              <button
+                key={o.value} type="button"
+                className={`sig-sort-menu-item ${o.value === value ? 'active' : ''}`}
+                onClick={() => {
+                  // Re-picking the field that's already active flips direction
+                  // instead of no-opping — same as clicking the arrow icon.
+                  if (o.value === value) onToggleDir()
+                  else onChange(o.value)
+                  setOpen(false)
+                }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220, terminalLayout = false }: {
   wallet: string
   // Overridable so the Terminal (its own self-contained route tree, see
@@ -150,6 +207,19 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   const [visibleTrades, setVisibleTrades] = useState(10)
   const [visibleLive, setVisibleLive] = useState(10)
   const PAGE_STEP = 50
+  // Separate from `liveLoading` (which gates the untracked-wallet fallback
+  // branch below) — this one covers the always-fetched open-positions call
+  // that now runs for tracked wallets too, so a tracked wallet's own
+  // skeleton doesn't accidentally piggyback on the fallback branch's flag.
+  const [openPositionsLoading, setOpenPositionsLoading] = useState(true)
+  const [resolvedSort, setResolvedSort] = useState<'date' | 'profit'>('profit')
+  const [activeSort, setActiveSort] = useState<'value' | 'price' | 'pnl'>('value')
+  // Shared across both tabs rather than one flag per tab — only one tab is
+  // ever visible at a time, and there's no real expectation that flipping
+  // direction on Closed should leave Active in a different, forgotten state.
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [positionsTab, setPositionsTab] = useState<'active' | 'closed'>('closed')
+  const [positionsSearch, setPositionsSearch] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
   const [trackedWallets, setTrackedWallets] = useState<Record<string, boolean>>({})
   const [busyWallet, setBusyWallet] = useState<string | null>(null)
@@ -225,25 +295,35 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         setSummaryLoading(false)
         loadTrackedStatus([wallet])
 
+        // Open positions always come straight from Polymarket's own public
+        // data API, tracked wallet or not — our tables only ever carry
+        // resolved history (wallet_positions/opportunity_wallets has no
+        // concept of "still open"), so this is the only source of truth for
+        // "what are they holding right now" regardless of whether we've
+        // been tracking this wallet's past trades ourselves.
+        setOpenPositionsLoading(true)
+        fetch(`https://data-api.polymarket.com/positions?user=${wallet}&limit=50`)
+          .then(r => r.ok ? r.json() : [])
+          .then(pos => { if (!cancelled) setLivePositions((pos ?? []) as LivePosition[]) })
+          .catch(() => {})
+          .finally(() => { if (!cancelled) setOpenPositionsLoading(false) })
+
         if (!summaryData) {
-          // We only have history for wallets we've tracked ourselves — for
-          // everyone else, fall back to Polymarket's own public (CORS-open,
-          // no auth needed) data API so "no tracked history" doesn't mean
-          // "we can't show you anything real about this wallet."
+          // We only have resolved history for wallets we've tracked
+          // ourselves — for everyone else, fall back to Polymarket's public
+          // data API for closed positions/trades too, so "no tracked
+          // history" doesn't mean "we can't show you anything real."
           setLiveLoading(true)
           Promise.all([
-            fetch(`https://data-api.polymarket.com/positions?user=${wallet}&limit=50`).then(r => r.ok ? r.json() : []),
             fetch(`https://data-api.polymarket.com/closed-positions?user=${wallet}&limit=200`).then(r => r.ok ? r.json() : []),
             fetch(`https://data-api.polymarket.com/trades?user=${wallet}&limit=30`).then(r => r.ok ? r.json() : []),
           ])
-            .then(([pos, closed, trades]) => {
+            .then(([closed, trades]) => {
               if (cancelled) return
-              const livePos = (pos ?? []) as LivePosition[]
               const liveClosedPos = (closed ?? []) as LiveClosedPosition[]
-              setLivePositions(livePos)
               setLiveClosed(liveClosedPos)
               setLiveTrades((trades ?? []) as LiveTrade[])
-              const pairs = [...livePos, ...liveClosedPos]
+              const pairs = liveClosedPos
                 .filter(p => p.conditionId && p.outcome)
                 .map(p => ({ condition_id: p.conditionId, outcome: p.outcome }))
               setSimilarLoading(true)
@@ -299,6 +379,46 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   const winRate = summary && summary.won + summary.lost > 0 ? (summary.won / (summary.won + summary.lost)) * 100 : 0
   const usdWinRate = summary && summary.deployed > 0 ? (summary.won_usd / summary.deployed) * 100 : 0
   const roi = summary && summary.deployed > 0 ? (summary.net_profit / summary.deployed) * 100 : 0
+
+  // Raw `positions` is one row per fill — a single market can carry dozens
+  // of partial fills at slightly different prices/timestamps (see: any
+  // high-volume tracked wallet), which read as spam duplicates in a table.
+  // Polymarket's own UI collapses these into one row per (market, outcome);
+  // this mirrors that. avgPrice is share-weighted (usd/price ≈ shares per
+  // fill), not a naive average of the per-fill prices, so it reflects what
+  // was actually paid across the whole position rather than over-weighting
+  // a handful of small fills at an outlier price.
+  const aggregatedPositions = useMemo(() => {
+    const map = new Map<string, {
+      title: string; outcome: string; totalStake: number; totalShares: number
+      totalProfit: number; resolvedWin: boolean; latestResolvedTs: string; fills: number
+    }>()
+    for (const p of positions) {
+      const key = `${p.condition_id}|${p.outcome}`
+      const shares = p.price > 0 ? p.usd / p.price : 0
+      const existing = map.get(key)
+      if (existing) {
+        existing.totalStake += p.usd
+        existing.totalShares += shares
+        existing.totalProfit += p.profit
+        existing.fills += 1
+        if (p.resolved_ts > existing.latestResolvedTs) existing.latestResolvedTs = p.resolved_ts
+      } else {
+        map.set(key, {
+          title: p.title, outcome: p.outcome, totalStake: p.usd, totalShares: shares,
+          totalProfit: p.profit, resolvedWin: p.resolved_win, latestResolvedTs: p.resolved_ts, fills: 1,
+        })
+      }
+    }
+    const rows = [...map.values()].map(r => ({
+      ...r, avgPrice: r.totalShares > 0 ? r.totalStake / r.totalShares : 0,
+    }))
+    const dirMul = sortDir === 'asc' ? 1 : -1
+    const cmp = resolvedSort === 'profit'
+      ? (a: typeof rows[number], b: typeof rows[number]) => a.totalProfit - b.totalProfit
+      : (a: typeof rows[number], b: typeof rows[number]) => new Date(a.latestResolvedTs).getTime() - new Date(b.latestResolvedTs).getTime()
+    return rows.sort((a, b) => dirMul * cmp(a, b))
+  }, [positions, resolvedSort, sortDir])
 
   const trackedCumulative = [...positions]
     .sort((a, b) => new Date(a.resolved_ts).getTime() - new Date(b.resolved_ts).getTime())
@@ -392,41 +512,151 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                   <CumulativeChartSection data={trackedCumulative} label="P&L over time" height={chartHeight} />
                 )}
 
-                <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>All resolved positions</div>
-                <div className="sig-table-wrap">
-                  <table className="sig-table">
-                    <thead>
-                      <tr><th>Market</th><th className="num">Stake</th><th className="num">Price</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
-                    </thead>
-                    <tbody>
-                      {positionsLoading && <SkelTableRows cols={6} count={10} />}
-                      {!positionsLoading && positions.slice(0, visibleTrades).map((p, i) => (
-                        <tr key={i}>
-                          <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                          <td className="num" data-label="Stake">{fmtFull(p.usd)}</td>
-                          <td className="num" data-label="Price">{Math.round(p.price * 100)}{terminalLayout ? '%' : '¢'}</td>
-                          <td data-label="Result" style={{ color: p.resolved_win ? 'var(--green)' : 'var(--red)' }}>{p.resolved_win ? 'Won' : 'Lost'}</td>
-                          <td className="num" data-label="Profit" style={{ color: p.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.profit)}</td>
-                          <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(p.resolved_ts)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {!positionsLoading && positions.length > visibleTrades && (
-                    <button className="sig-load-more" onClick={() => setVisibleTrades(v => v + PAGE_STEP)}>
-                      Load more ({positions.length - visibleTrades} remaining)
+                {/* One table, an Active/Closed toggle switching what feeds it —
+                    mirrors Polymarket's own positions view exactly (tabs, search,
+                    sort dropdown, single RESULT/MARKET/TOTAL TRADED/AMOUNT table)
+                    instead of two separately-labeled tables stacked on the page. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                  <div className="sig-seg" role="tablist" style={{ margin: 0, gap: 8 }}>
+                    <button
+                      type="button" role="tab" aria-selected={positionsTab === 'active'}
+                      className={`sig-seg-btn ${positionsTab === 'active' ? 'active' : ''}`}
+                      onClick={() => setPositionsTab('active')}
+                    >
+                      Active{!openPositionsLoading && livePositions.length > 0 ? ` (${livePositions.length})` : ''}
                     </button>
+                    <button
+                      type="button" role="tab" aria-selected={positionsTab === 'closed'}
+                      className={`sig-seg-btn ${positionsTab === 'closed' ? 'active' : ''}`}
+                      onClick={() => setPositionsTab('closed')}
+                    >
+                      Closed
+                    </button>
+                  </div>
+                  <input
+                    type="text" placeholder="Search positions" value={positionsSearch}
+                    onChange={e => setPositionsSearch(e.target.value)}
+                    className="sig-filter-input" style={{ flex: 1, minWidth: 160 }}
+                  />
+                  {positionsTab === 'closed' && (
+                    <SortControl
+                      options={[{ value: 'date', label: 'Date' }, { value: 'profit', label: 'Profit/Loss' }]}
+                      value={resolvedSort} onChange={setResolvedSort}
+                      dir={sortDir} onToggleDir={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                    />
                   )}
-                  {!positionsLoading && visibleTrades > 10 && positions.length <= visibleTrades && (
-                    <button className="sig-load-more" onClick={() => setVisibleTrades(10)}>
-                      Show fewer
-                    </button>
+                  {positionsTab === 'active' && (
+                    <SortControl
+                      options={[{ value: 'value', label: 'Value' }, { value: 'price', label: 'Price' }, { value: 'pnl', label: 'Unrealized P&L' }]}
+                      value={activeSort} onChange={setActiveSort}
+                      dir={sortDir} onToggleDir={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                    />
                   )}
                 </div>
+
+                {positionsTab === 'active' && (
+                  <>
+                    <div className="sig-table-wrap">
+                      <table className="sig-table">
+                        <thead>
+                          <tr><th>Market</th><th>Result</th><th className="num">Total Traded</th><th className="num">Amount</th></tr>
+                        </thead>
+                        <tbody>
+                          {openPositionsLoading && <SkelTableRows cols={4} count={5} />}
+                          {!openPositionsLoading && livePositions
+                            .filter(p => !positionsSearch || p.title.toLowerCase().includes(positionsSearch.toLowerCase()))
+                            .map(p => ({ ...p, totalTraded: p.size != null ? p.size * p.avgPrice : null }))
+                            .map(p => ({ ...p, value: p.totalTraded != null ? p.totalTraded + p.cashPnl : null }))
+                            .sort((a, b) => {
+                              const dirMul = sortDir === 'asc' ? 1 : -1
+                              const field = (x: typeof a) => activeSort === 'price' ? x.curPrice : activeSort === 'pnl' ? x.cashPnl : (x.value ?? 0)
+                              return dirMul * (field(a) - field(b))
+                            })
+                            .map((p, i) => {
+                              const totalTraded = p.totalTraded
+                              const amount = p.value
+                              return (
+                                <tr key={i}>
+                                  <td>
+                                    {p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span>
+                                    <div style={{ color: 'var(--text-faint)', fontSize: '0.85em' }}>
+                                      Avg {Math.round(p.avgPrice * 100)}{terminalLayout ? '%' : '¢'} · Now {Math.round(p.curPrice * 100)}{terminalLayout ? '%' : '¢'}
+                                    </div>
+                                  </td>
+                                  <td data-label="Result" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{p.cashPnl >= 0 ? 'Up' : 'Down'}</td>
+                                  <td className="num" data-label="Total Traded">{totalTraded != null ? fmtFull(totalTraded) : '—'}</td>
+                                  <td className="num" data-label="Amount">
+                                    {amount != null ? fmtFull(amount) : '—'}
+                                    <div style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)', fontSize: '0.85em' }}>{fmtSigned(p.cashPnl)}</div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {!openPositionsLoading && livePositions.length === 0 && (
+                      <div className="sig-empty">No active positions right now.</div>
+                    )}
+                  </>
+                )}
+
+                {positionsTab === 'closed' && (
+                  <>
+                    <div className="sig-table-wrap">
+                      <table className="sig-table">
+                        <thead>
+                          <tr><th>Market</th><th>Result</th><th className="num">Total Traded</th><th className="num">Amount</th></tr>
+                        </thead>
+                        <tbody>
+                          {positionsLoading && <SkelTableRows cols={4} count={10} />}
+                          {!positionsLoading && aggregatedPositions
+                            .filter(p => !positionsSearch || p.title.toLowerCase().includes(positionsSearch.toLowerCase()))
+                            .slice(0, visibleTrades)
+                            .map((p, i) => {
+                              const amount = p.totalStake + p.totalProfit
+                              const returnPct = p.totalStake > 0 ? (p.totalProfit / p.totalStake) * 100 : 0
+                              return (
+                                <tr key={i}>
+                                  <td>
+                                    {p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span>
+                                    <div style={{ color: 'var(--text-faint)', fontSize: '0.85em' }}>
+                                      Avg {Math.round(p.avgPrice * 100)}{terminalLayout ? '%' : '¢'}{p.fills > 1 ? ` · ${p.fills} fills` : ''} · {timeAgo(p.latestResolvedTs)}
+                                    </div>
+                                  </td>
+                                  <td data-label="Result" style={{ color: p.resolvedWin ? 'var(--green)' : 'var(--red)' }}>{p.resolvedWin ? 'Won' : 'Lost'}</td>
+                                  <td className="num" data-label="Total Traded">{fmtFull(p.totalStake)}</td>
+                                  <td className="num" data-label="Amount">
+                                    {fmtFull(amount)}
+                                    <div style={{ color: p.totalProfit >= 0 ? 'var(--green)' : 'var(--red)', fontSize: '0.85em' }}>
+                                      {fmtSigned(p.totalProfit)} ({returnPct >= 0 ? '+' : ''}{returnPct.toFixed(1)}%)
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {!positionsLoading && aggregatedPositions.length > visibleTrades && (
+                      <button className="sig-load-more" onClick={() => setVisibleTrades(v => v + PAGE_STEP)}>
+                        Load more ({aggregatedPositions.length - visibleTrades} remaining)
+                      </button>
+                    )}
+                    {!positionsLoading && visibleTrades > 10 && aggregatedPositions.length <= visibleTrades && (
+                      <button className="sig-load-more" onClick={() => setVisibleTrades(10)}>
+                        Show fewer
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
 
               <div className="search-dashboard-side">
-                <HighlightsRow items={positions} loading={positionsLoading} />
+                <HighlightsRow
+                  items={aggregatedPositions.map(p => ({ title: p.title, outcome: p.outcome, profit: p.totalProfit }))}
+                  loading={positionsLoading}
+                />
                 <CategoryBreakdownSection categoryBreakdown={byCategory} loading={categoryLoading} />
                 <div>
                   <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Similar top traders</div>
