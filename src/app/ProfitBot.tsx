@@ -24,6 +24,10 @@ interface BotResolved {
   pnl: number
   resolved_ts: string
 }
+interface BotCurvePoint {
+  pnl: number
+  resolved_ts: string
+}
 interface BotPerf {
   picks: number
   won: number
@@ -43,6 +47,7 @@ export default function ProfitBot() {
   const { locked } = useSubscriptionGate()
   const [picks, setPicks] = useState<Opportunity[]>([])
   const [resolved, setResolved] = useState<BotResolved[]>([])
+  const [curve, setCurve] = useState<BotCurvePoint[]>([])
   const [perf, setPerf] = useState<BotPerf | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -64,16 +69,17 @@ export default function ProfitBot() {
   const valueFromPos = (pos: number) => COMPOUND_MIN * Math.exp(compoundRatio * (pos / 1000))
   const compoundSliderPos = posFromValue(compoundStart)
   const compoundCurve = useMemo(() => {
-    const chron = [...resolved].sort((a, b) => new Date(a.resolved_ts).getTime() - new Date(b.resolved_ts).getTime())
+    // `curve` is every resolved pick, oldest first. `resolved` is only the
+    // latest 60 for the list, so it can't be used here.
     let bankroll = compoundStart
     const points: { d: string; cum: number }[] = []
-    for (const p of chron) {
+    for (const p of curve) {
       const stake = bankroll * COMPOUND_STAKE_FRACTION
-      bankroll = bankroll - stake + stake * (1 + p.pnl / 100)
+      bankroll = bankroll - stake + stake * (1 + Number(p.pnl) / 100)
       points.push({ d: p.resolved_ts, cum: bankroll })
     }
     return points
-  }, [resolved, compoundStart])
+  }, [curve, compoundStart])
   const compoundFinal = compoundCurve.at(-1)?.cum ?? compoundStart
   const compoundHit100kAt = compoundCurve.findIndex(pt => pt.cum >= 100000)
 
@@ -81,13 +87,14 @@ export default function ProfitBot() {
     let cancelled = false
     let retry: ReturnType<typeof setTimeout> | undefined
     const load = async (attempt = 0) => {
-      const [pi, re, pe] = await Promise.all([
+      const [pi, re, pe, cu] = await Promise.all([
         supabase.rpc('profit_bot_picks'),
         supabase.rpc('profit_bot_resolved'),
         supabase.rpc('profit_bot_performance'),
+        supabase.rpc('profit_bot_resolved_curve'),
       ])
       if (cancelled) return
-      if (pi.error || re.error || pe.error) {
+      if (pi.error || re.error || pe.error || cu.error) {
         // Transient DB errors happen; back off and retry a few times before
         // giving up so a blip doesn't need a page reload.
         if (attempt < 4) {
@@ -98,6 +105,7 @@ export default function ProfitBot() {
       } else {
         setPicks((pi.data ?? []) as Opportunity[])
         setResolved((re.data ?? []) as BotResolved[])
+        setCurve((cu.data ?? []) as BotCurvePoint[])
         setPerf(((pe.data ?? [])[0] ?? null) as BotPerf | null)
         setError(false)
       }
