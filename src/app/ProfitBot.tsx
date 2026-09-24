@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Cpu, ChevronDown, HelpCircle, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -34,10 +34,6 @@ interface BotPerf {
   flat100_pnl: number
   since: string
 }
-interface BotDay {
-  d: string
-  day_pnl: number
-}
 
 export default function ProfitBot() {
   // The hero (track record + chart) is genuinely public data now (see
@@ -48,30 +44,50 @@ export default function ProfitBot() {
   const [picks, setPicks] = useState<Opportunity[]>([])
   const [resolved, setResolved] = useState<BotResolved[]>([])
   const [perf, setPerf] = useState<BotPerf | null>(null)
-  const [daily, setDaily] = useState<BotDay[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [view, setView] = useState<'ongoing' | 'resolved'>('ongoing')
   const [sort, setSort] = useState<'recent' | 'profitable'>('recent')
   const [helpOpen, setHelpOpen] = useState(false)
   const [modalOpp, setModalOpp] = useState<Opportunity | null>(null)
-  // All the bot's numbers are backtested flat $100/pick server-side; scale
-  // them linearly for display so the user can see them at their own size.
-  const [betSize, setBetSize] = useState(1000)
+  const betSize = 1000
   const betMultiplier = betSize / 100
+
+
+  const [compoundStart, setCompoundStart] = useState(50)
+  const COMPOUND_STAKE_FRACTION = 0.2
+  
+  const COMPOUND_MIN = 2.5
+  const COMPOUND_MAX = 1000
+  const compoundRatio = Math.log(COMPOUND_MAX / COMPOUND_MIN)
+  const posFromValue = (v: number) => (1000 * Math.log(v / COMPOUND_MIN)) / compoundRatio
+  const valueFromPos = (pos: number) => COMPOUND_MIN * Math.exp(compoundRatio * (pos / 1000))
+  const compoundSliderPos = posFromValue(compoundStart)
+  const compoundCurve = useMemo(() => {
+    const chron = [...resolved].sort((a, b) => new Date(a.resolved_ts).getTime() - new Date(b.resolved_ts).getTime())
+    let bankroll = compoundStart
+    const points: { d: string; cum: number }[] = []
+    for (const p of chron) {
+      const stake = bankroll * COMPOUND_STAKE_FRACTION
+      bankroll = bankroll - stake + stake * (1 + p.pnl / 100)
+      points.push({ d: p.resolved_ts, cum: bankroll })
+    }
+    return points
+  }, [resolved, compoundStart])
+  const compoundFinal = compoundCurve.at(-1)?.cum ?? compoundStart
+  const compoundHit100kAt = compoundCurve.findIndex(pt => pt.cum >= 100000)
 
   useEffect(() => {
     let cancelled = false
     let retry: ReturnType<typeof setTimeout> | undefined
     const load = async (attempt = 0) => {
-      const [pi, re, pe, da] = await Promise.all([
+      const [pi, re, pe] = await Promise.all([
         supabase.rpc('profit_bot_picks'),
         supabase.rpc('profit_bot_resolved'),
         supabase.rpc('profit_bot_performance'),
-        supabase.rpc('profit_bot_daily'),
       ])
       if (cancelled) return
-      if (pi.error || re.error || pe.error || da.error) {
+      if (pi.error || re.error || pe.error) {
         // Transient DB errors happen; back off and retry a few times before
         // giving up so a blip doesn't need a page reload.
         if (attempt < 4) {
@@ -83,7 +99,6 @@ export default function ProfitBot() {
         setPicks((pi.data ?? []) as Opportunity[])
         setResolved((re.data ?? []) as BotResolved[])
         setPerf(((pe.data ?? [])[0] ?? null) as BotPerf | null)
-        setDaily((da.data ?? []) as BotDay[])
         setError(false)
       }
       setLoading(false)
@@ -93,10 +108,6 @@ export default function ProfitBot() {
     return () => { cancelled = true; clearInterval(t); clearTimeout(retry) }
   }, [])
 
-  const cumulative = daily.reduce<{ d: string; cum: number }[]>((acc, day) => {
-    acc.push({ d: day.d, cum: (acc.at(-1)?.cum ?? 0) + Number(day.day_pnl) * betMultiplier })
-    return acc
-  }, [])
   // `since` is a bare date; parse at midday so it doesn't shift a day back
   // in western timezones.
   const sinceLabel = perf
@@ -146,43 +157,47 @@ export default function ProfitBot() {
           </div>
         )}
 
-        <div className="pbot-betsize" role="group" aria-label="Bet size per pick">
-          <label htmlFor="pbot-bet-slider">Bet size per pick</label>
+        <div className="pbot-betsize" role="group" aria-label="Starting bankroll">
+          <label htmlFor="pbot-compound-slider">Starting amount</label>
           <div className="pbot-betsize-row">
             <div className="sig-range-track-wrap pbot-betsize-track">
               <div className="sig-range-track" />
-              <div className="sig-range-fill" style={{ left: '0%', right: `${100 - (betSize - 100) / 9900 * 100}%` }} />
+              <div className="sig-range-fill" style={{ left: '0%', right: `${100 - compoundSliderPos / 10}%` }} />
               <input
-                id="pbot-bet-slider"
+                id="pbot-compound-slider"
                 type="range"
                 className="sig-range-input"
-                min={100}
-                max={10000}
-                step={100}
-                value={betSize}
-                onChange={e => setBetSize(Number(e.target.value))}
+                min={0}
+                max={1000}
+                step={1}
+                value={compoundSliderPos}
+                onChange={e => setCompoundStart(Math.max(1, Math.round(valueFromPos(Number(e.target.value)))))}
               />
             </div>
-            <span className="pbot-betsize-value">{fmtFull(betSize)}</span>
+            <span className="pbot-betsize-value">{fmtFull(compoundStart)}</span>
           </div>
         </div>
 
         <div className="profits-net-heading">
           <div>
-            <h2 id="pbot-title">If you&rsquo;d staked {fmtFull(betSize)} a pick</h2>
-            <strong className={`profits-net-value ${perf.flat100_pnl >= 0 ? 'is-positive' : 'is-negative'}`}>{scaledPnl}</strong>
+            <h2 id="pbot-title">If you restaked {(COMPOUND_STAKE_FRACTION * 100).toFixed(0)}% of the bankroll every pick</h2>
+            <strong className={`profits-net-value ${compoundFinal >= compoundStart ? 'is-positive' : 'is-negative'}`}>
+              {fmtFull(compoundFinal)}
+            </strong>
           </div>
           <div className="profits-net-context">
-            <strong>{perf.picks.toLocaleString()}</strong>
-            <span>resolved picks since {sinceLabel}</span>
+            <strong>{compoundHit100kAt >= 0 ? `Pick #${compoundHit100kAt + 1}` : 'Not yet'}</strong>
+            <span>when it first crossed $100,000</span>
           </div>
         </div>
 
         <div className="profits-chart-area">
-          <p className="profits-chart-label">Cumulative P&amp;L, flat {fmtFull(betSize)} per pick</p>
-          {cumulative.length > 1
-            ? <CumulativePickChart data={cumulative} height={250} />
-            : <p className="profits-notice">The curve appears once picks span more than one day.</p>}
+          <p className="profits-chart-label">
+            Real sequence, real resolved picks since {sinceLabel}. {(COMPOUND_STAKE_FRACTION * 100).toFixed(0)}% of bankroll restaked each time, not a flat amount.
+          </p>
+          {compoundCurve.length > 1
+            ? <CumulativePickChart data={compoundCurve} height={250} />
+            : <p className="profits-notice">Not enough resolved picks yet.</p>}
         </div>
 
         <dl className="profits-supporting-stats">
@@ -194,7 +209,9 @@ export default function ProfitBot() {
             </dd>
           </div>
           <div><dt>Avg entry price</dt><dd>{Math.round(perf.avg_entry * 100)}&cent;</dd></div>
+          <div><dt>Restaked per pick</dt><dd>{(COMPOUND_STAKE_FRACTION * 100).toFixed(0)}% of bankroll</dd></div>
         </dl>
+
       </section>
 
       <section className="profits-outcomes" aria-label="Resolved picks won and lost">
