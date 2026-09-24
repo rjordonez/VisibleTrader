@@ -194,14 +194,18 @@ function MiniLineChart({ points: history, latestValue, label, formatValue, forma
           {displayedValue.main}{displayedValue.unit && <small>{displayedValue.unit}</small>}
         </strong>
       )}
-      {selectedTime && <span className="expert-pick-hover-time">{selectedTime}</span>}
+      {selectedTime && !valueAbove && <span className="expert-pick-hover-time">{selectedTime}</span>}
     </div>
   )
   const withValue = valueAbove ? (
     <>
-      <strong className="expert-pick-value-above" style={accentStyle} aria-label={`${label}: ${displayedValue.main}${displayedValue.unit ?? ''}`}>
-        {displayedValue.main}{displayedValue.unit && <small>{displayedValue.unit}</small>}
-      </strong>
+      <div className="expert-pick-value-above" style={accentStyle}>
+        {/* Date of the hovered point, or of the latest one when idle. */}
+        <span className="expert-pick-value-above-date">{selectedTime ?? (endpoint ? formatTime(endpoint.t) : '')}</span>
+        <strong aria-label={`${label}: ${displayedValue.main}${displayedValue.unit ?? ''}`}>
+          {displayedValue.main}{displayedValue.unit && <small>{displayedValue.unit}</small>}
+        </strong>
+      </div>
       {chart}
     </>
   ) : chart
