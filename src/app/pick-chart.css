@@ -38,6 +38,15 @@
   pointer-events: none; text-shadow: 0 0 4px var(--surface-2), 0 0 8px var(--surface-2);
 }
 .expert-pick-endpoint-price small { font-size: 20px; margin-left: 1px; }
+/* valueAbove: the same readout, in its own row above the plot. */
+.expert-pick-value-above {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px;
+  font-size: 27px; line-height: 1; letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.expert-pick-value-above-date { color: var(--text); font-weight: 700; }
+.expert-pick-value-above strong { color: var(--pick-chart-color-bright, #7b9eff); }
+.expert-pick-value-above small { font-size: 20px; margin-left: 1px; }
 .expert-pick-hover-time { position: absolute; top: -9px; left: 0; color: var(--text-dim); font-size: 10px; pointer-events: none; }
 /* $ tick labels for the cumulative P&L charts -- CumulativePickChart always
    passes axisTicks, which reserves LEFT_RESERVE (52px) of left margin on
