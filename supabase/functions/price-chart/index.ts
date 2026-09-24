@@ -12,7 +12,7 @@ const corsHeaders = {
 }
 
 async function lookupMarket(slug: string): Promise<Record<string, unknown> | null> {
-  const res = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`, { headers: UA })
+  const res = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}`, { headers: UA, signal: AbortSignal.timeout(8000) })
   if (!res.ok) throw new Error('Market lookup failed')
   const rows = await res.json()
   if (rows.length) return rows[0]
@@ -20,7 +20,7 @@ async function lookupMarket(slug: string): Promise<Record<string, unknown> | nul
   // resolved market (very often exactly what ends up as the highest-
   // conviction signal, since resolved games accumulate the most historical
   // volume) returns empty here and needs the explicit closed=true lookup.
-  const closedRes = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}&closed=true`, { headers: UA })
+  const closedRes = await fetch(`https://gamma-api.polymarket.com/markets?slug=${encodeURIComponent(slug)}&closed=true`, { headers: UA, signal: AbortSignal.timeout(8000) })
   if (!closedRes.ok) throw new Error('Market lookup failed')
   const closedRows = await closedRes.json()
   return closedRows[0] ?? null
@@ -43,8 +43,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { condition_id, outcome, image_only } = await req.json()
-    if (!condition_id || !outcome) {
+    const { condition_id, outcome, image_only, market_slug } = await req.json()
+    if (market_slug !== undefined && (typeof market_slug !== 'string' || !/^[a-zA-Z0-9_-]{1,300}$/.test(market_slug))) {
+      return new Response(JSON.stringify({ error: 'Invalid market slug' }), {
+        status: 400, headers: { ...corsHeaders, 'content-type': 'application/json' },
+      })
+    }
+    if ((!condition_id && !market_slug) || !outcome) {
       return new Response(JSON.stringify({ history: [], error: 'Market data could not be loaded' }), {
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
@@ -59,23 +64,28 @@ Deno.serve(async (req) => {
     // roster is on at all — enforced by opportunities/expert_picks_open's
     // RLS, untouched here. Uses the service role since there's no caller
     // entitlement left to check for this lookup.
-    const serviceClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    )
-    const { data } = await serviceClient
-      .from('opportunities')
-      .select('slug')
-      .eq('condition_id', condition_id)
-      .limit(1)
-      .maybeSingle()
-
-    let slug = data?.slug
-    // Discover includes recent trades that may not yet be an opportunity.
+    // Analyzer cards already know their public market slug; they need no
+    // tracked-roster lookup and must also work for untracked markets.
+    let slug: string | undefined = market_slug
     if (!slug) {
-      const { data: trade } = await serviceClient.from('ticker').select('slug')
-        .eq('condition_id', condition_id).limit(1).maybeSingle()
-      slug = trade?.slug
+      const serviceClient = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      )
+      const { data } = await serviceClient
+        .from('opportunities')
+        .select('slug')
+        .eq('condition_id', condition_id)
+        .limit(1)
+        .maybeSingle()
+
+      slug = data?.slug
+      // Discover includes recent trades that may not yet be an opportunity.
+      if (!slug) {
+        const { data: trade } = await serviceClient.from('ticker').select('slug')
+          .eq('condition_id', condition_id).limit(1).maybeSingle()
+        slug = trade?.slug
+      }
     }
     if (!slug) {
       return new Response(JSON.stringify({ history: [], error: 'Market data could not be loaded' }), {
@@ -103,8 +113,8 @@ Deno.serve(async (req) => {
     let error: string | null = null
     try {
       const histRes = await fetch(
-        `https://clob.polymarket.com/prices-history?market=${tokenId}&interval=max&fidelity=30`,
-        { headers: UA }
+        `https://clob.polymarket.com/prices-history?market=${tokenId}&interval=${market_slug ? '1w' : 'max'}&fidelity=${market_slug ? 60 : 30}`,
+        { headers: UA, signal: AbortSignal.timeout(8000) }
       )
       if (!histRes.ok) throw new Error('Price provider unavailable')
       const histData = await histRes.json()

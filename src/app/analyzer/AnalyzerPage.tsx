@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { ArrowUp, ArrowUpRight, ChevronDown, Globe, ImagePlus, Link2, RotateCcw, Square, Users } from 'lucide-react'
+import { ArrowUp, ArrowUpRight, ChevronDown, Globe, ImagePlus, Link2, RotateCcw, Search, Square, Users } from 'lucide-react'
 import { supabase, supabaseFunctionsUrl } from '../../lib/supabase'
-import { PickChart } from '../PickChart'
+import { MarketSparkline } from './MarketSparkline'
 import type { ChartPoint } from '../types'
+import '../expert-pick-card.css'
 import './analyzer.css'
 
 type Source = { id: number; title: string; url: string; domain: string; cited: boolean }
@@ -22,7 +23,6 @@ type Progress = {
   sources?: Source[]; searches?: number; researchStatus?: Report['researchStatus']
 }
 type PickOption = { url: string; title: string; images: (string | null)[]; outcomes: { name: string; price: number | null }[]; group: string }
-const cents = (value: number | null) => value === null ? '—' : `${Math.round(value * 100)}¢`
 const percent = (value: number | null) => value === null ? '—' : `${Math.round(value * 100)}%`
 const dollars = (value: number | null | undefined) => value && value > 0 ? `$${Math.round(value).toLocaleString()}` : '—'
 
@@ -61,9 +61,25 @@ function Citations({ ids = [], sources = [] }: { ids?: number[]; sources?: Sourc
   })}</span>
 }
 
+function SourceIcon({ source }: { source: Source }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null)
+  let iconUrl: string | null = null
+  let isPolymarket = false
+  try {
+    const url = new URL(source.url)
+    isPolymarket = ['polymarket.com', 'www.polymarket.com', 'polymarket.us', 'www.polymarket.us'].includes(url.hostname)
+    if (url.protocol === 'https:') iconUrl = new URL('/favicon.ico', url.origin).href
+  } catch { /* Keep the letter fallback for invalid source URLs. */ }
+  return <span className={`ac-source-avatar${isPolymarket ? ' ac-source-polymarket' : ''}`} aria-hidden="true">
+    {(!iconUrl || loadedUrl !== iconUrl || failedUrl === iconUrl) && source.domain.slice(0, 1).toUpperCase()}
+    {iconUrl && failedUrl !== iconUrl && <img key={iconUrl} src={iconUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onLoad={() => setLoadedUrl(iconUrl)} onError={() => setFailedUrl(iconUrl)} />}
+  </span>
+}
+
 function SourceTile({ source }: { source: Source }) {
   return <a className="ac-source-tile" href={source.url} target="_blank" rel="noreferrer">
-    <span className="ac-source-avatar">{source.domain.slice(0, 1).toUpperCase()}</span>
+    <SourceIcon source={source} />
     <div><span>{source.domain}</span><strong>{source.title}</strong></div><ArrowUpRight size={13} />
   </a>
 }
@@ -76,7 +92,7 @@ function Processing({ progress, image }: { progress: Progress; image: string | n
     {(progress.title || preview) && <div className="ac-market-preview">
       {preview && <img src={preview} alt="Market being analyzed" />}
       <div><small>{progress.marketVerified ? 'Polymarket' : 'Your screenshot'}</small><strong>{progress.title || 'Reading your market…'}</strong>
-        <div className="ac-market-quotes">{progress.outcomes?.slice(0, 2).map(o => <span key={o.name}>{o.name} <b>{cents(o.price)}</b></span>)}</div>
+        <div className="ac-market-quotes">{progress.outcomes?.slice(0, 2).map(o => <span key={o.name}>{o.name} <b>{percent(o.price)}</b></span>)}</div>
       </div>
     </div>}
     {sources.length > 0 && <div className="ac-discoveries"><div className="ac-discoveries-heading"><Globe size={14} />Coverage found <span>{sources.length}</span></div><div className="ac-source-list">{sources.slice(-4).map(source => <SourceTile key={source.id} source={source} />)}</div></div>}
@@ -87,35 +103,38 @@ function Processing({ progress, image }: { progress: Progress; image: string | n
 // spread/total lines are tabs on one page, the URL never changes — so when
 // the backend can't narrow to a single market it hands back every market in
 // the event instead of silently guessing one. This lets the user say which
-// one they meant; picking a row resubmits with that market's own link,
+// one they meant; picking a card resubmits with that market's own link,
 // which resolves unambiguously.
 function MarketPick({ options, onPick }: { options: PickOption[]; onPick: (url: string) => void }) {
-  // Options arrive already grouped consecutively by market family (Moneyline
-  // / Spread / Totals / Other) — folding them into sections here keeps both
-  // teams' sides of the same spread line together instead of scattered
-  // across the grid by price or volume.
-  const sections: { group: string; items: PickOption[] }[] = []
-  for (const option of options) {
-    const last = sections[sections.length - 1]
-    if (last?.group === option.group) last.items.push(option)
-    else sections.push({ group: option.group, items: [option] })
-  }
+  const [group, setGroup] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const groups = [...new Set(options.map(option => option.group))]
+  const filtered = options.filter(option => (group === null || option.group === group)
+    && `${option.title} ${option.group} ${option.outcomes.map(o => o.name).join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()))
   return <div className="ac-market-pick" aria-label="Choose a market to analyze">
-    <h1 className="ac-market-pick-heading">Pick a Market</h1>
-    {sections.map(section => (
-      <div className="ac-market-pick-section" key={section.group}>
-        {sections.length > 1 && <h2 className="ac-market-pick-group">{section.group}</h2>}
-        <div className="ac-market-pick-grid" role="list">
-          {section.items.map((option, i) => (
-            <button type="button" className="ac-market-pick-item" key={i} onClick={() => onPick(option.url)} role="listitem">
-              {option.images.some(Boolean) && <div className="ac-market-pick-logos">{option.images.filter(Boolean).slice(0, 2).map((src, j) => <img key={j} src={src!} alt="" />)}</div>}
-              <strong>{option.title}</strong>
-              <div className="ac-market-quotes">{option.outcomes.slice(0, 2).map(o => <span key={o.name}>{o.name} <b>{cents(o.price)}</b></span>)}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-    ))}
+    <div className="ac-picker-intro"><span className="ac-eyebrow">Choose your market</span><h1>What would you like to analyze?</h1><p>Select a market to get a pick and the research behind it.</p></div>
+    <div className="ac-market-filters" aria-label="Market categories">
+      <button type="button" aria-pressed={group === null} onClick={() => setGroup(null)}>All <span>{options.length}</span></button>
+      {groups.length > 1 && groups.map(name => <button type="button" key={name} aria-pressed={group === name} onClick={() => setGroup(name)}>{name} <span>{options.filter(option => option.group === name).length}</span></button>)}
+    </div>
+    <label className="ac-market-search"><Search size={17} /><span className="ac-sr-only">Search markets</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search markets…" /></label>
+    <p className="ac-market-count" role="status">{filtered.length} {filtered.length === 1 ? 'market' : 'markets'}</p>
+    {groups.map(name => {
+      const items = filtered.filter(option => option.group === name)
+      return items.length > 0 && <section className="ac-market-pick-section" key={name}>
+        <h2 className="ac-market-pick-group">{name}</h2>
+        <ul className="ac-market-grid">{items.map(option => <li key={option.url}>
+          <article className="expert-pick-card ac-market-card">
+            <div className="expert-pick-topline"><span>{option.group}</span><span className="ac-market-card-logos">{option.images.filter(Boolean).slice(0, 2).map((src, i) => <img key={i} src={src!} alt="" loading="lazy" />)}</span></div>
+            <button type="button" className="expert-pick-title" onClick={() => onPick(option.url)}><h3>{option.title}</h3></button>
+            <MarketSparkline key={`${option.url}:${option.outcomes[0]?.name}`} url={option.url} outcome={option.outcomes[0]?.name || ''} price={option.outcomes[0]?.price ?? null} />
+            <div className="expert-pick-evidence"><div className="expert-pick-stats ac-market-outcomes">{option.outcomes.slice(0, 2).map(o => <span key={o.name}><strong>{percent(o.price)}</strong><small>{o.name}</small></span>)}</div></div>
+            <button type="button" className="expert-pick-bet is-other" onClick={() => onPick(option.url)} aria-label={`Analyze ${option.title}`}><span>Analyze market</span><ArrowUpRight size={16} /></button>
+          </article>
+        </li>)}</ul>
+      </section>
+    })}
+    {filtered.length === 0 && <div className="ac-market-empty"><strong>No matching markets</strong><p>Try another search or category.</p><button type="button" onClick={() => { setQuery(''); setGroup(null) }}>Clear filters</button></div>}
   </div>
 }
 
@@ -134,37 +153,51 @@ const CHART_ACCENT: Record<string, { line: string; bright: string } | undefined>
 }
 
 function Result({ report, onReset }: { report: Report; onReset: () => void }) {
+  const [showAllTraders, setShowAllTraders] = useState(false)
   const sources = report.sources || []
+  const citedSources = sources.filter(source => source.cited)
+  const visibleTraders = showAllTraders ? report.traders : report.traders.slice(0, 3)
   const webUnavailable = report.researchStatus === 'unavailable' || report.researchStatus === 'no_sources'
   const direction = report.outcome.trim().toLowerCase()
   const betClass = direction === 'no' ? 'is-no' : direction === 'yes' ? 'is-yes' : 'is-other'
   return <div className="ac-result">
+    <header className="ac-result-header"><span className="ac-eyebrow">Your analysis</span><button className="ac-again" onClick={onReset}><RotateCcw size={14} />Analyze another</button></header>
+    <div className="ac-result-layout">
     <article className="ac-pick-card">
       <div className="ac-pick-topline"><span>VisibleTrader pick</span>{report.url && <a href={report.url} target="_blank" rel="noreferrer">View market <ArrowUpRight size={13} /></a>}</div>
       <div className="ac-pick-title">
         {report.image && <img src={report.image} alt="" />}
         <div><h2>{report.title}</h2><span className={`ac-pick-badge ${betClass}`}>{report.outcome}</span></div>
       </div>
-      <PickChart history={report.history?.length ? report.history : []} outcome={report.outcome} price={report.price ?? 0} error={!report.history?.length} onRetry={() => {}} accent={CHART_ACCENT[betClass]} filled />
-      <div className="ac-pick-chart-caption"><span>Polymarket</span><span>All time</span></div>
+      <MarketSparkline key={`${report.url}:${report.outcome}`} url={report.url || ''} initialHistory={report.history} outcome={report.outcome} price={report.price} accent={CHART_ACCENT[betClass]} filled />
       <div className="ac-pick-stats">
         <span><strong>{percent(report.price)}</strong><small>market price</small></span>
         <span className="g"><strong>{dollars(report.investedUsd)}</strong><small>{report.investedUsd ? 'invested' : 'no positions'}</small></span>
-        <span><strong><Users size={14} /> {report.traders.length}</strong><small>{report.traders.length === 0 ? 'no experts yet' : report.traders.length === 1 ? 'expert' : 'experts'}</small></span>
+        <span><strong><Users size={14} /> {report.traders.length}</strong><small>{report.traders.length === 1 ? 'trader' : 'traders'}</small></span>
       </div>
       <a className={`ac-pick-bet ${betClass}`} href={report.url || 'https://polymarket.com'} target="_blank" rel="noreferrer" aria-label={`Open market: Bet ${report.outcome} on ${report.title}`}>
         <span>Bet {report.outcome}</span><ArrowUpRight size={18} />
       </a>
     </article>
-    <button className="ac-again" onClick={onReset}><RotateCcw size={14} />Analyze another</button>
-    <p className="ac-reason">{report.reason}<Citations ids={report.reason_source_ids} sources={sources} /></p>
-    <div className="ac-reasons-row">{report.evidence.slice(0, 3).map((item, i) => {
-      return <article className={`ac-reason-item ac-accent-${i % 3}`} key={i}><span className="ac-reason-index">{i + 1}</span><h3>{item.title}</h3><p>{item.detail}<Citations ids={item.source_ids} sources={sources} /></p></article>
-    })}</div>
-    {webUnavailable && <p className="ac-research-warning">{report.researchStatus === 'unavailable' ? 'Web research unavailable.' : 'No usable outside sources found.'} Pick uses market context only.</p>}
-    {sources.length > 0 && <details className="ac-sources-drawer"><summary><span className="ac-source-stack">{sources.slice(0, 4).map(s => <i key={s.id}>{s.domain.slice(0, 1).toUpperCase()}</i>)}</span><span>{sources.length} sources found</span><ChevronDown size={14} /></summary><div className="ac-source-list">{sources.map(source => <div key={source.id}><SourceTile source={source} /><small>{source.cited ? 'Cited in research' : 'Search result · not cited'}</small></div>)}</div></details>}
-    {report.traders.length > 0 && <details className="ac-trader-details"><summary><Users size={15} />Expert traders on this side <b>{report.traders.length}</b><ChevronDown size={14} /></summary><div>{report.traders.map((t, i) => <div className="ac-trader" key={i}><span>{t.name.slice(0, 2).toUpperCase()}</span><strong>{t.name}</strong><small>Currently holding</small><b>{percent(t.price)}</b></div>)}</div></details>}
-    <p className="ac-risk"><span>Watch for</span><span>{report.risk}<Citations ids={report.risk_source_ids} sources={sources} /></span></p>
+    <div className="ac-research">
+      <section className="ac-summary"><h2>Why this pick</h2><p>{report.reason}<Citations ids={report.reason_source_ids} sources={sources} /></p></section>
+      <section className="ac-evidence"><h2>Key evidence</h2>
+        {report.evidence.map((item, i) => {
+          const references = sources.filter(source => source.cited && item.source_ids?.includes(source.id))
+          return <article className="ac-finding" key={i}><h3>{item.title}</h3><p>{item.detail}</p>
+            {references.length > 0 && <div className="ac-finding-sources">{references.map(source => <a key={source.id} href={source.url} target="_blank" rel="noreferrer" title={source.title}><SourceIcon source={source} />{source.domain}<ArrowUpRight size={12} /></a>)}</div>}
+          </article>
+        })}
+      </section>
+      {webUnavailable && <p className="ac-research-warning">{report.researchStatus === 'unavailable' ? 'Web research unavailable.' : 'No usable outside sources found.'} Pick uses market context only.</p>}
+      <section className="ac-risk"><h2>What could change the call</h2><p>{report.risk}<Citations ids={report.risk_source_ids} sources={sources} /></p></section>
+    </div>
+    </div>
+    {report.traders.length > 0 && <section className="ac-traders-section"><div className="ac-section-heading"><h2>Traders holding this outcome</h2><span>{report.traders.length}</span></div>
+      <div className="ac-trader-list">{visibleTraders.map((trader, i) => <div className="ac-trader" key={`${trader.name}-${i}`}><span className="ac-trader-avatar" aria-hidden="true">{trader.name.slice(0, 2).toUpperCase()}</span><strong>{trader.name}</strong><span className="ac-trader-position">Holding <b>{trader.outcome}</b></span></div>)}</div>
+      {report.traders.length > 3 && <button type="button" className="ac-view-traders" aria-expanded={showAllTraders} onClick={() => setShowAllTraders(value => !value)}>{showAllTraders ? 'Show fewer traders' : `View all ${report.traders.length} traders`}<ChevronDown size={14} /></button>}
+    </section>}
+    {sources.length > 0 && <details className="ac-sources-drawer"><summary><Globe size={15} /><span>{citedSources.length} cited {citedSources.length === 1 ? 'source' : 'sources'} · {sources.length} found</span><ChevronDown size={14} /></summary><div className="ac-source-list">{sources.map(source => <div key={source.id}><SourceTile source={source} /><small>{source.cited ? 'Cited in research' : 'Search result · not cited'}</small></div>)}</div></details>}
     <footer><span>{report.price === null ? 'Price unverified' : 'Price snapshot'} · {new Date(report.asOf).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></footer>
   </div>
 }
@@ -182,10 +215,11 @@ export default function AnalyzerPage() {
   const [starting, setStarting] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const linkInput = useRef<HTMLInputElement>(null)
-  const bottom = useRef<HTMLDivElement>(null)
+  const output = useRef<HTMLDivElement>(null)
   const controller = useRef<AbortController | null>(null)
   useEffect(() => () => controller.current?.abort(), [])
-  useEffect(() => { if (progress || report || runError || pickOptions) bottom.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'end' }) }, [progress, report, runError, pickOptions])
+  const screen = report ? 'result' : runError ? 'error' : pickOptions ? 'picker' : progress ? 'processing' : 'start'
+  useEffect(() => { if (screen !== 'start') output.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }) }, [screen])
 
   const run = async (runUrl: string, runImage: string | null) => {
     const abort = new AbortController()
@@ -315,12 +349,11 @@ export default function AnalyzerPage() {
       </form>
       {inputError && <p className="ac-input-error" role="alert">{inputError}</p>}
     </div>}
-    {hasRun && <div className="ac-output">
+    {hasRun && <div className="ac-output" ref={output}>
       {report ? <Result report={report} onReset={reset} />
         : runError ? <div className="ac-run-error" role="alert"><p>{runError}</p><button onClick={reset}><RotateCcw size={14} />Try again</button></div>
         : pickOptions ? <MarketPick options={pickOptions} onPick={pickUrl => { setPickOptions(null); start(pickUrl, null) }} />
         : progress ? <><Processing progress={progress} image={submittedImage} /><button type="button" className="ac-stop" onClick={cancel}><Square size={12} fill="currentColor" />Stop</button></> : null}
     </div>}
-    <div ref={bottom} />
   </div>
 }
