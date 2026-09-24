@@ -123,6 +123,16 @@ function MarketPick({ options, onPick }: { options: PickOption[]; onPick: (url: 
 // flat bordered surface, topline + title, 3-stat row, colored bet pill —
 // so a market analyzed here looks like it belongs next to the tracked-trader
 // picks feed instead of like a different tool bolted onto the app.
+// Yes/No map to the same green/red CumulativePickChart already uses for
+// up/down P&L, so the chart's color reinforces the same call the badge and
+// bet button make — a named-outcome pick ("Milwaukee Brewers") has no
+// inherent up/down sense, so it keeps the component's original blue.
+const CHART_ACCENT: Record<string, { line: string; bright: string } | undefined> = {
+  'is-yes': { line: '#00d17a', bright: '#00d17a' },
+  'is-no': { line: '#ff3b5c', bright: '#ff3b5c' },
+  'is-other': undefined,
+}
+
 function Result({ report, onReset }: { report: Report; onReset: () => void }) {
   const sources = report.sources || []
   const webUnavailable = report.researchStatus === 'unavailable' || report.researchStatus === 'no_sources'
@@ -131,13 +141,16 @@ function Result({ report, onReset }: { report: Report; onReset: () => void }) {
   return <div className="ac-result">
     <article className="ac-pick-card">
       <div className="ac-pick-topline"><span>VisibleTrader pick</span>{report.url && <a href={report.url} target="_blank" rel="noreferrer">View market <ArrowUpRight size={13} /></a>}</div>
-      <div className="ac-pick-title">{report.image && <img src={report.image} alt="" />}<h2>{report.title}</h2></div>
-      <PickChart history={report.history?.length ? report.history : []} outcome={report.outcome} price={report.price ?? 0} error={!report.history?.length} onRetry={() => {}} />
+      <div className="ac-pick-title">
+        {report.image && <img src={report.image} alt="" />}
+        <div><h2>{report.title}</h2><span className={`ac-pick-badge ${betClass}`}>{report.outcome}</span></div>
+      </div>
+      <PickChart history={report.history?.length ? report.history : []} outcome={report.outcome} price={report.price ?? 0} error={!report.history?.length} onRetry={() => {}} accent={CHART_ACCENT[betClass]} filled />
       <div className="ac-pick-chart-caption"><span>Polymarket</span><span>All time</span></div>
       <div className="ac-pick-stats">
         <span><strong>{percent(report.price)}</strong><small>market price</small></span>
-        <span className="g"><strong>{dollars(report.investedUsd)}</strong><small>invested</small></span>
-        <span><strong><Users size={14} /> {report.traders.length}</strong><small>{report.traders.length === 1 ? 'expert' : 'experts'}</small></span>
+        <span className="g"><strong>{dollars(report.investedUsd)}</strong><small>{report.investedUsd ? 'invested' : 'no positions'}</small></span>
+        <span><strong><Users size={14} /> {report.traders.length}</strong><small>{report.traders.length === 0 ? 'no experts yet' : report.traders.length === 1 ? 'expert' : 'experts'}</small></span>
       </div>
       <a className={`ac-pick-bet ${betClass}`} href={report.url || 'https://polymarket.com'} target="_blank" rel="noreferrer" aria-label={`Open market: Bet ${report.outcome} on ${report.title}`}>
         <span>Bet {report.outcome}</span><ArrowUpRight size={18} />
@@ -146,7 +159,7 @@ function Result({ report, onReset }: { report: Report; onReset: () => void }) {
     <button className="ac-again" onClick={onReset}><RotateCcw size={14} />Analyze another</button>
     <p className="ac-reason">{report.reason}<Citations ids={report.reason_source_ids} sources={sources} /></p>
     <div className="ac-reasons-row">{report.evidence.slice(0, 3).map((item, i) => {
-      return <article className="ac-reason-item" key={i}><h3>{item.title}</h3><p>{item.detail}<Citations ids={item.source_ids} sources={sources} /></p></article>
+      return <article className={`ac-reason-item ac-accent-${i % 3}`} key={i}><span className="ac-reason-index">{i + 1}</span><h3>{item.title}</h3><p>{item.detail}<Citations ids={item.source_ids} sources={sources} /></p></article>
     })}</div>
     {webUnavailable && <p className="ac-research-warning">{report.researchStatus === 'unavailable' ? 'Web research unavailable.' : 'No usable outside sources found.'} Pick uses market context only.</p>}
     {sources.length > 0 && <details className="ac-sources-drawer"><summary><span className="ac-source-stack">{sources.slice(0, 4).map(s => <i key={s.id}>{s.domain.slice(0, 1).toUpperCase()}</i>)}</span><span>{sources.length} sources found</span><ChevronDown size={14} /></summary><div className="ac-source-list">{sources.map(source => <div key={source.id}><SourceTile source={source} /><small>{source.cited ? 'Cited in research' : 'Search result · not cited'}</small></div>)}</div></details>}

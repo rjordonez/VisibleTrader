@@ -59,10 +59,16 @@ interface MiniLineChartProps {
   // already sits inside its own card, so it passes false; Trader Profile's
   // chart doesn't have one of its own, so it passes true.
   bordered?: boolean
+  // Opt-in gradient area fill under the line, off by default so every
+  // existing caller (Signals cards, Terminal, Profit Bot, Trader Profile)
+  // renders exactly as before — only the analyzer's result card turns this
+  // on, to give its chart some visual weight against a plain black page.
+  filled?: boolean
 }
 
-function MiniLineChart({ points: history, latestValue, label, formatValue, formatTime, error, onRetry, height = VB_HEIGHT, accent, axisTicks, bordered }: MiniLineChartProps) {
+function MiniLineChart({ points: history, latestValue, label, formatValue, formatTime, error, onRetry, height = VB_HEIGHT, accent, axisTicks, bordered, filled }: MiniLineChartProps) {
   const clipId = `expert-chart-reveal-${useId().replace(/:/g, '')}`
+  const gradientId = `expert-chart-fill-${useId().replace(/:/g, '')}`
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const leftReserve = axisTicks ? LEFT_RESERVE : 0
   const rightReserve = axisTicks ? RIGHT_RESERVE_WIDE : RIGHT_RESERVE
@@ -145,9 +151,16 @@ function MiniLineChart({ points: history, latestValue, label, formatValue, forma
               else if (event.key === 'End') setHoverIndex(points.length - 1)
               else setHoverIndex(index => Math.max(0, Math.min(points.length - 1, (index ?? points.length - 1) + (event.key === 'ArrowLeft' ? -1 : 1))))
             }}>
-            <defs><clipPath id={clipId}><rect className="expert-pick-reveal" x="0" y="0" width="320" height="104" /></clipPath></defs>
+            <defs>
+              <clipPath id={clipId}><rect className="expert-pick-reveal" x="0" y="0" width="320" height="104" /></clipPath>
+              {filled && <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" style={{ stopColor: 'var(--pick-chart-color-bright, #7b9eff)', stopOpacity: 0.28 }} />
+                <stop offset="100%" style={{ stopColor: 'var(--pick-chart-color-bright, #7b9eff)', stopOpacity: 0 }} />
+              </linearGradient>}
+            </defs>
             {gridYs.map(y => <line key={y} x1="0" x2="320" y1={y} y2={y} className="expert-pick-gridline" vectorEffect="non-scaling-stroke" />)}
             <g clipPath={`url(#${clipId})`}>
+              {filled && <polygon points={`${points[0].x},96 ${line} ${points[points.length - 1].x},96`} fill={`url(#${gradientId})`} stroke="none" />}
               <polyline points={line} fill="none" stroke={selected ? 'var(--text-faint)' : 'currentColor'} opacity={selected ? 0.25 : 1} strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
             {selected && <>
               <polyline points={points.slice(0, hoverIndex! + 1).map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
@@ -178,7 +191,7 @@ function MiniLineChart({ points: history, latestValue, label, formatValue, forma
   return bordered ? <div className="expert-pick-card">{chart}</div> : chart
 }
 
-export function PickChart({ history, outcome, price, error, onRetry, height = VB_HEIGHT }: { history: ChartPoint[] | null; outcome: string; price: number; error: boolean; onRetry: () => void; height?: number }) {
+export function PickChart({ history, outcome, price, error, onRetry, height = VB_HEIGHT, accent, filled }: { history: ChartPoint[] | null; outcome: string; price: number; error: boolean; onRetry: () => void; height?: number; accent?: { line: string; bright: string }; filled?: boolean }) {
   return (
     <MiniLineChart
       points={history ? history.map(p => ({ t: p.t, v: p.p })) : null}
@@ -189,6 +202,8 @@ export function PickChart({ history, outcome, price, error, onRetry, height = VB
       error={error}
       onRetry={onRetry}
       height={height}
+      accent={accent}
+      filled={filled}
     />
   )
 }

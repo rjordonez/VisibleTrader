@@ -354,32 +354,72 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
           const m = q.match(/o\/u\s*([\d.]+)/i)
           return m ? { number: parseFloat(m[1]) } : null
         }
+        // Multiple events can share an identical title differing only by
+        // which date/instance they're for — any recurring market (a team
+        // series playing several dates in a row, confirmed live:
+        // Brewers/Phillies had games on the 22nd, 23rd, and 24th all
+        // titled identically; equally true of daily crypto markets,
+        // monthly Fed decisions, etc.). public-search returns every
+        // instance, and without this, whichever happened to come first in
+        // that list won, regardless of which one the screenshot was
+        // actually of. A screenshot is virtually always of a currently-
+        // open market, so prefer not-yet-closed ones, then whichever
+        // resolves soonest — the "current" instance of a recurring series.
+        const bestByRecency = (matches: Record<string, unknown>[]) => {
+          if (matches.length <= 1) return matches[0]
+          const now = Date.now()
+          const score = (m: Record<string, unknown>) => {
+            if (m.closed === true) return Infinity
+            const end = m.endDate ? new Date(String(m.endDate)).getTime() : NaN
+            return Number.isFinite(end) ? Math.abs(end - now) : Infinity
+          }
+          return [...matches].sort((a, b) => score(a) - score(b))[0]
+        }
         const lineNumber = parseFloat(String(analysis.lineNumber))
         const linePeriod = analysis.linePeriod === 'first_5_innings' ? 'first_5_innings' : 'full_game'
 
         let found: Record<string, unknown> | undefined
         if (analysis.lineType === 'spread' && Number.isFinite(lineNumber)) {
           const lineWords = new Set(words(String(analysis.lineTeam || '')))
-          const matches = candidates.filter(c => {
+          const numberMatches = candidates.filter(c => {
             const q = String(c.question || '')
             const parsed = parseSpread(q)
             return !!parsed && period(q) === linePeriod && Math.abs(parsed.number - lineNumber) < 0.01
           })
-          // Full-game spreads only ever have one market per number
-          // (confirmed live); First 5 Innings spreads have two, one per
-          // team, so team only needs to disambiguate when there's more
-          // than one candidate — and if we can't tell which, no match is
-          // safer than guessing the wrong side.
-          found = matches.length === 1 ? matches[0]
-            : matches.find(c => lineWords.size > 0 && [...lineWords].every(w => words(String(parseSpread(String(c.question || ''))?.team || '')).includes(w)))
+          // First 5 Innings spreads have two same-number markets, one per
+          // team (full-game spreads only ever have one, confirmed live); a
+          // recurring matchup can also produce several same-number,
+          // same-team candidates differing only by date. Team narrows the
+          // first kind of ambiguity, recency narrows the second — but only
+          // once team ambiguity is actually resolved (a single distinct
+          // team left), since recency can't tell which side of a same-day
+          // First 5 Innings pair is correct.
+          const teamMatches = lineWords.size > 0
+            ? numberMatches.filter(c => [...lineWords].every(w => words(String(parseSpread(String(c.question || ''))?.team || '')).includes(w)))
+            : numberMatches
+          const distinctTeams = new Set(teamMatches.map(c => parseSpread(String(c.question || ''))?.team))
+          found = distinctTeams.size <= 1 ? bestByRecency(teamMatches) : undefined
         } else if (analysis.lineType === 'total' && Number.isFinite(lineNumber)) {
-          found = candidates.find(c => {
+          found = bestByRecency(candidates.filter(c => {
             const q = String(c.question || '')
             const parsed = parseTotal(q)
             return !!parsed && period(q) === linePeriod && Math.abs(parsed.number - lineNumber) < 0.01
-          })
+          }))
         } else {
-          found = candidates.find(c => normalize(String(c.question || '')) === target)
+          // Exact match against each candidate market's own question text
+          // works well for sports moneylines, where Gamma's question
+          // literally is "TeamA vs. TeamB" — the same shape as a matchup.
+          // For a single-question event market (e.g. a political yes/no),
+          // the event's own title is what's actually shown on screen
+          // ("US Announces Diesel Export ban by...?"), while each market's
+          // question is a full, differently-worded sentence ("Will the US
+          // announce a diesel export ban by September 30?", confirmed live
+          // — this exact case, silently unmatched before this fallback).
+          // Matching the event's title instead and picking its most
+          // current market covers that.
+          const directMatches = candidates.filter(c => normalize(String(c.question || '')) === target)
+          found = directMatches.length > 0 ? bestByRecency(directMatches)
+            : bestByRecency(events.filter(e => normalize(String(e.title || '')) === target).flatMap(e => (e.markets || []) as Record<string, unknown>[]))
         }
 
         const matchedOutcome = found && list(found.outcomes).map(String).find(o => [...outcomeWords].every(w => words(o).includes(w)))

@@ -75,7 +75,15 @@
 .ac-pick-topline a:hover { color:var(--ac-text); }
 .ac-pick-title { display:flex; align-items:center; gap:14px; padding:18px 0 20px; }
 .ac-pick-title img { width:52px; height:52px; border-radius:11px; object-fit:cover; flex-shrink:0; }
+.ac-pick-title>div { display:flex; flex-direction:column; gap:8px; min-width:0; }
 .ac-pick-title h2 { margin:0; font-size:22px; font-weight:750; letter-spacing:-0.5px; line-height:1.3; overflow-wrap:anywhere; }
+/* The direction (yes/no/named outcome) used to only show up once, at the
+   bet button far below the fold — this puts it right next to the title so
+   the whole card's story reads top-to-bottom without scrolling to find it. */
+.ac-pick-badge { display:inline-flex; align-items:center; width:fit-content; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; letter-spacing:.2px; }
+.ac-pick-badge.is-yes { background:#00d17a22; color:#5eeaa8; }
+.ac-pick-badge.is-no { background:#ff3b5c22; color:#ff8fa3; }
+.ac-pick-badge.is-other { background:#6370ff22; color:#a4acff; }
 .ac-pick-chart-caption { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:4px 0 4px; color:var(--ac-muted); font-size:11px; }
 .ac-pick-stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; padding:18px 0; border-top:1px solid var(--ac-border); }
 .ac-pick-stats span { display:flex; flex-direction:column; gap:4px; min-width:0; }
@@ -91,7 +99,11 @@
 .ac-again:hover { color:#dedbe9; }
 .ac-reason { text-align:center; color:#d5d5de; font-size:16px; line-height:1.7; max-width:520px; margin:26px auto; }
 .ac-reasons-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:24px 0; }
-.ac-reason-item { padding:18px; border:1px solid var(--ac-border); border-radius:14px; background:var(--ac-surface); min-width:0; }
+.ac-reason-item { position:relative; padding:20px 18px 18px; border:1px solid var(--ac-border); border-top:3px solid var(--ac-reason-accent, var(--ac-accent)); border-radius:14px; background:var(--ac-surface); min-width:0; }
+.ac-reason-item.ac-accent-0 { --ac-reason-accent:#6370ff; }
+.ac-reason-item.ac-accent-1 { --ac-reason-accent:#00d17a; }
+.ac-reason-item.ac-accent-2 { --ac-reason-accent:#ffb648; }
+.ac-reason-index { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; margin-bottom:9px; border-radius:6px; background:color-mix(in srgb, var(--ac-reason-accent, var(--ac-accent)) 18%, transparent); color:var(--ac-reason-accent, var(--ac-accent)); font-size:11px; font-weight:750; }
 .ac-reason-item h3 { margin:0 0 9px; font-size:16px; font-weight:700; line-height:1.35; letter-spacing:-.2px; overflow-wrap:anywhere; }
 .ac-reason-item p { margin:0; font-size:14px; color:#b1b1be; line-height:1.65; overflow-wrap:anywhere; }
 .ac-trader-details { border-top:1px solid var(--ac-border); border-bottom:1px solid var(--ac-border); padding:12px 0; margin-top:16px; }
@@ -105,8 +117,12 @@
 .ac-trader strong { font-size:14px; font-weight:500; }
 .ac-trader small { font-size:13px; color:#888895; margin-left:auto; }
 .ac-trader b { font-size:14px; color:#d1d1dc; }
-.ac-risk { display:flex; gap:10px; font-size:14px; color:#a6a0a1; line-height:1.7; padding:14px 0; }
-.ac-risk>span:first-child { color:#cfbcb0; flex-shrink:0; }
+/* Was the lowest-contrast line on the whole card despite being the one
+   fact most worth noticing (the condition that flips the pick) — the same
+   tinted-box treatment .ac-research-warning already uses elsewhere gives
+   it visual weight to match its actual importance. */
+.ac-risk { display:flex; gap:10px; font-size:14px; color:#d8bfae; line-height:1.7; margin-top:14px; padding:14px 16px; background:#efc68a0d; border:1px solid #efc68a22; border-radius:12px; }
+.ac-risk>span:first-child { color:#f0c396; font-weight:650; flex-shrink:0; }
 .ac-risk>span:last-child { flex-shrink:1; }
 .ac-result footer { font-size:13px; color:#73737f; padding-top:5px; }
 .ac-run-error { max-width:520px; margin:0 auto; border:1px solid #de999922; background:#de999907; border-radius:12px; padding:18px; color:#e0b8b8; font-size:14px; text-align:center; }
@@ -121,9 +137,12 @@
 .ac-source-tile>div>span { display:block; font-size:13px; color:#93939f; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ac-source-tile strong { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:14px; font-weight:550; line-height:1.5; }
 .ac-source-tile>svg { color:#93939f; flex-shrink:0; }
-.ac-citations { display:inline-flex; gap:4px; margin-left:6px; vertical-align:middle; }
-.ac-citations a { display:inline-grid; place-items:center; min-width:22px; height:22px; border-radius:5px; background:#6370ff15; color:#a4acff; text-decoration:none; font-size:13px; padding:0 4px; }
-.ac-citations a:hover { background:#6370ff35; }
+/* Superscript numerals, not boxed pills — reads like an actual research
+   citation rather than a row of debug tags scattered through the prose. */
+.ac-citations { display:inline; margin-left:2px; }
+.ac-citations a { color:#a4acff; text-decoration:none; font-size:.75em; font-weight:700; vertical-align:super; line-height:0; padding:0 1px; }
+.ac-citations a:hover { text-decoration:underline; }
+.ac-citations a+a::before { content:','; color:#a4acff; margin-right:1px; }
 .ac-sources-drawer { margin-top:16px; padding:12px 0; }
 .ac-sources-drawer>summary { display:flex; align-items:center; gap:9px; cursor:pointer; list-style:none; font-size:14px; color:#a2a2b0; }
 .ac-sources-drawer>summary::-webkit-details-marker { display:none; }
