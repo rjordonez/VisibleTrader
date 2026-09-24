@@ -376,7 +376,6 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     return () => { cancelled = true }
   }, [wallet, loadTrackedStatus])
 
-  const winRate = summary && summary.won + summary.lost > 0 ? (summary.won / (summary.won + summary.lost)) * 100 : 0
   const usdWinRate = summary && summary.deployed > 0 ? (summary.won_usd / summary.deployed) * 100 : 0
   const roi = summary && summary.deployed > 0 ? (summary.net_profit / summary.deployed) * 100 : 0
 
@@ -479,18 +478,14 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
             know for sure. */}
         {!error && (summaryLoading || summary) && (
           <>
-            {summaryLoading ? <SkelStatsRow count={5} /> : summary && (
+            {summaryLoading ? <SkelStatsRow count={4} /> : summary && (
               <div className="sig-stats-row" style={{ marginBottom: 24 }}>
                 <div className="sig-stat-cell">
                   <div className="sig-stat-cell-label">Net P&L</div>
                   <div className={`sig-stat-cell-val ${summary.net_profit >= 0 ? 'g' : 'r'}`}>{fmtSigned(summary.net_profit)}</div>
                 </div>
                 <div className="sig-stat-cell">
-                  <div className="sig-stat-cell-label" title="Winning trades ÷ total resolved trades">Win Rate (#)</div>
-                  <div className="sig-stat-cell-val">{winRate.toFixed(1)}%</div>
-                </div>
-                <div className="sig-stat-cell">
-                  <div className="sig-stat-cell-label" title="Dollars in winning trades ÷ total dollars deployed">Win Rate ($)</div>
+                  <div className="sig-stat-cell-label" title="Dollars in winning trades ÷ total dollars deployed">Win Rate</div>
                   <div className="sig-stat-cell-val">{usdWinRate.toFixed(1)}%</div>
                 </div>
                 <div className="sig-stat-cell">

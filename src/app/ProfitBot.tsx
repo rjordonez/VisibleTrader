@@ -60,7 +60,9 @@ export default function ProfitBot() {
 
 
   const [compoundStart, setCompoundStart] = useState(50)
-  const COMPOUND_STAKE_FRACTION = 0.2
+  const [restakePct, setRestakePct] = useState(15)
+  const RESTAKE_MIN = 5
+  const RESTAKE_MAX = 30
   
   const COMPOUND_MIN = 2.5
   const COMPOUND_MAX = 1000
@@ -74,14 +76,13 @@ export default function ProfitBot() {
     let bankroll = compoundStart
     const points: { d: string; cum: number }[] = []
     for (const p of curve) {
-      const stake = bankroll * COMPOUND_STAKE_FRACTION
+      const stake = bankroll * (restakePct / 100)
       bankroll = bankroll - stake + stake * (1 + Number(p.pnl) / 100)
       points.push({ d: p.resolved_ts, cum: bankroll })
     }
     return points
-  }, [curve, compoundStart])
+  }, [curve, compoundStart, restakePct])
   const compoundFinal = compoundCurve.at(-1)?.cum ?? compoundStart
-  const compoundHit100kAt = compoundCurve.findIndex(pt => pt.cum >= 100000)
 
   useEffect(() => {
     let cancelled = false
@@ -165,43 +166,65 @@ export default function ProfitBot() {
           </div>
         )}
 
-        <div className="pbot-betsize" role="group" aria-label="Starting bankroll">
-          <label htmlFor="pbot-compound-slider">Starting amount</label>
-          <div className="pbot-betsize-row">
-            <div className="sig-range-track-wrap pbot-betsize-track">
-              <div className="sig-range-track" />
-              <div className="sig-range-fill" style={{ left: '0%', right: `${100 - compoundSliderPos / 10}%` }} />
-              <input
-                id="pbot-compound-slider"
-                type="range"
-                className="sig-range-input"
-                min={0}
-                max={1000}
-                step={1}
-                value={compoundSliderPos}
-                onChange={e => setCompoundStart(Math.max(1, Math.round(valueFromPos(Number(e.target.value)))))}
-              />
+        <div className="pbot-sliders">
+          <div className="pbot-betsize" role="group" aria-label="Starting bankroll">
+            <label htmlFor="pbot-compound-slider">Starting amount</label>
+            <div className="pbot-betsize-row">
+              <div className="sig-range-track-wrap pbot-betsize-track">
+                <div className="sig-range-track" />
+                <div className="sig-range-fill" style={{ left: '0%', right: `${100 - compoundSliderPos / 10}%` }} />
+                <input
+                  id="pbot-compound-slider"
+                  type="range"
+                  className="sig-range-input"
+                  min={0}
+                  max={1000}
+                  step={1}
+                  value={compoundSliderPos}
+                  onChange={e => setCompoundStart(Math.max(1, Math.round(valueFromPos(Number(e.target.value)))))}
+                />
+              </div>
+              <span className="pbot-betsize-value">{fmtFull(compoundStart)}</span>
             </div>
-            <span className="pbot-betsize-value">{fmtFull(compoundStart)}</span>
+          </div>
+          <div className="pbot-betsize" role="group" aria-label="Restake percent">
+            <label htmlFor="pbot-restake-slider">Restake per pick</label>
+            <div className="pbot-betsize-row">
+              <div className="sig-range-track-wrap pbot-betsize-track">
+                <div className="sig-range-track" />
+                <div className="sig-range-fill" style={{ left: '0%', right: `${100 - (restakePct - RESTAKE_MIN) / (RESTAKE_MAX - RESTAKE_MIN) * 100}%` }} />
+                <input
+                  id="pbot-restake-slider"
+                  type="range"
+                  className="sig-range-input"
+                  min={RESTAKE_MIN}
+                  max={RESTAKE_MAX}
+                  step={1}
+                  value={restakePct}
+                  onChange={e => setRestakePct(Number(e.target.value))}
+                />
+              </div>
+              <span className="pbot-betsize-value">{restakePct}%</span>
+            </div>
           </div>
         </div>
 
         <div className="profits-net-heading">
           <div>
-            <h2 id="pbot-title">If you restaked {(COMPOUND_STAKE_FRACTION * 100).toFixed(0)}% of the bankroll every pick</h2>
+            <h2 id="pbot-title">If you restaked {restakePct}% of the bankroll every pick</h2>
             <strong className={`profits-net-value ${compoundFinal >= compoundStart ? 'is-positive' : 'is-negative'}`}>
               {fmtFull(compoundFinal)}
             </strong>
           </div>
           <div className="profits-net-context">
-            <strong>{compoundHit100kAt >= 0 ? `Pick #${compoundHit100kAt + 1}` : 'Not yet'}</strong>
-            <span>when it first crossed $100,000</span>
+            <strong>Pick #{curve.length.toLocaleString()}</strong>
+            <span>the bot&rsquo;s latest resolved pick</span>
           </div>
         </div>
 
         <div className="profits-chart-area">
           <p className="profits-chart-label">
-            Real sequence, real resolved picks since {sinceLabel}. {(COMPOUND_STAKE_FRACTION * 100).toFixed(0)}% of bankroll restaked each time, not a flat amount.
+            Real sequence, real resolved picks since {sinceLabel}. {restakePct}% of bankroll restaked each time, not a flat amount.
           </p>
           {compoundCurve.length > 1
             ? <CumulativePickChart data={compoundCurve} height={250} />
@@ -217,7 +240,6 @@ export default function ProfitBot() {
             </dd>
           </div>
           <div><dt>Avg entry price</dt><dd>{Math.round(perf.avg_entry * 100)}&cent;</dd></div>
-          <div><dt>Restaked per pick</dt><dd>{(COMPOUND_STAKE_FRACTION * 100).toFixed(0)}% of bankroll</dd></div>
         </dl>
 
       </section>
