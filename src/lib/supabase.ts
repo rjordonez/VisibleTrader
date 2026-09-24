@@ -23,3 +23,4 @@ if (isProdDb) {
 }
 
 export const supabase = createClient(url, anonKey)
+export const supabaseFunctionsUrl = `${url}/functions/v1`
