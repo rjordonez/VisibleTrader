@@ -227,7 +227,7 @@ export default function ProfitBot() {
             Real sequence, real resolved picks since {sinceLabel}. {restakePct}% of bankroll restaked each time, not a flat amount.
           </p>
           {compoundCurve.length > 1
-            ? <CumulativePickChart data={compoundCurve} height={250} />
+            ? <CumulativePickChart data={compoundCurve} height={250} valueAbove />
             : <p className="profits-notice">Not enough resolved picks yet.</p>}
         </div>
 

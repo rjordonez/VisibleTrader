@@ -25,6 +25,8 @@ const VB_HEIGHT = 104
 // one"), so it gets the wider reserve too.
 const RIGHT_RESERVE = 88
 const RIGHT_RESERVE_WIDE = 150
+// Just enough for the endpoint dot when the value is drawn above the chart.
+const RIGHT_RESERVE_DOT = 8
 // Reserved on the left for $ axis labels, only when axisTicks is passed
 // (the cumulative P&L charts) — price charts (cards/Terminal) never set
 // this, so their layout is untouched.
@@ -64,14 +66,19 @@ interface MiniLineChartProps {
   // renders exactly as before — only the analyzer's result card turns this
   // on, to give its chart some visual weight against a plain black page.
   filled?: boolean
+  // Shows the latest/hovered value in a row above the chart instead of
+  // beside the line's endpoint, so the line gets the full width. Profit
+  // Bot's compounding chart uses this; its big $ figures ate half the plot
+  // on mobile.
+  valueAbove?: boolean
 }
 
-function MiniLineChart({ points: history, latestValue, label, formatValue, formatTime, error, onRetry, height = VB_HEIGHT, accent, axisTicks, bordered, filled }: MiniLineChartProps) {
+function MiniLineChart({ points: history, latestValue, label, formatValue, formatTime, error, onRetry, height = VB_HEIGHT, accent, axisTicks, bordered, filled, valueAbove }: MiniLineChartProps) {
   const clipId = `expert-chart-reveal-${useId().replace(/:/g, '')}`
   const gradientId = `expert-chart-fill-${useId().replace(/:/g, '')}`
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const leftReserve = axisTicks ? LEFT_RESERVE : 0
-  const rightReserve = axisTicks ? RIGHT_RESERVE_WIDE : RIGHT_RESERVE
+  const rightReserve = valueAbove ? RIGHT_RESERVE_DOT : axisTicks ? RIGHT_RESERVE_WIDE : RIGHT_RESERVE
   const { points, minV, spanV } = useMemo(() => {
     if (!history || history.length < 2) return { points: [] as (RawPoint & { x: number; y: number })[], minV: 0, spanV: 1 }
     const minT = history[0].t
@@ -179,16 +186,26 @@ function MiniLineChart({ points: history, latestValue, label, formatValue, forma
       ))}
       {endpoint && !selected && <span className="expert-pick-endpoint-dot" style={dotStyle(endpoint)} aria-hidden="true" />}
       {selected && <span className="expert-pick-endpoint-dot is-hover" style={dotStyle(selected)} aria-hidden="true" />}
-      <strong className="expert-pick-endpoint-price" style={{
-        top: yToTop(selected?.y ?? endpoint?.y ?? 52),
-        ...(selected ? { left: `calc(${xToLeft(selected.x)} + 12px)`, right: 'auto' } : {}),
-      }} aria-label={`${label}: ${displayedValue.main}${displayedValue.unit ?? ''}`}>
-        {displayedValue.main}{displayedValue.unit && <small>{displayedValue.unit}</small>}
-      </strong>
+      {!valueAbove && (
+        <strong className="expert-pick-endpoint-price" style={{
+          top: yToTop(selected?.y ?? endpoint?.y ?? 52),
+          ...(selected ? { left: `calc(${xToLeft(selected.x)} + 12px)`, right: 'auto' } : {}),
+        }} aria-label={`${label}: ${displayedValue.main}${displayedValue.unit ?? ''}`}>
+          {displayedValue.main}{displayedValue.unit && <small>{displayedValue.unit}</small>}
+        </strong>
+      )}
       {selectedTime && <span className="expert-pick-hover-time">{selectedTime}</span>}
     </div>
   )
-  return bordered ? <div className="expert-pick-card">{chart}</div> : chart
+  const withValue = valueAbove ? (
+    <>
+      <strong className="expert-pick-value-above" style={accentStyle} aria-label={`${label}: ${displayedValue.main}${displayedValue.unit ?? ''}`}>
+        {displayedValue.main}{displayedValue.unit && <small>{displayedValue.unit}</small>}
+      </strong>
+      {chart}
+    </>
+  ) : chart
+  return bordered ? <div className="expert-pick-card">{withValue}</div> : withValue
 }
 
 export function PickChart({ history, outcome, price, error, onRetry, height = VB_HEIGHT, accent, filled }: { history: ChartPoint[] | null; outcome: string; price: number; error: boolean; onRetry: () => void; height?: number; accent?: { line: string; bright: string }; filled?: boolean }) {
@@ -217,7 +234,7 @@ export function PickChart({ history, outcome, price, error, onRetry, height = VB
 // (a bare unlabeled line reads as meaningless at that scale) and the
 // endpoint value's width is no longer hardcoded (see pick-chart.css) --
 // both were breaking specifically on wide numbers before this.
-export function CumulativePickChart({ data, height = VB_HEIGHT, bordered = false }: { data: { d: string; cum: number }[]; height?: number; bordered?: boolean }) {
+export function CumulativePickChart({ data, height = VB_HEIGHT, bordered = false, valueAbove = false }: { data: { d: string; cum: number }[]; height?: number; bordered?: boolean; valueAbove?: boolean }) {
   const last = data.at(-1)?.cum ?? 0
   const up = last >= 0
   if (data.length < 2) return null
@@ -250,6 +267,7 @@ export function CumulativePickChart({ data, height = VB_HEIGHT, bordered = false
       accent={up ? { line: '#00d17a', bright: '#00d17a' } : { line: '#ff3b5c', bright: '#ff3b5c' }}
       axisTicks={axisTicks}
       bordered={bordered}
+      valueAbove={valueAbove}
     />
   )
 }
