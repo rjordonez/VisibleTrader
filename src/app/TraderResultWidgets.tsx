@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react'
 import { categoryLabel, fmtSigned, fmtAbbrevSigned, traderLabel } from './helpers'
 import { CumulativePickChart } from './PickChart'
 import { SkelBlock, SkelTableRows } from './Skeleton'
@@ -10,13 +11,24 @@ import { SkelBlock, SkelTableRows } from './Skeleton'
 // The single highest-leverage "summarize this trader at a glance" element —
 // a trend line reads in one look, where a table of 50 rows doesn't. Guards
 // its own length>1 case so callers can render it unconditionally.
+// On phones the value next to the line's endpoint eats half the plot, so
+// it moves to a row above the chart there (same as Profit Bot's chart).
+const MOBILE_QUERY = '(max-width: 700px)'
+const subscribeMobile = (cb: () => void) => {
+  const mq = window.matchMedia(MOBILE_QUERY)
+  mq.addEventListener('change', cb)
+  return () => mq.removeEventListener('change', cb)
+}
+const useIsMobile = () => useSyncExternalStore(subscribeMobile, () => window.matchMedia(MOBILE_QUERY).matches, () => false)
+
 export function CumulativeChartSection({ data, label, height = 220 }: { data: { d: string; cum: number }[]; label: string; height?: number }) {
+  const isMobile = useIsMobile()
   if (data.length < 2) return null
   return (
     <>
       <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>{label}</div>
       <div style={{ marginBottom: 24 }}>
-        <CumulativePickChart data={data} height={height} bordered />
+        <CumulativePickChart data={data} height={height} bordered valueAbove={isMobile} />
       </div>
     </>
   )
