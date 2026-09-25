@@ -1397,6 +1397,23 @@
 }
 .sig-modal-close:hover { background: rgba(255, 255, 255, 0.22); color: var(--text); }
 
+/* Trader share card (TraderShareCard.tsx): canvas preview + save/share. */
+.share-card-wrap { max-width: 420px; max-height: none; }
+.share-card-modal { display: flex; flex-direction: column; gap: 14px; }
+.share-card-canvas { display: block; width: 100%; height: auto; aspect-ratio: 4 / 5; border-radius: 12px; background: #0b0c12; }
+.share-card-actions { display: flex; gap: 10px; }
+.share-card-btn {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; border: 0; border-radius: 12px; background: var(--blue); color: #fff;
+  font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.share-card-btn.is-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+.share-card-btn:disabled { opacity: 0.5; cursor: default; }
+.trader-share-trigger {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; padding: 0;
+  border: 0; background: none; color: var(--blue); font: inherit; cursor: pointer;
+}
+
 /* ── Global search (GlobalSearch.tsx) — header trigger + full-screen modal
    with real Top Traders/Trending Markets suggestions when the query is
    empty, real search results once it isn't. ── */

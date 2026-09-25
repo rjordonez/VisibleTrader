@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowUp, ArrowDown } from 'lucide-react'
+import { ArrowUp, ArrowDown, Share2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { traderLabel, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './helpers'
 import { SkelStatsRow, SkelTableRows, SkelBlock } from './Skeleton'
+import { TraderShareModal, type TraderShareData } from './TraderShareCard'
 import {
   CumulativeChartSection, HighlightsRow, CategoryBreakdownSection, SimilarTradersTable,
   type CategoryRow, type SimilarTrader,
@@ -196,6 +197,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   const [categoryLoading, setCategoryLoading] = useState(true)
   const [similarLoading, setSimilarLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
   const [livePositions, setLivePositions] = useState<LivePosition[]>([])
   const [liveClosed, setLiveClosed] = useState<LiveClosedPosition[]>([])
   const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([])
@@ -441,6 +443,18 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
       return acc
     }, [])
 
+  const shareData = useMemo<TraderShareData | null>(() => summary && trackedCumulative.length > 1 ? {
+    name: traderLabel(wallet, summary.wallet_name),
+    netProfit: summary.net_profit,
+    deployed: summary.deployed,
+    winRate: usdWinRate,
+    resolved: summary.n,
+    cumulative: trackedCumulative,
+  // trackedCumulative is rebuilt every render; positions is its real input.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  } : null, [summary, positions, wallet, usdWinRate])
+  const closeShare = useCallback(() => setShareOpen(false), [])
+
   return (
     <div className={`sig-page ${terminalLayout && summary ? 'terminal-trader-profile' : ''}`}>
       <div className="app-section-header">
@@ -460,9 +474,16 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                 </button>
               )
             )}
+            {shareData && (
+              <button type="button" className="trader-share-trigger" onClick={() => setShareOpen(true)}>
+                <Share2 size={14} aria-hidden="true" /> Share profile card
+              </button>
+            )}
           </p>
         </div>
       </div>
+
+      {shareOpen && shareData && <TraderShareModal data={shareData} onClose={closeShare} />}
 
       <div className="sig-panel">
         {error && (
