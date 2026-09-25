@@ -8,6 +8,7 @@ import { fmtAbbrev, fmtAbbrevSigned } from './helpers'
 // 4:5 size Instagram/TikTok/X all display uncropped.
 
 export interface TraderShareData {
+  wallet: string
   name: string
   netProfit: number
   deployed: number
@@ -18,8 +19,22 @@ export interface TraderShareData {
 
 const W = 1080
 const H = 1350
-const BRAND = '#6370ff'
-const BRAND_DARK = '#4b57f0'
+// Each trader gets one of these for the frame + avatar, picked from their
+// wallet so the same trader always gets the same color. [base, darker, lighter]
+const THEMES: [string, string, string][] = [
+  ['#6370ff', '#4b57f0', '#9aa3ff'],
+  ['#2f80ff', '#1f63d6', '#7fb2ff'],
+  ['#0ea5b7', '#0b8494', '#67d7e4'],
+  ['#8b5cf6', '#6d3fe0', '#b9a0fb'],
+  ['#ec4899', '#c92f7c', '#f59ac4'],
+  ['#f97316', '#d85c08', '#fcae78'],
+  ['#14b87a', '#0e9161', '#6fdcb2'],
+]
+function themeFor(wallet: string) {
+  let h = 0
+  for (const ch of wallet.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return THEMES[h % THEMES.length]
+}
 const GREEN = '#00d17a'
 const RED = '#ff3b5c'
 const FONT = "Manrope, system-ui, -apple-system, sans-serif"
@@ -59,16 +74,17 @@ async function drawCard(canvas: HTMLCanvasElement, d: TraderShareData) {
   canvas.height = H
   const up = d.netProfit >= 0
   const accent = up ? GREEN : RED
+  const [base, dark, light] = themeFor(d.wallet)
 
-  // Brand-colored frame that the footer sits in.
+  // Colored frame that the footer sits in.
   const bg = ctx.createLinearGradient(0, 0, 0, H)
-  bg.addColorStop(0, BRAND)
-  bg.addColorStop(1, BRAND_DARK)
+  bg.addColorStop(0, base)
+  bg.addColorStop(1, dark)
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, W, H)
 
   // Dark inner card.
-  const cx = 36, cy = 36, cw = W - 72, ch = 1110
+  const cx = 18, cy = 18, cw = W - 36, ch = 1130
   roundRect(ctx, cx, cy, cw, ch, 48)
   ctx.fillStyle = '#0b0c12'
   ctx.fill()
@@ -79,8 +95,8 @@ async function drawCard(canvas: HTMLCanvasElement, d: TraderShareData) {
   ctx.beginPath()
   ctx.arc(pad + 56, 140, 56, 0, Math.PI * 2)
   const av = ctx.createLinearGradient(pad, 84, pad + 112, 196)
-  av.addColorStop(0, BRAND)
-  av.addColorStop(1, '#9aa3ff')
+  av.addColorStop(0, base)
+  av.addColorStop(1, light)
   ctx.fillStyle = av
   ctx.fill()
   ctx.fillStyle = '#fff'
@@ -96,25 +112,16 @@ async function drawCard(canvas: HTMLCanvasElement, d: TraderShareData) {
   const dateW = ctx.measureText(dateText).width
   ctx.fillStyle = '#6b7080'
   ctx.textAlign = 'right'
-  ctx.fillText(dateText, cx + cw - 48, 128)
+  ctx.fillText(dateText, cx + cw - 48, 151)
   ctx.textAlign = 'left'
 
   const nameX = pad + 140
   fitFont(ctx, d.name, 800, 52, cx + cw - 48 - dateW - 32 - nameX)
   ctx.fillStyle = '#fff'
-  ctx.fillText(d.name, nameX, 128)
-
-  ctx.font = `700 26px ${FONT}`
-  const tag = 'Polymarket trader'
-  const tagW = ctx.measureText(tag).width + 32
-  roundRect(ctx, nameX, 148, tagW, 44, 12)
-  ctx.fillStyle = 'rgba(99, 112, 255, 0.18)'
-  ctx.fill()
-  ctx.fillStyle = '#9aa3ff'
-  ctx.fillText(tag, nameX + 16, 179)
+  ctx.fillText(d.name, nameX, 158)
 
   // P&L curve.
-  const gx = cx + 24, gw = cw - 48, gy = 250, gh = 420
+  const gx = cx + 30, gw = cw - 60, gy = 250, gh = 430
   const pts = d.cumulative
   if (pts.length > 1) {
     const vals = pts.map(p => p.cum)
@@ -146,7 +153,7 @@ async function drawCard(canvas: HTMLCanvasElement, d: TraderShareData) {
   }
 
   // Stats panel.
-  const px = cx + 36, pw = cw - 72, py = 730, ph = 380
+  const px = cx + 36, pw = cw - 72, py = 745, ph = 380
   roundRect(ctx, px, py, pw, ph, 36)
   ctx.fillStyle = '#15161f'
   ctx.fill()
@@ -161,11 +168,11 @@ async function drawCard(canvas: HTMLCanvasElement, d: TraderShareData) {
 
   const roi = d.deployed > 0 ? (d.netProfit / d.deployed) * 100 : 0
   const big = fmtAbbrevSigned(d.netProfit)
-  const pill = `${roi >= 0 ? '▲' : '▼'} ${Math.abs(roi).toFixed(1)}% ROI`
+  const pill = `${Math.abs(roi).toFixed(1)}% ROI`
   ctx.font = `800 118px ${FONT}`
   const bigW = ctx.measureText(big).width
   ctx.font = `700 32px ${FONT}`
-  const pillW = ctx.measureText(pill).width + 40
+  const pillW = ctx.measureText(pill).width + 76
   const rowX = W / 2 - (bigW + 24 + pillW) / 2
   ctx.textAlign = 'left'
   ctx.font = `800 118px ${FONT}`
@@ -175,8 +182,15 @@ async function drawCard(canvas: HTMLCanvasElement, d: TraderShareData) {
   ctx.fillStyle = up ? 'rgba(0, 209, 122, 0.14)' : 'rgba(255, 59, 92, 0.14)'
   ctx.fill()
   ctx.fillStyle = accent
+  // Drawn triangle rather than a ▲ glyph, which some fonts don't have.
+  const ax = rowX + bigW + 24 + 24, ay = py + 155
+  ctx.beginPath()
+  if (roi >= 0) { ctx.moveTo(ax, ay + 9); ctx.lineTo(ax + 22, ay + 9); ctx.lineTo(ax + 11, ay - 10) }
+  else { ctx.moveTo(ax, ay - 9); ctx.lineTo(ax + 22, ay - 9); ctx.lineTo(ax + 11, ay + 10) }
+  ctx.closePath()
+  ctx.fill()
   ctx.font = `700 32px ${FONT}`
-  ctx.fillText(pill, rowX + bigW + 44, py + 166)
+  ctx.fillText(pill, ax + 34, py + 166)
 
   ctx.fillStyle = '#262838'
   ctx.fillRect(px, py + 236, pw, 2)
@@ -199,27 +213,22 @@ async function drawCard(canvas: HTMLCanvasElement, d: TraderShareData) {
     ctx.fillStyle = '#262838'
   })
 
-  // Footer bar: logo + wordmark left, call to action right.
+  // Footer: logo + site, as big as the space allows.
   const fy = cy + ch + (H - cy - ch) / 2
   ctx.textBaseline = 'middle'
+  const iconSize = 110
   if (icon) {
     ctx.save()
-    roundRect(ctx, 64, fy - 44, 88, 88, 20)
+    roundRect(ctx, 48, fy - iconSize / 2, iconSize, iconSize, 26)
     ctx.clip()
-    ctx.drawImage(icon, 64, fy - 44, 88, 88)
+    ctx.drawImage(icon, 48, fy - iconSize / 2, iconSize, iconSize)
     ctx.restore()
   }
+  const textX = icon ? 48 + iconSize + 28 : 48
   ctx.textAlign = 'left'
   ctx.fillStyle = '#fff'
-  ctx.font = `800 58px ${FONT}`
-  ctx.fillText('VisibleTrader', icon ? 176 : 64, fy + 2)
-  ctx.textAlign = 'right'
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.75)'
-  ctx.font = `600 28px ${FONT}`
-  ctx.fillText('Copy the top traders', W - 64, fy - 20)
-  ctx.fillStyle = '#fff'
-  ctx.font = `800 34px ${FONT}`
-  ctx.fillText('visibletrader.com', W - 64, fy + 22)
+  fitFont(ctx, 'visibletrader.com', 800, 96, W - 48 - textX)
+  ctx.fillText('visibletrader.com', textX, fy + 4)
 }
 
 export function TraderShareModal({ data, onClose }: { data: TraderShareData; onClose: () => void }) {

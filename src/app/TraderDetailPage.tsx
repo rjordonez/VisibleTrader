@@ -444,6 +444,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     }, [])
 
   const shareData = useMemo<TraderShareData | null>(() => summary && trackedCumulative.length > 1 ? {
+    wallet,
     name: traderLabel(wallet, summary.wallet_name),
     netProfit: summary.net_profit,
     deployed: summary.deployed,
