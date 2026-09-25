@@ -4,7 +4,7 @@ import { Star, BadgeCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import posthog from '../lib/posthog'
 import { appUrl, marketingUrl } from '../lib/domains'
-import RedeemCode from '../app/RedeemCode'
+import RedeemCode from '../lib/RedeemCode'
 
 // const platformLogos = [
 //   { name: 'Polymarket', src: '/polymarket.png' },

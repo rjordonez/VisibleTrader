@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase } from './supabase'
 
 // Small "have a code?" link/form — lets someone with a comp code (see
 // supabase/migrations/20260925120000_access_codes.sql) unlock the app
@@ -9,10 +9,12 @@ import { supabase } from '../lib/supabase'
 // reach across to that state.
 //
 // Mounted on both the in-app paywall overlay (app/index.tsx) and the
-// marketing pricing page (landing/PricingPage.tsx) — those live in separate
-// CSS bundles, so `ctaClassName` lets each caller pass its own submit-button
-// style (matching each page's existing CTA look) while the rest of the
-// markup stays shared.
+// marketing pricing page (landing/PricingPage.tsx) — lives in src/lib
+// (not app/ or landing/) since dependency-cruiser forbids either bundle
+// importing from the other; lib is the shared leaf both may depend on.
+// `ctaClassName` lets each caller pass its own submit-button style
+// (matching each page's existing CTA look) while the rest of the markup
+// stays shared.
 export default function RedeemCode({ ctaClassName = '' }: { ctaClassName?: string }) {
   const [open, setOpen] = useState(false)
   const [code, setCode] = useState('')
