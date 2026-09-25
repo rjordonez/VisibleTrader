@@ -6,6 +6,7 @@ import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
 import { useAlerts } from './useAlerts'
 import GlobalSearch from './GlobalSearch'
+import RedeemCode from './RedeemCode'
 import GogglesAvatar from './GogglesAvatar'
 import NavItem from './NavItem'
 import { timeAgo } from './helpers'
@@ -372,6 +373,7 @@ export default function AppShell() {
               <div className="search-glass-overlay">
                 <p className="search-glass-title">Subscribe to unlock live signals, profits, and trader data</p>
                 <Link to={dashboardPath('/pricing')} className="search-glass-btn">See plans</Link>
+                <RedeemCode />
               </div>
             )}
           </main>

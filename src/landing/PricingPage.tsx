@@ -4,6 +4,7 @@ import { Star, BadgeCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import posthog from '../lib/posthog'
 import { appUrl, marketingUrl } from '../lib/domains'
+import RedeemCode from '../app/RedeemCode'
 
 // const platformLogos = [
 //   { name: 'Polymarket', src: '/polymarket.png' },
@@ -37,6 +38,12 @@ export default function PricingPage() {
   const [checkingOut, setCheckingOut] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
+  // Redeeming requires an authenticated auth.uid() (see
+  // redeem_access_code in supabase/migrations/20260925120000_access_codes.sql)
+  // — hide the link entirely for an anonymous visitor rather than let them
+  // hit "that code isn't valid" for a reason that has nothing to do with
+  // the code itself.
+  const [signedIn, setSignedIn] = useState(false)
 
   // The actual redirect is an effect, not inline in the handler below — a
   // full-page navigation is exactly the kind of external-system side effect
@@ -57,6 +64,7 @@ export default function PricingPage() {
     let cancelled = false
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user || cancelled) return
+      setSignedIn(true)
       supabase.from('subscriptions').select('status').maybeSingle().then(({ data }) => {
         if (cancelled) return
         if (data && (data.status === 'trialing' || data.status === 'active')) {
@@ -188,6 +196,8 @@ export default function PricingPage() {
           )
         })}
       </div>
+
+      {signedIn && <RedeemCode />}
 
       <p className="pricing-fine">No contracts. Cancel anytime.</p>
     </div>
