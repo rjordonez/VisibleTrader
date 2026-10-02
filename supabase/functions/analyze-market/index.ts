@@ -326,8 +326,19 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
         // the model's outcome appears in the candidate outcome) handles that
         // without accepting an unrelated outcome.
         const outcomeWords = new Set(words(analysis.outcome))
-        const searchResults = await gamma(`public-search?q=${encodeURIComponent(analysis.title)}&limit_per_type=5`, signal)
-        const events = (searchResults?.events || []) as Record<string, unknown>[]
+        // The vision model titles a matchup with full team names ("Indianapolis
+        // Colts – Washington Commanders"), which Gamma's search ranks below
+        // season-long futures (confirmed live: the game itself was missing
+        // from the top results), while Polymarket's own game titles use
+        // nicknames ("Colts vs. Commanders"), which search finds first. So
+        // also search the nickname form: the last word of each side.
+        const queries = [analysis.title]
+        const sides = analysis.title.split(/\s+(?:vs\.?|v\.?|at|@|[-–—])\s+/i).map((s: string) => s.trim()).filter(Boolean)
+        if (sides.length === 2) queries.unshift(sides.map((s: string) => s.split(/\s+/).at(-1)).join(' vs '))
+        const events: Record<string, unknown>[] = []
+        for (const results of await Promise.all(queries.map(q => gamma(`public-search?q=${encodeURIComponent(q)}&limit_per_type=5`, signal).catch(() => null)))) {
+          for (const e of (results?.events || []) as Record<string, unknown>[]) if (!events.some(seen => seen.slug === e.slug)) events.push(e)
+        }
         const candidates = events.filter((e): e is Record<string, unknown> & { slug: string; markets: Record<string, unknown>[] } =>
           typeof e.slug === 'string' && Array.isArray(e.markets) && e.markets.length > 0)
 
