@@ -105,14 +105,48 @@ function Processing({ progress, image }: { progress: Progress; image: string | n
 // the event instead of silently guessing one. This lets the user say which
 // one they meant; picking a card resubmits with that market's own link,
 // which resolves unambiguously.
-function MarketPick({ options, onPick }: { options: PickOption[]; onPick: (url: string) => void }) {
+// `unmatched`: a screenshot the backend couldn't pin to one event. Instead of
+// a result with no market behind it, show the closest events it found plus a
+// link box, so the user confirms the market before anything is analyzed.
+// Accepts both polymarket.com and polymarket.us — which one is invisible to
+// the user, the backend picks the right API for whichever they paste. .com
+// uses /event/{slug} and /market/{slug}, but also category-prefixed paths like
+// /sports/mlb/{slug} (confirmed live) — same shape .us always uses — so both
+// just need a real trailing path segment.
+function isPolymarketLink(value: string) {
+  try {
+    const p = new URL(value)
+    const validHost = ['polymarket.com', 'www.polymarket.com', 'polymarket.us', 'www.polymarket.us'].includes(p.hostname)
+    return p.protocol === 'https:' && validHost && p.pathname.split('/').filter(Boolean).length >= 1
+  } catch { return false }
+}
+
+function MarketPick({ options, onPick, unmatched = false }: { options: PickOption[]; onPick: (url: string) => void; unmatched?: boolean }) {
   const [group, setGroup] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [link, setLink] = useState('')
+  const [linkError, setLinkError] = useState('')
+  const submitLink = (event: FormEvent) => {
+    event.preventDefault()
+    const trimmed = link.trim()
+    if (!isPolymarketLink(trimmed)) { setLinkError('Use a full Polymarket event or market link.'); return }
+    onPick(trimmed)
+  }
   const groups = [...new Set(options.map(option => option.group))]
   const filtered = options.filter(option => (group === null || option.group === group)
     && `${option.title} ${option.group} ${option.outcomes.map(o => o.name).join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()))
   return <div className="ac-market-pick" aria-label="Choose a market to analyze">
-    <div className="ac-picker-intro"><span className="ac-eyebrow">Choose your market</span><h1>What would you like to analyze?</h1><p>Select a market to get a pick and the research behind it.</p></div>
+    {unmatched
+      ? <div className="ac-picker-intro"><span className="ac-eyebrow">Confirm your market</span><h1>{options.length ? 'Is it one of these?' : 'We couldn’t find this market'}</h1><p>{options.length ? 'We couldn’t confirm the exact market from your screenshot. Pick it below, or paste its Polymarket link.' : 'Paste the market’s Polymarket link to analyze it.'}</p></div>
+      : <div className="ac-picker-intro"><span className="ac-eyebrow">Choose your market</span><h1>What would you like to analyze?</h1><p>Select a market to get a pick and the research behind it.</p></div>}
+    {unmatched && <form className="ac-link-row" onSubmit={submitLink}>
+      <Link2 size={13} />
+      <label className="ac-sr-only" htmlFor="ac-pick-link">Paste the Polymarket link</label>
+      <input id="ac-pick-link" value={link} onChange={e => { setLink(e.target.value); setLinkError('') }} placeholder="Paste the Polymarket link" autoComplete="off" />
+      <button type="submit" aria-label="Analyze market" disabled={!link.trim()}><ArrowUp size={15} /></button>
+    </form>}
+    {linkError && <p className="ac-input-error" role="alert">{linkError}</p>}
+    {options.length > 0 && <>
     <div className="ac-market-filters" aria-label="Market categories">
       <button type="button" aria-pressed={group === null} onClick={() => setGroup(null)}>All <span>{options.length}</span></button>
       {groups.length > 1 && groups.map(name => <button type="button" key={name} aria-pressed={group === name} onClick={() => setGroup(name)}>{name} <span>{options.filter(option => option.group === name).length}</span></button>)}
@@ -127,7 +161,7 @@ function MarketPick({ options, onPick }: { options: PickOption[]; onPick: (url: 
           <article className="expert-pick-card ac-market-card">
             <div className="expert-pick-topline"><span>{option.group}</span><span className="ac-market-card-logos">{option.images.filter(Boolean).slice(0, 2).map((src, i) => <img key={i} src={src!} alt="" loading="lazy" />)}</span></div>
             <button type="button" className="expert-pick-title" onClick={() => onPick(option.url)}><h3>{option.title}</h3></button>
-            <MarketSparkline key={`${option.url}:${option.outcomes[0]?.name}`} url={option.url} outcome={option.outcomes[0]?.name || ''} price={option.outcomes[0]?.price ?? null} />
+            {option.outcomes.length > 0 && <MarketSparkline key={`${option.url}:${option.outcomes[0]?.name}`} url={option.url} outcome={option.outcomes[0]?.name || ''} price={option.outcomes[0]?.price ?? null} />}
             <div className="expert-pick-evidence"><div className="expert-pick-stats ac-market-outcomes">{option.outcomes.slice(0, 2).map(o => <span key={o.name}><strong>{percent(o.price)}</strong><small>{o.name}</small></span>)}</div></div>
             <button type="button" className="expert-pick-bet is-other" onClick={() => onPick(option.url)} aria-label={`Analyze ${option.title}`}><span>Analyze market</span><ArrowUpRight size={16} /></button>
           </article>
@@ -135,6 +169,7 @@ function MarketPick({ options, onPick }: { options: PickOption[]; onPick: (url: 
       </section>
     })}
     {filtered.length === 0 && <div className="ac-market-empty"><strong>No matching markets</strong><p>Try another search or category.</p><button type="button" onClick={() => { setQuery(''); setGroup(null) }}>Clear filters</button></div>}
+    </>}
   </div>
 }
 
@@ -208,6 +243,7 @@ export default function AnalyzerPage() {
   const [progress, setProgress] = useState<Progress | null>(null)
   const [report, setReport] = useState<Report | null>(null)
   const [pickOptions, setPickOptions] = useState<PickOption[] | null>(null)
+  const [pickUnmatched, setPickUnmatched] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [inputError, setInputError] = useState('')
@@ -252,7 +288,7 @@ export default function AnalyzerPage() {
             const message = JSON.parse(line)
             if (message.type === 'error') throw new Error(message.error)
             if (message.type === 'progress') setProgress(current => ({ ...current, ...message } as Progress))
-            if (message.type === 'choose') { setPickOptions(message.markets); setProgress(null); completed = true }
+            if (message.type === 'choose') { setPickOptions(message.markets); setPickUnmatched(message.unmatched === true); setProgress(null); completed = true }
             if (message.type === 'result') {
               const result = message.report
               if (result?.action !== 'BUY' || typeof result.outcome !== 'string' || !Array.isArray(result.evidence) || !Array.isArray(result.traders)) throw new Error('The result could not be read. Try again.')
@@ -295,19 +331,7 @@ export default function AnalyzerPage() {
     if (busy || starting) return
     const trimmed = url.trim()
     if (!trimmed) { setInputError('Paste a market link or drop a screenshot.'); return }
-    // Accepts both polymarket.com and polymarket.us — which one is invisible
-    // to the user, the backend picks the right API for whichever they paste.
-    // .com uses /event/{slug} and /market/{slug}, but also category-prefixed
-    // paths like /sports/mlb/{slug} (confirmed live) — same shape .us always
-    // uses — so both just need a real trailing path segment.
-    try {
-      const p = new URL(trimmed)
-      const isUS = p.hostname === 'polymarket.us' || p.hostname === 'www.polymarket.us'
-      const validHost = isUS || p.hostname === 'polymarket.com' || p.hostname === 'www.polymarket.com'
-      const pathOk = p.pathname.split('/').filter(Boolean).length >= 1
-      if (p.protocol !== 'https:' || !validHost || !pathOk) throw new Error()
-    }
-    catch { setInputError('Use a full Polymarket event or market link.'); return }
+    if (!isPolymarketLink(trimmed)) { setInputError('Use a full Polymarket event or market link.'); return }
     start(trimmed, null)
   }
 
@@ -352,7 +376,7 @@ export default function AnalyzerPage() {
     {hasRun && <div className="ac-output" ref={output}>
       {report ? <Result report={report} onReset={reset} />
         : runError ? <div className="ac-run-error" role="alert"><p>{runError}</p><button onClick={reset}><RotateCcw size={14} />Try again</button></div>
-        : pickOptions ? <MarketPick options={pickOptions} onPick={pickUrl => { setPickOptions(null); start(pickUrl, null) }} />
+        : pickOptions ? <MarketPick options={pickOptions} unmatched={pickUnmatched} onPick={pickUrl => { setPickOptions(null); start(pickUrl, null) }} />
         : progress ? <><Processing progress={progress} image={submittedImage} /><button type="button" className="ac-stop" onClick={cancel}><Square size={12} fill="currentColor" />Stop</button></> : null}
     </div>}
   </div>
