@@ -345,11 +345,29 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         setSummaryLoading(false)
       })
 
-    Promise.resolve(supabase.from('wallet_positions').select('*').eq('wallet', w).eq('market_closed', true).order('resolved_ts', { ascending: false }))
-      .then(({ data, error: err }) => {
-        if (cancelled) return
+    // PostgREST caps a response at 1000 rows, and a single high-volume market
+    // can carry more fills than that on its own — page through so every
+    // resolved market shows up, not just whichever resolved most recently.
+    // Tie-break columns keep page boundaries stable between requests.
+    const fetchAllClosed = async () => {
+      const PAGE = 1000
+      const rows: TraderPosition[] = []
+      for (let from = 0; ; from += PAGE) {
+        const { data, error: err } = await supabase.from('wallet_positions').select('*')
+          .eq('wallet', w).eq('market_closed', true)
+          .order('resolved_ts', { ascending: false })
+          .order('ts', { ascending: false })
+          .order('condition_id').order('outcome').order('usd')
+          .range(from, from + PAGE - 1)
         if (err) throw err
-        const positionsData = (data ?? []) as TraderPosition[]
+        rows.push(...((data ?? []) as TraderPosition[]))
+        if (!data || data.length < PAGE) return rows
+      }
+    }
+
+    fetchAllClosed()
+      .then(positionsData => {
+        if (cancelled) return
         setPositions(positionsData)
         setPositionsLoading(false)
         // Only the tracked-history branch drives similar traders off our own
