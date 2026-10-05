@@ -720,6 +720,11 @@ def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, pri
         # pair — see opportunity_aggregate_dirty / refresh_opportunity_aggregates.
         conn.execute('''INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
             VALUES (%s,%s) ON CONFLICT DO NOTHING''', (condition_id, outcome))
+        # Same signal moves profit-bot eligibility (a new proven-wallet
+        # contribution can push a pair past the 5+ bar) — see
+        # profit_bot_dirty / refresh_profit_bot.
+        conn.execute('''INSERT INTO profit_bot_dirty (condition_id, outcome)
+            VALUES (%s,%s) ON CONFLICT DO NOTHING''', (condition_id, outcome))
         # opportunity_wallet_max_usd: this wallet's largest trade in this
         # market so far. O(1) regardless of how many trades this market has
         # ever had — usd is immutable once inserted, so a wallet's max in a
@@ -910,6 +915,11 @@ def refresh_wallet_balances(db, wallets):
         db.execute('''INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
             SELECT condition_id, outcome FROM opportunity_contributors WHERE wallet = ANY(%s)
             ON CONFLICT DO NOTHING''', (changed_wallets,))
+        # best_bet_ratio's profit-bot-side equivalent lives in the same
+        # opportunity_wallets price/usd filter — a balance change doesn't
+        # move profit bot's own eligibility math directly, but keeping this
+        # here would be wrong: profit bot's bar doesn't use usdc_balance at
+        # all. Intentionally not marking profit_bot_dirty here.
     print(f'  [balances] refreshed {len(results)}/{len(wallets)} wallet balances ({len(changed_wallets)} changed)')
 
 
@@ -1097,6 +1107,19 @@ def refresh_leaderboard(db):
           WHERE oc.wallet IN (SELECT wallet FROM deltas)
           ON CONFLICT DO NOTHING
           RETURNING 1
+        ),
+        -- proven_wallets (leaderboard-derived: won+lost>=20, net_profit>0,
+        -- win_rate>=0.52) can gain or lose a wallet whenever its
+        -- leaderboard_cache row changes, which moves profit bot's own
+        -- 5+-proven-wallet eligibility for every pair that wallet
+        -- contributes to — see profit_bot_dirty / refresh_profit_bot.
+        pbot_dirty AS (
+          INSERT INTO profit_bot_dirty (condition_id, outcome)
+          SELECT DISTINCT oc.condition_id, oc.outcome
+          FROM opportunity_contributors oc
+          WHERE oc.wallet IN (SELECT wallet FROM deltas)
+          ON CONFLICT DO NOTHING
+          RETURNING 1
         )
         SELECT (SELECT MAX(max_resolved_ts) FROM deltas), (SELECT count(*) FROM upserted)
     ''', (last_ts, now))
@@ -1221,19 +1244,179 @@ def reconcile_caches(db):
     else:
         print('  [reconcile] opportunity aggregates: no drift found')
 
+    # --- profit_bot_*_cache ---
+    # refresh_profit_bot's incremental path only re-evaluates pairs marked
+    # dirty at the sites that're known to move its eligibility math (see
+    # refresh_profit_bot's docstring). This runs the original full
+    # recompute (supabase/migrations/20260909140000_profit_bot_cache.sql)
+    # as the correction pass, same role this function plays for
+    # leaderboard_cache / opportunity_best_win_rate / opportunity_best_bet_ratio
+    # above — just a straight call rather than a diffed one, since
+    # refresh_profit_bot_cache() already does its own atomic delete+rebuild
+    # in one transaction (not an additive delta), so there's no drift
+    # bookkeeping to do here, only draining whatever's left in
+    # profit_bot_dirty so the next incremental pass isn't redoing work this
+    # pass already covered.
+    db.execute('SELECT refresh_profit_bot_cache()')
+    db.execute('DELETE FROM profit_bot_dirty')
+    print('  [reconcile] profit_bot_*_cache: full recompute applied')
+
 
 def refresh_profit_bot(db):
     """Runs periodically (PROFIT_BOT_REFRESH_SECONDS, see main()) — recomputes
     the profit_bot_*_cache tables the four profit_bot_* RPCs now just read.
-    Those RPCs used to run opportunity_wallets JOIN proven_wallets grouped by
-    (condition_id, outcome) with a `count(distinct wallet) >= 5` filter on
-    every Profits-page load and 60s poll — a ~56k-row sort spilling to disk,
-    ~11s cold for profit_bot_resolved(). Same precompute pattern as
-    refresh_leaderboard(); see
-    supabase/migrations/20260909140000_profit_bot_cache.sql for the full
-    story and the queries this mirrors."""
-    db.execute('SELECT refresh_profit_bot_cache()')
-    print('  [aggregates] refreshed profit_bot_*_cache')
+
+    Incremental as of profit_bot_dirty: this used to call
+    refresh_profit_bot_cache(), a full GROUP BY over opportunity_wallets
+    JOIN proven_wallets on every call — per pg_stat_statements, the single
+    largest disk I/O consumer in the project (6+ TB read cumulative against
+    a 2.3 GB table). Same dirty-group pattern as
+    refresh_opportunity_aggregates: profit_bot_dirty tracks which
+    (condition_id, outcome) pairs have a new contribution, a contributing
+    wallet's balance that moved, or a contributing wallet's win rate that
+    moved (marked at the same sites opportunity_aggregate_dirty is — see
+    record_contribution, refresh_wallet_balances, refresh_leaderboard, and
+    sweep_resolved_positions for the resolution case) and only recomputes
+    the resolved/open-picks aggregates for that bounded batch instead of
+    every pair in the table.
+
+    profit_bot_perf_cache and profit_bot_daily_cache are cheap to recompute
+    in full every pass regardless — they aggregate over
+    profit_bot_resolved_cache (hundreds of rows), not opportunity_wallets.
+    all_markets_teaser_cache is similarly cheap every pass: it reads
+    expert_picks_open, itself just a filter over opportunities_live, which
+    already only joins the small precomputed aggregate tables (see
+    supabase/migrations/20260817010000_precompute_opportunity_aggregates.sql),
+    never opportunity_wallets directly.
+
+    refresh_profit_bot_cache() (the original full recompute) is unchanged
+    and still runs, just at RECONCILE_INTERVAL_SECONDS via reconcile_caches
+    instead of every PROFIT_BOT_REFRESH_SECONDS — the correction pass for
+    whatever this incremental path might have missed, same role reconcile
+    plays for leaderboard/opportunity aggregates. See
+    supabase/migrations/20261005000000_profit_bot_dirty_tracking.sql."""
+    PROFIT_BOT_DIRTY_BATCH_LIMIT = 300
+    now = datetime.now(timezone.utc)
+    rows = db.fetchall('''
+        DELETE FROM profit_bot_dirty
+        WHERE (condition_id, outcome) IN (
+          SELECT condition_id, outcome FROM profit_bot_dirty LIMIT %s
+        )
+        RETURNING condition_id, outcome
+    ''', (PROFIT_BOT_DIRTY_BATCH_LIMIT,))
+    if rows:
+        dirty_cids = [r[0] for r in rows]
+        dirty_outcomes = [r[1] for r in rows]
+
+        # Resolved picks: once a pair clears the 5+ proven-wallet bar its row
+        # is final (resolved rows never change again), so ON CONFLICT DO
+        # NOTHING is correct — no existing row ever needs overwriting, we're
+        # only ever adding newly-qualifying pairs.
+        db.execute('''
+            INSERT INTO profit_bot_resolved_cache
+              (condition_id, outcome, title, category, experts, avg_entry, won, pnl, resolved_ts)
+            SELECT m.condition_id, m.outcome, COALESCE(o.title, m.condition_id), o.category,
+              m.k, round(m.entry, 4), m.won,
+              round(CASE WHEN m.won THEN 100 * (1.0 / m.entry - 1) ELSE -100 END), m.rts
+            FROM (
+              SELECT ow.condition_id, ow.outcome,
+                count(DISTINCT ow.wallet)::int AS k,
+                bool_or(ow.resolved_win) AS won,
+                avg(ow.price) AS entry,
+                max(ow.resolved_ts) AS rts
+              FROM opportunity_wallets ow
+              JOIN unnest(%s::text[], %s::text[]) AS dirty(condition_id, outcome)
+                ON dirty.condition_id = ow.condition_id AND dirty.outcome = ow.outcome
+              JOIN proven_wallets pw ON pw.wallet = ow.wallet
+              WHERE ow.resolved_ts IS NOT NULL AND ow.price BETWEEN 0.40 AND 0.80
+                AND ow.usd >= 100 AND ow.closed_profit IS NOT NULL
+              GROUP BY ow.condition_id, ow.outcome
+              HAVING count(DISTINCT ow.wallet) >= 5
+            ) m
+            LEFT JOIN LATERAL (
+              SELECT title, category FROM opportunities
+              WHERE condition_id = m.condition_id AND outcome = m.outcome
+              ORDER BY is_current DESC, last_updated DESC NULLS LAST
+              LIMIT 1
+            ) o ON true
+            ON CONFLICT (condition_id, outcome) DO NOTHING
+        ''', (dirty_cids, dirty_outcomes))
+
+        # Open picks: a pair can gain OR lose eligibility (e.g. a
+        # contributing wallet stops being "proven"), so delete-then-reinsert
+        # for just the dirty pairs, same semantics as the old full
+        # delete+reinsert but bounded to what actually changed.
+        db.execute('''
+            DELETE FROM profit_bot_pick_keys pk
+            USING unnest(%s::text[], %s::text[]) AS d(condition_id, outcome)
+            WHERE pk.condition_id = d.condition_id AND pk.outcome = d.outcome
+        ''', (dirty_cids, dirty_outcomes))
+        db.execute('''
+            INSERT INTO profit_bot_pick_keys
+              (condition_id, outcome, experts, updated_at,
+               title, category, slug, event_slug, latest_price, cumulative_usd, total_profit, last_updated,
+               best_win_rate)
+            SELECT o.condition_id, o.outcome, agg.experts, %s,
+              o.title, o.category, o.slug, o.event_slug, o.latest_price, o.cumulative_usd, o.total_profit, o.last_updated,
+              o.best_win_rate
+            FROM (
+              SELECT ow.condition_id, ow.outcome, count(DISTINCT ow.wallet)::int AS experts
+              FROM opportunity_wallets ow
+              JOIN unnest(%s::text[], %s::text[]) AS dirty(condition_id, outcome)
+                ON dirty.condition_id = ow.condition_id AND dirty.outcome = ow.outcome
+              JOIN proven_wallets pw ON pw.wallet = ow.wallet
+              WHERE ow.resolved_ts IS NULL AND ow.exit_ts IS NULL
+                AND ow.price BETWEEN 0.40 AND 0.80 AND ow.usd >= 100
+              GROUP BY ow.condition_id, ow.outcome
+              HAVING count(DISTINCT ow.wallet) >= 5
+            ) agg
+            JOIN opportunities_live o ON o.condition_id = agg.condition_id AND o.outcome = agg.outcome
+            WHERE o.latest_price BETWEEN 0.08 AND 0.94
+        ''', (now, dirty_cids, dirty_outcomes))
+
+    db.execute('''
+        INSERT INTO profit_bot_perf_cache AS p
+          (id, picks, won, lost, win_rate, avg_return_pct, avg_entry, flat100_pnl, since, updated_at)
+        SELECT 1,
+          count(*),
+          count(*) FILTER (WHERE won),
+          count(*) FILTER (WHERE NOT won),
+          round(100.0 * avg(won::int), 1),
+          round(avg(pnl), 1),
+          round(avg(avg_entry), 4),
+          round(sum(pnl)),
+          min(resolved_ts)::date,
+          %s
+        FROM profit_bot_resolved_cache
+        ON CONFLICT (id) DO UPDATE SET
+          picks = EXCLUDED.picks, won = EXCLUDED.won, lost = EXCLUDED.lost,
+          win_rate = EXCLUDED.win_rate, avg_return_pct = EXCLUDED.avg_return_pct,
+          avg_entry = EXCLUDED.avg_entry, flat100_pnl = EXCLUDED.flat100_pnl,
+          since = EXCLUDED.since, updated_at = EXCLUDED.updated_at
+    ''', (now,))
+
+    db.execute('DELETE FROM profit_bot_daily_cache')
+    db.execute('''
+        INSERT INTO profit_bot_daily_cache (d, day_pnl, picks)
+        SELECT resolved_ts::date, round(sum(pnl)), count(*)
+        FROM profit_bot_resolved_cache
+        GROUP BY resolved_ts::date
+    ''')
+
+    db.execute('DELETE FROM all_markets_teaser_cache')
+    db.execute('''
+        INSERT INTO all_markets_teaser_cache
+          (condition_id, outcome, title, category, slug, event_slug, latest_price,
+           cumulative_usd, wallet_count, total_profit, last_updated, best_win_rate)
+        SELECT condition_id, outcome, title, category, slug, event_slug, latest_price,
+          cumulative_usd, wallet_count, total_profit, last_updated, best_win_rate
+        FROM expert_picks_open
+        WHERE wallet_count >= 4 AND cumulative_usd >= 1000
+        ORDER BY last_updated DESC
+        LIMIT 30
+    ''')
+
+    print(f'  [aggregates] refreshed profit_bot_*_cache ({len(rows)} dirty pairs)')
 
 
 def refresh_wallet_category_breakdown(db):
@@ -1340,6 +1523,12 @@ def sweep_resolved_positions(db):
             n = cur.rowcount
             if n == 0:
                 return 0
+            # Resolution is exactly the event that moves a pair from profit
+            # bot's "open picks" bucket to its "resolved" bucket — mark it
+            # dirty so refresh_profit_bot re-evaluates both. See
+            # profit_bot_dirty.
+            conn.execute('''INSERT INTO profit_bot_dirty (condition_id, outcome)
+                VALUES (%s,%s) ON CONFLICT DO NOTHING''', (condition_id, outcome))
             # Mark-to-market (both the trade-tick and price_change paths) only
             # ever runs while a market is still actively trading — once it
             # resolves, no more WS events for it arrive, so latest_price was

@@ -68,7 +68,11 @@ export function MarketSparkline({ url, outcome, price, initialHistory, accent, f
     const parsed = new URL(url)
     isUS = ['polymarket.us', 'www.polymarket.us'].includes(parsed.hostname)
     if (isUS || ['polymarket.com', 'www.polymarket.com'].includes(parsed.hostname)) {
-      slug = parsed.pathname.match(/^\/market\/([a-zA-Z0-9_-]+)\/?$/)?.[1] ?? null
+      // The analyzer echoes back whatever link was pasted — /market/{slug},
+      // /event/{slug}, or category paths like /sports/nfl/{slug} — and
+      // resolves it by its last segment, so read the slug the same way.
+      const last = parsed.pathname.split('/').filter(Boolean).at(-1) ?? ''
+      slug = /^[a-zA-Z0-9_-]+$/.test(last) ? last : null
     }
   } catch { /* Unsupported links get an honest empty state. */ }
 
