@@ -367,10 +367,16 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
         text: { format: { type: 'json_schema', name: 'market_briefing', strict: true, schema } },
       }),
     })
-    if (!response.ok) return json({ error: 'The analysis service is unavailable. Please try again shortly.' }, 502)
+    if (!response.ok) {
+      console.error('[analyze] openai error', response.status, await response.text().catch(() => ''))
+      return json({ error: 'The analysis service is unavailable. Please try again shortly.' }, 502)
+    }
     const result = await response.json()
     const output = result.output?.flatMap((item: { content?: { type: string; text?: string }[] }) => item.content || []).find((item: { type: string }) => item.type === 'output_text')?.text
-    if (result.status !== 'completed' || !output) return json({ error: 'The analysis could not be completed. Try a clearer screenshot or a market link.' }, 502)
+    if (result.status !== 'completed' || !output) {
+      console.error('[analyze] openai incomplete', result.status, JSON.stringify(result).slice(0, 2000))
+      return json({ error: 'The analysis could not be completed. Try a clearer screenshot or a market link.' }, 502)
+    }
     const analysis = JSON.parse(output)
     // A screenshot never resolves to an actual on-chain market on its own —
     // there's no clobTokenIds/conditionId to fetch a chart, real bet link, or
