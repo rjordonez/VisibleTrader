@@ -27,6 +27,7 @@ interface BotResolved {
 interface BotCurvePoint {
   pnl: number
   resolved_ts: string
+  opened_ts: string | null
 }
 interface BotPerf {
   picks: number
@@ -73,12 +74,36 @@ export default function ProfitBot() {
   const compoundCurve = useMemo(() => {
     // `curve` is every resolved pick, oldest first. `resolved` is only the
     // latest 60 for the list, so it can't be used here.
-    let bankroll = compoundStart
+    //
+    // Picks overlap in time (dozens can be open at once), so replay opens and
+    // resolves in time order: each pick stakes restakePct of the bankroll when
+    // it opens, but only out of free cash, and that money is locked until it
+    // resolves. Compounding them back to back instead turned $50 into ~$36B.
+    type Ev = { t: number; open: boolean; i: number }
+    const events: Ev[] = []
+    curve.forEach((p, i) => {
+      const r = Date.parse(p.resolved_ts)
+      events.push({ t: p.opened_ts ? Math.min(Date.parse(p.opened_ts), r) : r, open: true, i })
+      events.push({ t: r, open: false, i })
+    })
+    // At the same instant, resolve before opening so freed cash is usable.
+    events.sort((a, b) => a.t - b.t || Number(a.open) - Number(b.open) || (a.open ? a.i - b.i : 0))
+    let cash = compoundStart
+    let locked = 0
+    const stakes = new Map<number, number>()
     const points: { d: string; cum: number }[] = []
-    for (const p of curve) {
-      const stake = bankroll * (restakePct / 100)
-      bankroll = bankroll - stake + stake * (1 + Number(p.pnl) / 100)
-      points.push({ d: p.resolved_ts, cum: bankroll })
+    for (const e of events) {
+      if (e.open) {
+        const stake = Math.min(cash, (cash + locked) * (restakePct / 100))
+        cash -= stake
+        locked += stake
+        stakes.set(e.i, stake)
+      } else {
+        const stake = stakes.get(e.i) ?? 0
+        locked -= stake
+        cash += stake * (1 + Number(curve[e.i].pnl) / 100)
+        points.push({ d: curve[e.i].resolved_ts, cum: cash + locked })
+      }
     }
     return points
   }, [curve, compoundStart, restakePct])
@@ -224,7 +249,7 @@ export default function ProfitBot() {
 
         <div className="profits-chart-area">
           <p className="profits-chart-label">
-            Real sequence, real resolved picks since {sinceLabel}. {restakePct}% of bankroll restaked each time, not a flat amount.
+            Real sequence, real resolved picks since {sinceLabel}. {restakePct}% of bankroll staked as each pick opens, only from cash not already tied up in open picks.
           </p>
           {compoundCurve.length > 1
             ? <CumulativePickChart data={compoundCurve} height={250} valueAbove />

@@ -1314,10 +1314,10 @@ def refresh_profit_bot(db):
         # only ever adding newly-qualifying pairs.
         db.execute('''
             INSERT INTO profit_bot_resolved_cache
-              (condition_id, outcome, title, category, experts, avg_entry, won, pnl, resolved_ts)
+              (condition_id, outcome, title, category, experts, avg_entry, won, pnl, resolved_ts, opened_ts)
             SELECT m.condition_id, m.outcome, COALESCE(o.title, m.condition_id), o.category,
               m.k, round(m.entry, 4), m.won,
-              round(CASE WHEN m.won THEN 100 * (1.0 / m.entry - 1) ELSE -100 END), m.rts
+              round(CASE WHEN m.won THEN 100 * (1.0 / m.entry - 1) ELSE -100 END), m.rts, op.ts
             FROM (
               SELECT ow.condition_id, ow.outcome,
                 count(DISTINCT ow.wallet)::int AS k,
@@ -1339,6 +1339,19 @@ def refresh_profit_bot(db):
               ORDER BY is_current DESC, last_updated DESC NULLS LAST
               LIMIT 1
             ) o ON true
+            -- Pick opened when the 5th proven wallet got in (the compounding
+            -- chart needs it to avoid restaking money still tied up).
+            LEFT JOIN LATERAL (
+              SELECT min(ow.ts) AS ts
+              FROM opportunity_wallets ow
+              JOIN proven_wallets pw ON pw.wallet = ow.wallet
+              WHERE ow.condition_id = m.condition_id AND ow.outcome = m.outcome
+                AND ow.resolved_ts IS NOT NULL AND ow.price BETWEEN 0.40 AND 0.80
+                AND ow.usd >= 100 AND ow.closed_profit IS NOT NULL
+              GROUP BY ow.wallet
+              ORDER BY 1
+              OFFSET 4 LIMIT 1
+            ) op ON true
             ON CONFLICT (condition_id, outcome) DO NOTHING
         ''', (dirty_cids, dirty_outcomes))
 
