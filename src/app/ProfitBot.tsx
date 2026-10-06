@@ -76,9 +76,12 @@ export default function ProfitBot() {
     // latest 60 for the list, so it can't be used here.
     //
     // Picks overlap in time (dozens can be open at once), so replay opens and
-    // resolves in time order: each pick stakes restakePct of the bankroll when
-    // it opens, but only out of free cash, and that money is locked until it
-    // resolves. Compounding them back to back instead turned $50 into ~$36B.
+    // resolves in time order: each pick stakes restakePct of the free cash
+    // (not tied up in open picks) when it opens, and that money is locked
+    // until it resolves. Compounding them back to back instead turned $50
+    // into ~$36B. Sizing off the whole bankroll capped by free cash let a few
+    // long-dated picks drain cash to zero and sit out weeks of picks, so 14%
+    // and 15% landed 100x apart.
     type Ev = { t: number; open: boolean; i: number }
     const events: Ev[] = []
     curve.forEach((p, i) => {
@@ -94,7 +97,7 @@ export default function ProfitBot() {
     const points: { d: string; cum: number }[] = []
     for (const e of events) {
       if (e.open) {
-        const stake = Math.min(cash, (cash + locked) * (restakePct / 100))
+        const stake = cash * (restakePct / 100)
         cash -= stake
         locked += stake
         stakes.set(e.i, stake)
@@ -236,7 +239,7 @@ export default function ProfitBot() {
 
         <div className="profits-net-heading">
           <div>
-            <h2 id="pbot-title">If you restaked {restakePct}% of the bankroll every pick</h2>
+            <h2 id="pbot-title">If you staked {restakePct}% of your free cash on every pick</h2>
             <strong className={`profits-net-value ${compoundFinal >= compoundStart ? 'is-positive' : 'is-negative'}`}>
               {fmtFull(compoundFinal)}
             </strong>
@@ -249,7 +252,7 @@ export default function ProfitBot() {
 
         <div className="profits-chart-area">
           <p className="profits-chart-label">
-            Real sequence, real resolved picks since {sinceLabel}. {restakePct}% of bankroll staked as each pick opens, only from cash not already tied up in open picks.
+            Real sequence, real resolved picks since {sinceLabel}. Each pick stakes {restakePct}% of the cash not already tied up in open picks.
           </p>
           {compoundCurve.length > 1
             ? <CumulativePickChart data={compoundCurve} height={250} valueAbove />
