@@ -351,7 +351,7 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
             <button type="button" role="tab" aria-selected={statsRange === 'all'} onClick={() => setStatsRange('all')}>All time</button>
           </div>
           <strong className={summary.total > 0 ? 'g' : summary.total < 0 ? 'r' : ''}>{summaryBusy ? '—' : fmtSigned(summary.total)}</strong>
-          <p>{summaryLabel} · {tradesByDay.size || (statsRange !== 'month' && summary.days) ? 'Manual entries + account P&L' : 'Manually logged'}</p>
+          <p>{summaryLabel}{(tradesByDay.size || (statsRange !== 'month' && summary.days)) ? ' · Manual entries + account P&L' : ''}</p>
         </div>
         <dl className="journal-summary-details">
           <div><dt>Days logged</dt><dd>{summaryBusy ? '—' : summary.days}</dd></div>
