@@ -12,7 +12,7 @@ leave it going. Requires DATABASE_URL in the environment (Supabase Settings
 pattern validated live earlier this session; the only non-stdlib dependency
 is psycopg for the Postgres connection.
 """
-import argparse, bisect, json, os, socket, ssl, struct, base64, threading, time, urllib.error, urllib.request
+import argparse, bisect, json, os, random, socket, ssl, struct, base64, threading, time, urllib.error, urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -642,15 +642,43 @@ class Database:
         everything commits together at the end, or none of it does. Used
         for logically-related writes (e.g. a contribution's wallet row +
         its paired opportunity_stats delta) that must never partially
-        apply if an error interrupts the sequence midway."""
-        with self.pool.connection() as conn:
-            try:
-                result = fn(conn)
-            except Exception:
-                conn.rollback()
-                raise
-            conn.commit()
-            return result
+        apply if an error interrupts the sequence midway.
+
+        Retries on DeadlockDetected/SerializationFailure (SQLSTATE 40P01/
+        40001): record_contribution runs this across up to two dozen
+        parallel per-token lanes, each inserting a single row into a
+        handful of small shared tables (opportunity_wallet_max_usd, etc.).
+        Two lanes inserting different keys that land on the same btree leaf
+        page can still deadlock on Postgres's own page-level locking even
+        with a perfectly consistent statement order — there's no "row
+        order" to fix when each transaction only ever inserts one row.
+        Confirmed live via DeadlockDetected('... while inserting index
+        tuple ... in relation "opportunity_wallet_max_usd"') between two
+        concurrent [trade-error] callers. Postgres's own docs call this out
+        explicitly: deadlocks can't be fully eliminated under concurrent
+        writes, only minimized, and the documented handling is to retry the
+        rolled-back transaction. Nothing commits on the failed attempt (the
+        rollback below already guarantees that), so re-running fn from
+        scratch against a fresh connection is safe — nothing has happened
+        yet to redo or undo. See also the ORDER BY fixes on the bulk
+        upserts in refresh_wallet_balances/refresh_leaderboard/
+        refresh_opportunity_aggregates, which remove the deadlock cycles
+        that *do* have a fixable row order; this covers what's left over."""
+        for attempt in range(3):
+            with self.pool.connection() as conn:
+                try:
+                    result = fn(conn)
+                except (psycopg.errors.DeadlockDetected, psycopg.errors.SerializationFailure):
+                    conn.rollback()
+                    if attempt == 2:
+                        raise
+                    time.sleep(0.05 * (attempt + 1) + random.uniform(0, 0.05))
+                    continue
+                except Exception:
+                    conn.rollback()
+                    raise
+                conn.commit()
+                return result
 
 
 def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, tier, wallet_count, price, trade_ts):
@@ -912,8 +940,19 @@ def refresh_wallet_balances(db, wallets):
         # row — mark every pair these wallets contribute to dirty so the next
         # refresh_opportunity_aggregates pass picks them up. See
         # opportunity_aggregate_dirty.
+        #
+        # ORDER BY: multi-row INSERT ... ON CONFLICT DO NOTHING — without a
+        # deterministic row order, this can deadlock against
+        # refresh_leaderboard's own bulk insert into the same table when
+        # their row sets overlap and get attempted in opposite order (each
+        # waits on the other's uncommitted row). Confirmed live via
+        # DeadlockDetected citing opportunity_aggregate_dirty, predating
+        # profit_bot_dirty (logs go back to Sep 21). Sorting both sides onto
+        # the same key order removes the circular wait structurally — a
+        # retry can only paper over this, not fix it.
         db.execute('''INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
             SELECT condition_id, outcome FROM opportunity_contributors WHERE wallet = ANY(%s)
+            ORDER BY condition_id, outcome
             ON CONFLICT DO NOTHING''', (changed_wallets,))
         # best_bet_ratio's profit-bot-side equivalent lives in the same
         # opportunity_wallets price/usd filter — a balance change doesn't
@@ -1012,6 +1051,13 @@ def refresh_opportunity_aggregates(db):
     # join against.
     dirty_cids = [r[0] for r in rows]
     dirty_outcomes = [r[1] for r in rows]
+    # ORDER BY on both inserts below: each is a multi-row INSERT ... ON
+    # CONFLICT DO UPDATE. Without a deterministic row order, two concurrent
+    # callers whose claimed batches overlap a key can process it in opposite
+    # order and deadlock waiting on each other's uncommitted row — confirmed
+    # live via DeadlockDetected('... while inserting index tuple ... in
+    # relation "opportunity_best_win_rate"/"opportunity_best_bet_ratio"').
+    # Sorting onto the same key order removes the circular wait structurally.
     db.execute('''
         INSERT INTO opportunity_best_win_rate (condition_id, outcome, best_win_rate, updated_at)
         SELECT oc.condition_id, oc.outcome,
@@ -1022,6 +1068,7 @@ def refresh_opportunity_aggregates(db):
           ON dirty.condition_id = oc.condition_id AND dirty.outcome = oc.outcome
         LEFT JOIN leaderboard ls ON ls.wallet = oc.wallet
         GROUP BY oc.condition_id, oc.outcome
+        ORDER BY oc.condition_id, oc.outcome
         ON CONFLICT (condition_id, outcome) DO UPDATE SET
           best_win_rate = EXCLUDED.best_win_rate, updated_at = EXCLUDED.updated_at
     ''', (now, dirty_cids, dirty_outcomes))
@@ -1041,6 +1088,7 @@ def refresh_opportunity_aggregates(db):
           ON dirty.condition_id = m.condition_id AND dirty.outcome = m.outcome
         JOIN wallet_balances wb ON wb.wallet = m.wallet AND wb.usdc_balance >= 1
         GROUP BY m.condition_id, m.outcome
+        ORDER BY m.condition_id, m.outcome
         ON CONFLICT (condition_id, outcome) DO UPDATE SET
           best_bet_ratio = EXCLUDED.best_bet_ratio, updated_at = EXCLUDED.updated_at
     ''', (now, dirty_cids, dirty_outcomes))
@@ -1100,11 +1148,22 @@ def refresh_leaderboard(db):
         -- best_win_rate for every (condition_id, outcome) it contributes
         -- to — mark those pairs dirty for refresh_opportunity_aggregates.
         -- See opportunity_aggregate_dirty.
+        --
+        -- ORDER BY on both CTEs below: plain SELECT DISTINCT doesn't
+        -- guarantee output order (the planner can pick a hash aggregate,
+        -- which has none) — without a deterministic row order, this bulk
+        -- insert can deadlock against refresh_wallet_balances's own bulk
+        -- insert into the same table when their row sets overlap and get
+        -- attempted in opposite order. Confirmed live via DeadlockDetected
+        -- citing opportunity_aggregate_dirty (logs go back to Sep 21,
+        -- predating profit_bot_dirty). Sorting removes the circular wait
+        -- structurally.
         dirty AS (
           INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
           SELECT DISTINCT oc.condition_id, oc.outcome
           FROM opportunity_contributors oc
           WHERE oc.wallet IN (SELECT wallet FROM deltas)
+          ORDER BY oc.condition_id, oc.outcome
           ON CONFLICT DO NOTHING
           RETURNING 1
         ),
@@ -1118,6 +1177,7 @@ def refresh_leaderboard(db):
           SELECT DISTINCT oc.condition_id, oc.outcome
           FROM opportunity_contributors oc
           WHERE oc.wallet IN (SELECT wallet FROM deltas)
+          ORDER BY oc.condition_id, oc.outcome
           ON CONFLICT DO NOTHING
           RETURNING 1
         )
@@ -1175,6 +1235,10 @@ def reconcile_caches(db):
 
     db.execute('''DELETE FROM leaderboard_cache lc WHERE NOT EXISTS (
         SELECT 1 FROM opportunity_wallets ow WHERE ow.wallet = lc.wallet AND ow.market_closed = true)''')
+    # Sorted by wallet: executemany runs every row in one transaction, in
+    # list order — an unsorted list here can deadlock against another
+    # concurrent writer to this table (e.g. refresh_leaderboard's own
+    # upsert) attempting an overlapping key in the opposite order.
     db.executemany('''
         INSERT INTO leaderboard_cache (wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit, updated_at)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
@@ -1182,7 +1246,7 @@ def reconcile_caches(db):
           wallet_name = EXCLUDED.wallet_name, n = EXCLUDED.n, won = EXCLUDED.won, lost = EXCLUDED.lost,
           deployed = EXCLUDED.deployed, won_usd = EXCLUDED.won_usd, net_profit = EXCLUDED.net_profit,
           updated_at = EXCLUDED.updated_at
-    ''', [(w, *v, now) for w, v in fresh_lb_map.items()])
+    ''', [(w, *v, now) for w, v in sorted(fresh_lb_map.items())])
 
     max_resolved = db.fetchone('SELECT MAX(resolved_ts) FROM opportunity_wallets WHERE market_closed = true')[0]
     if max_resolved:
@@ -1221,21 +1285,25 @@ def reconcile_caches(db):
 
     db.execute('''DELETE FROM opportunity_best_win_rate bwr WHERE NOT EXISTS (
         SELECT 1 FROM opportunity_contributors oc WHERE oc.condition_id = bwr.condition_id AND oc.outcome = bwr.outcome)''')
+    # Sorted by (condition_id, outcome) — same deadlock-avoidance reasoning
+    # as leaderboard_cache above; this table is also written concurrently
+    # by refresh_opportunity_aggregates's own upsert.
     db.executemany('''
         INSERT INTO opportunity_best_win_rate (condition_id, outcome, best_win_rate, updated_at)
         VALUES (%s,%s,%s,%s)
         ON CONFLICT (condition_id, outcome) DO UPDATE SET
           best_win_rate = EXCLUDED.best_win_rate, updated_at = EXCLUDED.updated_at
-    ''', [(cid, outcome, bwr, now) for (cid, outcome), bwr in fresh_bwr_map.items()])
+    ''', [(cid, outcome, bwr, now) for (cid, outcome), bwr in sorted(fresh_bwr_map.items())])
 
     db.execute('''DELETE FROM opportunity_best_bet_ratio bbr WHERE NOT EXISTS (
         SELECT 1 FROM opportunity_wallets ow WHERE ow.condition_id = bbr.condition_id AND ow.outcome = bbr.outcome)''')
+    # Sorted by (condition_id, outcome) — same reasoning as above.
     db.executemany('''
         INSERT INTO opportunity_best_bet_ratio (condition_id, outcome, best_bet_ratio, updated_at)
         VALUES (%s,%s,%s,%s)
         ON CONFLICT (condition_id, outcome) DO UPDATE SET
           best_bet_ratio = EXCLUDED.best_bet_ratio, updated_at = EXCLUDED.updated_at
-    ''', [(cid, outcome, bbr, now) for (cid, outcome), bbr in fresh_bbr_map.items()])
+    ''', [(cid, outcome, bbr, now) for (cid, outcome), bbr in sorted(fresh_bbr_map.items())])
 
     db.execute('DELETE FROM opportunity_aggregate_dirty')
 
