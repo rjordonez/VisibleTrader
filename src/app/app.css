@@ -979,6 +979,15 @@
 }
 .sig-load-more:hover { border-color: var(--gold); color: var(--text); }
 .sig-load-more:disabled { opacity: 0.5; cursor: default; }
+.sig-pager { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.sig-pager .sig-load-more { display: inline-block; margin: 0; }
+.sig-pager-status { color: var(--text-dim); font-size: 13px; font-weight: 600; padding: 0 6px; }
+.sig-pager-status span { color: var(--text-faint); font-weight: 500; }
+.sig-pager-note { margin-top: 14px; text-align: center; color: var(--text-faint); font-size: 12.5px; }
+@media (max-width: 640px) {
+  .sig-pager-status { order: -1; flex-basis: 100%; text-align: center; }
+  .sig-pager-status span { display: none; }
+}
 
 /* contributor drill-down — added beyond the static mock, reuses the wallet-detail
    data we already built (holding/scalped/exited), restyled to the v4 palette */
