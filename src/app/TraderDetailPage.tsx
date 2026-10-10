@@ -201,6 +201,11 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   // this one clears once the whole history is in, and gates anything that
   // would be wrong on a partial history (P&L chart, highlights).
   const [positionsComplete, setPositionsComplete] = useState(false)
+  // The P&L chart draws from wallet_pnl_hourly (one row per hour with
+  // resolved fills), not from `positions`, so it no longer waits on the
+  // whole fill history. See supabase/migrations/20261010040000_wallet_pnl_hourly.sql.
+  const [pnlHourly, setPnlHourly] = useState<{ h: string; profit: number }[]>([])
+  const [pnlLoading, setPnlLoading] = useState(true)
   const [categoryLoading, setCategoryLoading] = useState(true)
   const [similarLoading, setSimilarLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -283,6 +288,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     setSummaryLoading(true)
     setPositionsLoading(true)
     setPositionsComplete(false)
+    setPnlLoading(true)
     setClosedPage(1)
     setCategoryLoading(true)
     setError(null)
@@ -413,6 +419,25 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
       })
       .catch(() => { if (!cancelled) { setPositionsLoading(false); setPositionsComplete(true) } })
 
+    // Up to ~1,400 hours on the busiest wallets, past PostgREST's 1000-row
+    // cap, so keyset-page on h (unique per wallet).
+    const fetchPnlHourly = async () => {
+      const rows: { h: string; profit: number }[] = []
+      for (;;) {
+        let q = supabase.from('wallet_pnl_hourly').select('h, profit').eq('wallet', w)
+        if (rows.length) q = q.gt('h', rows[rows.length - 1].h)
+        const { data, error: err } = await q.order('h').limit(1000)
+        if (err) throw err
+        const page = (data ?? []) as { h: string; profit: number }[]
+        rows.push(...page)
+        if (page.length < 1000) return rows
+      }
+    }
+    fetchPnlHourly()
+      .then(rows => { if (!cancelled) setPnlHourly(rows) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setPnlLoading(false) })
+
     Promise.resolve(supabase.from('wallet_category_breakdown').select('*').eq('wallet', w).order('profit', { ascending: false }))
       .then(({ data }) => {
         if (cancelled) return
@@ -475,13 +500,12 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   // background never yank someone off the page they're reading.
   const safeClosedPage = Math.min(closedPage, closedPageCount)
 
-  const trackedCumulative = [...positions]
-    .sort((a, b) => new Date(a.resolved_ts).getTime() - new Date(b.resolved_ts).getTime())
+  const trackedCumulative = useMemo(() => pnlHourly
     .reduce<{ d: string; cum: number }[]>((acc, p) => {
       const prevCum = acc.length > 0 ? acc[acc.length - 1].cum : 0
-      acc.push({ d: p.resolved_ts, cum: prevCum + p.profit })
+      acc.push({ d: p.h, cum: prevCum + Number(p.profit) })
       return acc
-    }, [])
+    }, []), [pnlHourly])
 
   // Live-fallback stats, computed the same way check_market_closed already
   // does server-side: a resolved outcome settles at 0 or 1, so curPrice >= 0.5
@@ -505,9 +529,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     winRate: usdWinRate,
     resolved: summary.n,
     cumulative: trackedCumulative,
-  // trackedCumulative is rebuilt every render; positions is its real input.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  } : null, [summary, positions, wallet, usdWinRate])
+  } : null, [summary, trackedCumulative, wallet, usdWinRate])
   const closeShare = useCallback(() => setShareOpen(false), [])
 
   return (
@@ -577,7 +599,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
 
             <div className="search-dashboard-grid">
               <div className="search-dashboard-main">
-                {!positionsComplete ? (
+                {pnlLoading ? (
                   <SkelBlock height={chartHeight} style={{ marginBottom: 24 }} />
                 ) : (
                   <CumulativeChartSection data={trackedCumulative} label="P&L over time" height={chartHeight} />
