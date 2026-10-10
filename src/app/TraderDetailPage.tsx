@@ -41,6 +41,7 @@ interface TraderPosition {
   resolved_win: boolean
   resolved_ts: string
   profit: number
+  id: number
 }
 
 interface LivePosition {
@@ -53,6 +54,8 @@ interface LivePosition {
   realizedPnl: number
   redeemable: boolean
   size?: number
+  initialValue?: number
+  currentValue?: number
 }
 
 interface LiveClosedPosition {
@@ -303,8 +306,11 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         // concept of "still open"), so this is the only source of truth for
         // "what are they holding right now" regardless of whether we've
         // been tracking this wallet's past trades ourselves.
+        // redeemable=false: Polymarket keeps resolved positions nobody has
+        // redeemed (mostly worthless losers, "Now 0¢") in this feed, and for
+        // heavy traders they filled most of the 50 slots.
         setOpenPositionsLoading(true)
-        fetch(`https://data-api.polymarket.com/positions?user=${wallet}&limit=50`)
+        fetch(`https://data-api.polymarket.com/positions?user=${wallet}&limit=50&redeemable=false`)
           .then(r => r.ok ? r.json() : [])
           .then(pos => { if (!cancelled) setLivePositions((pos ?? []) as LivePosition[]) })
           .catch(() => {})
@@ -348,20 +354,24 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     // PostgREST caps a response at 1000 rows, and a single high-volume market
     // can carry more fills than that on its own — page through so every
     // resolved market shows up, not just whichever resolved most recently.
-    // Tie-break columns keep page boundaries stable between requests.
+    // Keyset pages via wallet_closed_fills, not offset on wallet_positions:
+    // offset re-read and sorted the wallet's whole history every page, which
+    // blew the 8s statement timeout (500) past ~17k fills on heavy wallets.
+    // See supabase/migrations/20261010010000_wallet_closed_fills.sql.
     const fetchAllClosed = async () => {
-      const PAGE = 1000
       const rows: TraderPosition[] = []
-      for (let from = 0; ; from += PAGE) {
-        const { data, error: err } = await supabase.from('wallet_positions').select('*')
-          .eq('wallet', w).eq('market_closed', true)
-          .order('resolved_ts', { ascending: false })
-          .order('ts', { ascending: false })
-          .order('condition_id').order('outcome').order('usd')
-          .range(from, from + PAGE - 1)
+      let before: { ts: string; id: number } | null = null
+      for (;;) {
+        const { data, error: err } = await supabase.rpc('wallet_closed_fills', {
+          p_wallet: w, p_before_ts: before?.ts ?? null, p_before_id: before?.id ?? null,
+        })
         if (err) throw err
-        rows.push(...((data ?? []) as TraderPosition[]))
-        if (!data || data.length < PAGE) return rows
+        const page = (data ?? []) as (TraderPosition & { title: string | null })[]
+        // No current opportunity row: wallet_positions never showed these.
+        rows.push(...page.filter((p): p is TraderPosition => p.title != null))
+        if (page.length < 1000) return rows
+        const last = page[page.length - 1]
+        before = { ts: last.resolved_ts, id: last.id }
       }
     }
 
@@ -600,8 +610,12 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                           {openPositionsLoading && <SkelTableRows cols={4} count={5} />}
                           {!openPositionsLoading && livePositions
                             .filter(p => !positionsSearch || p.title.toLowerCase().includes(positionsSearch.toLowerCase()))
-                            .map(p => ({ ...p, totalTraded: p.size != null ? p.size * p.avgPrice : null }))
-                            .map(p => ({ ...p, value: p.totalTraded != null ? p.totalTraded + p.cashPnl : null }))
+                            // Polymarket's own cost basis and current value, not
+                            // size * avgPrice: avgPrice is rounded to 4 decimals,
+                            // which on a 131k-share position put a dead loser at "-$8"
+                            // instead of $0.
+                            .map(p => ({ ...p, totalTraded: p.initialValue ?? (p.size != null ? p.size * p.avgPrice : null) }))
+                            .map(p => ({ ...p, value: p.currentValue ?? (p.totalTraded != null ? p.totalTraded + p.cashPnl : null) }))
                             .sort((a, b) => {
                               const dirMul = sortDir === 'asc' ? 1 : -1
                               const field = (x: typeof a) => activeSort === 'price' ? x.curPrice : activeSort === 'pnl' ? x.cashPnl : (x.value ?? 0)
