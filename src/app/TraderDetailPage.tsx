@@ -197,6 +197,10 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   // blank skeleton for as long as the slowest query took.
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [positionsLoading, setPositionsLoading] = useState(true)
+  // positionsLoading clears on the first page so the table shows right away;
+  // this one clears once the whole history is in, and gates anything that
+  // would be wrong on a partial history (P&L chart, highlights).
+  const [positionsComplete, setPositionsComplete] = useState(false)
   const [categoryLoading, setCategoryLoading] = useState(true)
   const [similarLoading, setSimilarLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -205,11 +209,14 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   const [liveClosed, setLiveClosed] = useState<LiveClosedPosition[]>([])
   const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([])
   const [liveLoading, setLiveLoading] = useState(false)
+  // Closed markets are numbered pages, not "Load more": heavy traders have
+  // 12k+ markets, which 50-at-a-time reveals could never get through.
+  const [closedPage, setClosedPage] = useState(1)
+  const CLOSED_PAGE_SIZE = 25
   // Reveals 50 more rows per click instead of an all-or-nothing toggle —
   // jumping straight from 10 rows to potentially 1000+ table rows in one
   // go is the same kind of DOM-size performance issue the chart markers
   // cap (PriceChart.tsx) already fixed.
-  const [visibleTrades, setVisibleTrades] = useState(10)
   const [visibleLive, setVisibleLive] = useState(10)
   const PAGE_STEP = 50
   // Separate from `liveLoading` (which gates the untracked-wallet fallback
@@ -275,6 +282,8 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     let cancelled = false
     setSummaryLoading(true)
     setPositionsLoading(true)
+    setPositionsComplete(false)
+    setClosedPage(1)
     setCategoryLoading(true)
     setError(null)
 
@@ -358,7 +367,10 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     // offset re-read and sorted the wallet's whole history every page, which
     // blew the 8s statement timeout (500) past ~17k fills on heavy wallets.
     // See supabase/migrations/20261010010000_wallet_closed_fills.sql.
-    const fetchAllClosed = async () => {
+    // onPage hands back everything so far after each page, so the table can
+    // render from the first page instead of waiting on the whole history
+    // (73 pages on the heaviest traders).
+    const fetchAllClosed = async (onPage: (rows: TraderPosition[]) => void) => {
       const rows: TraderPosition[] = []
       let before: { ts: string; id: number } | null = null
       for (;;) {
@@ -370,16 +382,22 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         // No current opportunity row: wallet_positions never showed these.
         rows.push(...page.filter((p): p is TraderPosition => p.title != null))
         if (page.length < 1000) return rows
+        onPage([...rows])
         const last = page[page.length - 1]
         before = { ts: last.resolved_ts, id: last.id }
       }
     }
 
-    fetchAllClosed()
+    fetchAllClosed(soFar => {
+      if (cancelled) return
+      setPositions(soFar)
+      setPositionsLoading(false)
+    })
       .then(positionsData => {
         if (cancelled) return
         setPositions(positionsData)
         setPositionsLoading(false)
+        setPositionsComplete(true)
         // Only the tracked-history branch drives similar traders off our own
         // positions — the live-fallback branch above computes its own pairs
         // once summary comes back null, so an empty tracked result here
@@ -393,7 +411,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
           }).catch(() => {}).finally(() => { if (!cancelled) setSimilarLoading(false) })
         }
       })
-      .catch(() => { if (!cancelled) setPositionsLoading(false) })
+      .catch(() => { if (!cancelled) { setPositionsLoading(false); setPositionsComplete(true) } })
 
     Promise.resolve(supabase.from('wallet_category_breakdown').select('*').eq('wallet', w).order('profit', { ascending: false }))
       .then(({ data }) => {
@@ -448,6 +466,14 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
       : (a: typeof rows[number], b: typeof rows[number]) => new Date(a.latestResolvedTs).getTime() - new Date(b.latestResolvedTs).getTime()
     return rows.sort((a, b) => dirMul * cmp(a, b))
   }, [positions, resolvedSort, sortDir])
+
+  const filteredClosed = useMemo(() => positionsSearch
+    ? aggregatedPositions.filter(p => p.title.toLowerCase().includes(positionsSearch.toLowerCase()))
+    : aggregatedPositions, [aggregatedPositions, positionsSearch])
+  const closedPageCount = Math.max(1, Math.ceil(filteredClosed.length / CLOSED_PAGE_SIZE))
+  // Clamped rather than reset in an effect, so new pages arriving in the
+  // background never yank someone off the page they're reading.
+  const safeClosedPage = Math.min(closedPage, closedPageCount)
 
   const trackedCumulative = [...positions]
     .sort((a, b) => new Date(a.resolved_ts).getTime() - new Date(b.resolved_ts).getTime())
@@ -551,7 +577,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
 
             <div className="search-dashboard-grid">
               <div className="search-dashboard-main">
-                {positionsLoading ? (
+                {!positionsComplete ? (
                   <SkelBlock height={chartHeight} style={{ marginBottom: 24 }} />
                 ) : (
                   <CumulativeChartSection data={trackedCumulative} label="P&L over time" height={chartHeight} />
@@ -580,14 +606,14 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                   </div>
                   <input
                     type="text" placeholder="Search positions" value={positionsSearch}
-                    onChange={e => setPositionsSearch(e.target.value)}
+                    onChange={e => { setPositionsSearch(e.target.value); setClosedPage(1) }}
                     className="sig-filter-input" style={{ flex: 1, minWidth: 160 }}
                   />
                   {positionsTab === 'closed' && (
                     <SortControl
                       options={[{ value: 'date', label: 'Date' }, { value: 'profit', label: 'Profit/Loss' }]}
-                      value={resolvedSort} onChange={setResolvedSort}
-                      dir={sortDir} onToggleDir={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                      value={resolvedSort} onChange={v => { setResolvedSort(v); setClosedPage(1) }}
+                      dir={sortDir} onToggleDir={() => { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); setClosedPage(1) }}
                     />
                   )}
                   {positionsTab === 'active' && (
@@ -659,9 +685,8 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                         </thead>
                         <tbody>
                           {positionsLoading && <SkelTableRows cols={4} count={10} />}
-                          {!positionsLoading && aggregatedPositions
-                            .filter(p => !positionsSearch || p.title.toLowerCase().includes(positionsSearch.toLowerCase()))
-                            .slice(0, visibleTrades)
+                          {!positionsLoading && filteredClosed
+                            .slice((safeClosedPage - 1) * CLOSED_PAGE_SIZE, safeClosedPage * CLOSED_PAGE_SIZE)
                             .map((p, i) => {
                               const amount = p.totalStake + p.totalProfit
                               const returnPct = p.totalStake > 0 ? (p.totalProfit / p.totalStake) * 100 : 0
@@ -687,15 +712,22 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                         </tbody>
                       </table>
                     </div>
-                    {!positionsLoading && aggregatedPositions.length > visibleTrades && (
-                      <button className="sig-load-more" onClick={() => setVisibleTrades(v => v + PAGE_STEP)}>
-                        Load more ({aggregatedPositions.length - visibleTrades} remaining)
-                      </button>
+                    {!positionsLoading && !positionsComplete && (
+                      <div className="sig-pager-note">
+                        Loading full history&hellip; {aggregatedPositions.length.toLocaleString()} markets so far. Sorting covers what&rsquo;s loaded.
+                      </div>
                     )}
-                    {!positionsLoading && visibleTrades > 10 && aggregatedPositions.length <= visibleTrades && (
-                      <button className="sig-load-more" onClick={() => setVisibleTrades(10)}>
-                        Show fewer
-                      </button>
+                    {!positionsLoading && closedPageCount > 1 && (
+                      <div className="sig-pager">
+                        <button type="button" className="sig-load-more" disabled={safeClosedPage === 1} onClick={() => setClosedPage(1)}>First</button>
+                        <button type="button" className="sig-load-more" disabled={safeClosedPage === 1} onClick={() => setClosedPage(safeClosedPage - 1)}>Prev</button>
+                        <span className="sig-pager-status">
+                          Page {safeClosedPage.toLocaleString()} of {closedPageCount.toLocaleString()}
+                          <span> &middot; {filteredClosed.length.toLocaleString()} markets</span>
+                        </span>
+                        <button type="button" className="sig-load-more" disabled={safeClosedPage === closedPageCount} onClick={() => setClosedPage(safeClosedPage + 1)}>Next</button>
+                        <button type="button" className="sig-load-more" disabled={safeClosedPage === closedPageCount} onClick={() => setClosedPage(closedPageCount)}>Last</button>
+                      </div>
                     )}
                   </>
                 )}
@@ -704,7 +736,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
               <div className="search-dashboard-side">
                 <HighlightsRow
                   items={aggregatedPositions.map(p => ({ title: p.title, outcome: p.outcome, profit: p.totalProfit }))}
-                  loading={positionsLoading}
+                  loading={!positionsComplete}
                 />
                 <CategoryBreakdownSection categoryBreakdown={byCategory} loading={categoryLoading} />
                 <div>
