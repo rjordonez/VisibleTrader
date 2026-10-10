@@ -1384,13 +1384,12 @@ def refresh_profit_bot(db):
             INSERT INTO profit_bot_resolved_cache
               (condition_id, outcome, title, category, experts, avg_entry, won, pnl, resolved_ts, opened_ts)
             SELECT m.condition_id, m.outcome, COALESCE(o.title, m.condition_id), o.category,
-              m.k, round(m.entry, 4), m.won,
-              round(CASE WHEN m.won THEN 100 * (1.0 / m.entry - 1) ELSE -100 END), m.rts, op.ts
+              m.k, round(op.price, 4), m.won,
+              round(CASE WHEN m.won THEN 100 * (1.0 / op.price - 1) ELSE -100 END), m.rts, op.ts
             FROM (
               SELECT ow.condition_id, ow.outcome,
                 count(DISTINCT ow.wallet)::int AS k,
                 bool_or(ow.resolved_win) AS won,
-                avg(ow.price) AS entry,
                 max(ow.resolved_ts) AS rts
               FROM opportunity_wallets ow
               JOIN unnest(%s::text[], %s::text[]) AS dirty(condition_id, outcome)
@@ -1407,10 +1406,14 @@ def refresh_profit_bot(db):
               ORDER BY is_current DESC, last_updated DESC NULLS LAST
               LIMIT 1
             ) o ON true
-            -- Pick opened when the 5th proven wallet got in (the compounding
-            -- chart needs it to avoid restaking money still tied up).
-            LEFT JOIN LATERAL (
-              SELECT min(ow.ts) AS ts
+            -- Pick opened when the 5th proven wallet got in, at that wallet's
+            -- entry price: what a follower could actually get (the compounding
+            -- chart also needs the time to avoid restaking money still tied
+            -- up). Track record starts at the Sept 9 launch. Mirrors
+            -- refresh_profit_bot_cache(), see
+            -- supabase/migrations/20261009120000_profit_bot_fifth_trader_price.sql.
+            JOIN LATERAL (
+              SELECT min(ow.ts) AS ts, (array_agg(ow.price ORDER BY ow.ts))[1] AS price
               FROM opportunity_wallets ow
               JOIN proven_wallets pw ON pw.wallet = ow.wallet
               WHERE ow.condition_id = m.condition_id AND ow.outcome = m.outcome
@@ -1420,6 +1423,7 @@ def refresh_profit_bot(db):
               ORDER BY 1
               OFFSET 4 LIMIT 1
             ) op ON true
+            WHERE op.ts >= TIMESTAMPTZ '2026-09-09'
             ON CONFLICT (condition_id, outcome) DO NOTHING
         ''', (dirty_cids, dirty_outcomes))
 
