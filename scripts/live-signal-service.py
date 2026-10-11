@@ -1112,78 +1112,93 @@ def refresh_leaderboard(db):
     so filtering on it (rather than id/ts, which are set at insert time and
     would miss the later resolution update) captures each row exactly once.
     See supabase/migrations/20260830000000_precompute_leaderboard.sql for the
-    original full-recompute query this replaces."""
+    original full-recompute query this replaces.
+
+    The two dirty-marking inserts (opportunity_aggregate_dirty,
+    profit_bot_dirty) are two SEPARATE statements on the same connection,
+    not sibling CTEs in the main WITH above, even though both already carry
+    their own ORDER BY. Postgres's docs are explicit that it does not
+    guarantee execution order between independent data-modifying CTEs in
+    one WITH statement ("the sub-statements in WITH are executed
+    concurrently with each other") — so despite each insert's own rows
+    being sorted, this statement could still hit profit_bot_dirty *before*
+    opportunity_aggregate_dirty on some runs, inverting the fixed
+    aggregate_dirty-then-profit_bot_dirty order record_contribution always
+    uses, and that inversion is a real deadlock cycle ORDER BY alone can't
+    prevent. Confirmed live: DeadlockDetected kept citing
+    opportunity_aggregate_dirty after the ORDER BY fix shipped, while the
+    sibling tables that fix *did* fully cover (profit_bot_dirty,
+    opportunity_best_win_rate, opportunity_best_bet_ratio) dropped to zero.
+    Two sequential statements on one connection have no such ambiguity —
+    Postgres always runs them in the order issued. Wrapped in
+    run_transaction (this function had no deadlock retry before) for the
+    same residual-contention reason that function already covers."""
     now = datetime.now(timezone.utc)
     row = db.fetchone('SELECT last_resolved_ts FROM leaderboard_refresh_state WHERE id = true')
     last_ts = row[0] if row else datetime.min.replace(tzinfo=timezone.utc)
-    max_ts, n_updated = db.fetchone('''
-        WITH deltas AS (
-          SELECT wallet, MAX(wallet_name) AS wallet_name,
-            COUNT(*) AS n,
-            SUM(CASE WHEN resolved_win = true THEN 1 ELSE 0 END) AS won,
-            SUM(CASE WHEN resolved_win = false THEN 1 ELSE 0 END) AS lost,
-            SUM(usd) AS deployed,
-            SUM(CASE WHEN resolved_win = true THEN usd ELSE 0 END) AS won_usd,
-            SUM(CASE WHEN resolved_win = true THEN (usd / price) - usd ELSE -usd END) AS net_profit,
-            MAX(resolved_ts) AS max_resolved_ts
-          FROM opportunity_wallets
-          WHERE market_closed = true AND wallet IS NOT NULL AND resolved_ts > %s
-          GROUP BY wallet
-        ),
-        upserted AS (
-          INSERT INTO leaderboard_cache (wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit, updated_at)
-          SELECT wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit, %s FROM deltas
-          ON CONFLICT (wallet) DO UPDATE SET
-            wallet_name = COALESCE(EXCLUDED.wallet_name, leaderboard_cache.wallet_name),
-            n = leaderboard_cache.n + EXCLUDED.n,
-            won = leaderboard_cache.won + EXCLUDED.won,
-            lost = leaderboard_cache.lost + EXCLUDED.lost,
-            deployed = leaderboard_cache.deployed + EXCLUDED.deployed,
-            won_usd = leaderboard_cache.won_usd + EXCLUDED.won_usd,
-            net_profit = leaderboard_cache.net_profit + EXCLUDED.net_profit,
-            updated_at = EXCLUDED.updated_at
-          RETURNING 1
-        ),
-        -- best_win_rate is keyed off each wallet's overall win rate
-        -- (leaderboard_cache), so any wallet this pass touched can move
-        -- best_win_rate for every (condition_id, outcome) it contributes
-        -- to — mark those pairs dirty for refresh_opportunity_aggregates.
-        -- See opportunity_aggregate_dirty.
-        --
-        -- ORDER BY on both CTEs below: plain SELECT DISTINCT doesn't
-        -- guarantee output order (the planner can pick a hash aggregate,
-        -- which has none) — without a deterministic row order, this bulk
-        -- insert can deadlock against refresh_wallet_balances's own bulk
-        -- insert into the same table when their row sets overlap and get
-        -- attempted in opposite order. Confirmed live via DeadlockDetected
-        -- citing opportunity_aggregate_dirty (logs go back to Sep 21,
-        -- predating profit_bot_dirty). Sorting removes the circular wait
-        -- structurally.
-        dirty AS (
-          INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
-          SELECT DISTINCT oc.condition_id, oc.outcome
-          FROM opportunity_contributors oc
-          WHERE oc.wallet IN (SELECT wallet FROM deltas)
-          ORDER BY oc.condition_id, oc.outcome
-          ON CONFLICT DO NOTHING
-          RETURNING 1
-        ),
-        -- proven_wallets (leaderboard-derived: won+lost>=20, net_profit>0,
-        -- win_rate>=0.52) can gain or lose a wallet whenever its
-        -- leaderboard_cache row changes, which moves profit bot's own
-        -- 5+-proven-wallet eligibility for every pair that wallet
-        -- contributes to — see profit_bot_dirty / refresh_profit_bot.
-        pbot_dirty AS (
-          INSERT INTO profit_bot_dirty (condition_id, outcome)
-          SELECT DISTINCT oc.condition_id, oc.outcome
-          FROM opportunity_contributors oc
-          WHERE oc.wallet IN (SELECT wallet FROM deltas)
-          ORDER BY oc.condition_id, oc.outcome
-          ON CONFLICT DO NOTHING
-          RETURNING 1
-        )
-        SELECT (SELECT MAX(max_resolved_ts) FROM deltas), (SELECT count(*) FROM upserted)
-    ''', (last_ts, now))
+
+    def txn(conn):
+        max_ts, wallets = conn.execute('''
+            WITH deltas AS (
+              SELECT wallet, MAX(wallet_name) AS wallet_name,
+                COUNT(*) AS n,
+                SUM(CASE WHEN resolved_win = true THEN 1 ELSE 0 END) AS won,
+                SUM(CASE WHEN resolved_win = false THEN 1 ELSE 0 END) AS lost,
+                SUM(usd) AS deployed,
+                SUM(CASE WHEN resolved_win = true THEN usd ELSE 0 END) AS won_usd,
+                SUM(CASE WHEN resolved_win = true THEN (usd / price) - usd ELSE -usd END) AS net_profit,
+                MAX(resolved_ts) AS max_resolved_ts
+              FROM opportunity_wallets
+              WHERE market_closed = true AND wallet IS NOT NULL AND resolved_ts > %s
+              GROUP BY wallet
+            ),
+            upserted AS (
+              INSERT INTO leaderboard_cache (wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit, updated_at)
+              SELECT wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit, %s FROM deltas
+              ON CONFLICT (wallet) DO UPDATE SET
+                wallet_name = COALESCE(EXCLUDED.wallet_name, leaderboard_cache.wallet_name),
+                n = leaderboard_cache.n + EXCLUDED.n,
+                won = leaderboard_cache.won + EXCLUDED.won,
+                lost = leaderboard_cache.lost + EXCLUDED.lost,
+                deployed = leaderboard_cache.deployed + EXCLUDED.deployed,
+                won_usd = leaderboard_cache.won_usd + EXCLUDED.won_usd,
+                net_profit = leaderboard_cache.net_profit + EXCLUDED.net_profit,
+                updated_at = EXCLUDED.updated_at
+              RETURNING wallet
+            )
+            SELECT (SELECT MAX(max_resolved_ts) FROM deltas), (SELECT array_agg(wallet) FROM upserted)
+        ''', (last_ts, now)).fetchone()
+        wallets = wallets or []
+        if wallets:
+            # best_win_rate is keyed off each wallet's overall win rate
+            # (leaderboard_cache), so any wallet this pass touched can move
+            # best_win_rate for every (condition_id, outcome) it
+            # contributes to — mark those pairs dirty for
+            # refresh_opportunity_aggregates. See opportunity_aggregate_dirty.
+            conn.execute('''
+                INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
+                SELECT DISTINCT oc.condition_id, oc.outcome
+                FROM opportunity_contributors oc
+                WHERE oc.wallet = ANY(%s)
+                ORDER BY oc.condition_id, oc.outcome
+                ON CONFLICT DO NOTHING
+            ''', (wallets,))
+            # proven_wallets (leaderboard-derived: won+lost>=20, net_profit>0,
+            # win_rate>=0.52) can gain or lose a wallet whenever its
+            # leaderboard_cache row changes, which moves profit bot's own
+            # 5+-proven-wallet eligibility for every pair that wallet
+            # contributes to — see profit_bot_dirty / refresh_profit_bot.
+            conn.execute('''
+                INSERT INTO profit_bot_dirty (condition_id, outcome)
+                SELECT DISTINCT oc.condition_id, oc.outcome
+                FROM opportunity_contributors oc
+                WHERE oc.wallet = ANY(%s)
+                ORDER BY oc.condition_id, oc.outcome
+                ON CONFLICT DO NOTHING
+            ''', (wallets,))
+        return max_ts, len(wallets)
+
+    max_ts, n_updated = db.run_transaction(txn)
     if max_ts:
         db.execute('UPDATE leaderboard_refresh_state SET last_resolved_ts = %s WHERE id = true', (max_ts,))
     print(f'  [aggregates] refreshed leaderboard_cache ({n_updated} wallet rows updated)')
