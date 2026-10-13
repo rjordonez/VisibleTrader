@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { ChevronLeft, ChevronRight, X, Plus, MessageSquare, ArrowUpRight } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { ChevronLeft, ChevronRight, X, Plus, MessageSquare, ArrowUpRight, Share2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { fmtSigned } from './helpers'
+import { JournalShareModal, type JournalShareData } from './JournalShareCard'
 import './journal.css'
 
 interface JournalEntry {
@@ -110,6 +111,7 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
   const [statsRange, setStatsRange] = useState<'month' | 'year' | 'all'>('month')
   const [rangeSummary, setRangeSummary] = useState<{ total: number; days: number; profitableDays: number; bestDay: number | null } | null>(null)
   const [rangeLoading, setRangeLoading] = useState(false)
+  const [shareData, setShareData] = useState<JournalShareData | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data, error }) => {
@@ -273,6 +275,16 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
     ? { total: monthTotal, days: loggedDays.size, profitableDays, bestDay }
     : { total: rangeSummary?.total ?? 0, days: rangeSummary?.days ?? 0, profitableDays: rangeSummary?.profitableDays ?? 0, bestDay: rangeSummary?.bestDay ?? null }
 
+  // Snapshot of the month on screen for the share image (JournalShareCard).
+  // Taken once on open so the card doesn't redraw on every render.
+  const openShare = () => {
+    const days = new Map<number, number>()
+    for (const iso of loggedDays) days.set(Number(iso.slice(-2)), combinedOn(iso))
+    setShareData({ monthLabel, year, month, days, total: monthTotal, daysLogged: loggedDays.size, profitableDays, bestDay })
+  }
+  const closeShare = useCallback(() => setShareData(null), [])
+  const canShareMonth = !loading && !loadError && loggedDays.size > 0
+
   // Today if this month is on screen, otherwise the 1st of the shown month.
   const logADay = () => openDay(year === new Date().getFullYear() && month === new Date().getMonth() ? new Date().getDate() : 1)
 
@@ -343,7 +355,10 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
         <div>
           <h2 className="app-section-title">Your daily record</h2>
         </div>
-        <button type="button" className="journal-add-button" disabled={!userId || loading || loadError} onClick={logADay}><Plus size={18} /> Log a day</button>
+        <div className="journal-header-actions">
+          <button type="button" className="journal-add-button journal-share-button" disabled={!canShareMonth} onClick={openShare}><Share2 size={16} /> Share month</button>
+          <button type="button" className="journal-add-button" disabled={!userId || loading || loadError} onClick={logADay}><Plus size={18} /> Log a day</button>
+        </div>
       </div>
 
       <section className="journal-summary" aria-label={`${summaryLabel} summary`}>
@@ -425,6 +440,9 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
           })}
         </div>
 
+        {/* Phone-only: the header (with its Share month button) is hidden there. */}
+        <button type="button" className="journal-share-mobile" disabled={!canShareMonth} onClick={openShare}><Share2 size={15} /> Share month</button>
+
         <p className={`journal-calendar-hint ${!loading && !loadError && userId ? 'journal-calendar-hint-idle' : ''}`} role="status">{loading ? 'Loading your entries…' : loadError ? 'Could not load your entries. Change months or reload to retry.' : !userId ? 'Sign in to keep your personal trading journal.' : 'Select a day to log your P&L or add a note.'}</p>
       </section>
 
@@ -436,6 +454,8 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
           <strong className={`journal-entry-amount ${entry.amount > 0 ? 'g' : entry.amount < 0 ? 'r' : ''}`}>{fmtSigned(entry.amount)}</strong><ArrowUpRight size={16} aria-hidden="true" />
         </button>)}</div>}
       </section>}
+
+      {shareData && <JournalShareModal data={shareData} onClose={closeShare} />}
 
       <dialog className="journal-editor" ref={editorRef} aria-labelledby="journal-editor-title" onCancel={e => { e.preventDefault(); closeEditor() }} onClick={e => { if (e.target === e.currentTarget) closeEditor() }}>
         {editingDate && (() => {

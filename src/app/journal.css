@@ -23,6 +23,8 @@
 .journal-page .journal-month-label { min-width: 175px; font-size: 18px; font-weight: 650; letter-spacing: -.025em; }
 .journal-page .journal-nav-btn { width: 40px; height: 40px; border-radius: 12px; background: #1d1d25; border-color: #ffffff0a; color: #d8d8e3; }
 .journal-page .journal-toolbar-add { display: none; }
+.journal-page .journal-share-button { background: transparent; border-color: #3a3b55; color: #c9cbf5; }
+.journal-page .journal-share-mobile { display: none; }
 .journal-page .journal-today-button { min-height: 40px; background: #1d1d25; border: 1px solid #ffffff0a; border-radius: 12px; padding: 8px 12px; color: #d8d8e3; font: inherit; font-size: 12px; cursor: pointer; }
 .journal-page .journal-weekdays { gap: 8px; color: var(--text-dim); font-size: 12px; margin-bottom: 10px; }
 .journal-page .journal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
@@ -158,5 +160,6 @@
   .journal-page .journal-cell-add { display: none; }
   .journal-page .journal-trade-count { display: none; }
   .journal-page .journal-calendar-hint-idle { display: none; }
+  .journal-page .journal-share-mobile { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 40px; margin-top: 10px; border: 1px solid #3a3b55; border-radius: 12px; background: transparent; color: #c9cbf5; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
 }
 @media (prefers-reduced-motion: reduce) { .journal-page * { transition: none !important; } }
