@@ -273,6 +273,9 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
     ? { total: monthTotal, days: loggedDays.size, profitableDays, bestDay }
     : { total: rangeSummary?.total ?? 0, days: rangeSummary?.days ?? 0, profitableDays: rangeSummary?.profitableDays ?? 0, bestDay: rangeSummary?.bestDay ?? null }
 
+  // Today if this month is on screen, otherwise the 1st of the shown month.
+  const logADay = () => openDay(year === new Date().getFullYear() && month === new Date().getMonth() ? new Date().getDate() : 1)
+
   const openDay = (day: number) => {
     const iso = toISODate(new Date(year, month, day))
     const existing = entries.get(iso)
@@ -340,7 +343,7 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
         <div>
           <h2 className="app-section-title">Your daily record</h2>
         </div>
-        <button type="button" className="journal-add-button" disabled={!userId || loading || loadError} onClick={() => openDay(year === new Date().getFullYear() && month === new Date().getMonth() ? new Date().getDate() : 1)}><Plus size={18} /> Log a day</button>
+        <button type="button" className="journal-add-button" disabled={!userId || loading || loadError} onClick={logADay}><Plus size={18} /> Log a day</button>
       </div>
 
       <section className="journal-summary" aria-label={`${summaryLabel} summary`}>
@@ -374,6 +377,10 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
             </button>
           </div>
           <button type="button" className="journal-today-button" onClick={() => changeMonth(new Date())} disabled={year === new Date().getFullYear() && month === new Date().getMonth()}>This month</button>
+          {/* Phone-only stand-in for the header's "Log a day" button, which
+              is hidden there (along with the page's second title) so the
+              P&L summary and the whole month fit on one screen. */}
+          <button type="button" className="journal-toolbar-add" disabled={!userId || loading || loadError} onClick={logADay} aria-label="Log a day"><Plus size={16} /></button>
         </div>
 
         <div className="journal-weekdays">
@@ -418,7 +425,7 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
           })}
         </div>
 
-        <p className="journal-calendar-hint" role="status">{loading ? 'Loading your entries…' : loadError ? 'Could not load your entries. Change months or reload to retry.' : !userId ? 'Sign in to keep your personal trading journal.' : 'Select a day to log your P&L or add a note.'}</p>
+        <p className={`journal-calendar-hint ${!loading && !loadError && userId ? 'journal-calendar-hint-idle' : ''}`} role="status">{loading ? 'Loading your entries…' : loadError ? 'Could not load your entries. Change months or reload to retry.' : !userId ? 'Sign in to keep your personal trading journal.' : 'Select a day to log your P&L or add a note.'}</p>
       </section>
 
       {!loading && !loadError && <section className="journal-entries" aria-labelledby="journal-entries-title">

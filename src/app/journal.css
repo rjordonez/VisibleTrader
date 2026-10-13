@@ -22,6 +22,7 @@
 .journal-page .journal-month-nav { gap: 8px; }
 .journal-page .journal-month-label { min-width: 175px; font-size: 18px; font-weight: 650; letter-spacing: -.025em; }
 .journal-page .journal-nav-btn { width: 40px; height: 40px; border-radius: 12px; background: #1d1d25; border-color: #ffffff0a; color: #d8d8e3; }
+.journal-page .journal-toolbar-add { display: none; }
 .journal-page .journal-today-button { min-height: 40px; background: #1d1d25; border: 1px solid #ffffff0a; border-radius: 12px; padding: 8px 12px; color: #d8d8e3; font: inherit; font-size: 12px; cursor: pointer; }
 .journal-page .journal-weekdays { gap: 8px; color: var(--text-dim); font-size: 12px; margin-bottom: 10px; }
 .journal-page .journal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
@@ -124,5 +125,38 @@
   .journal-page .journal-entry-amount { font-size: 16px; }
   .journal-page .journal-entry-row > svg { display: none; }
   .journal-page .journal-activity-row { gap: 10px; }.journal-page .journal-activity-detail strong { font-size: 12px; }.journal-page .journal-activity-amount { font-size: 12px; }.journal-page .journal-activity-row > svg { display: none; }
+}
+/* Phones: fit the P&L summary and the full month on one screen without
+   scrolling — drop the duplicate page title (its "Log a day" button moves
+   into the calendar toolbar), put the total and range tabs on one line,
+   and shorten the day cells. */
+@media (max-width: 600px) {
+  .journal-hub > .app-section-header { margin-bottom: 8px; }
+  .journal-hub > .app-section-header .app-section-title { font-size: 26px; }
+  .journal-hub .journal-view-tabs { margin-bottom: 12px; }
+  .journal-hub .journal-view-tabs button { padding: 10px 0; }
+  .journal-page .journal-header { display: none; }
+  .journal-page .journal-summary { gap: 10px; padding-bottom: 12px; }
+  .journal-page .journal-summary-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; width: 100%; }
+  .journal-page .journal-summary-main > strong { grid-column: 1; grid-row: 1; font-size: 30px; margin: 0; line-height: 1.15; }
+  .journal-page .journal-summary-main .journal-range-tabs { grid-column: 2; grid-row: 1; margin: 0; padding: 3px; border-radius: 10px; }
+  .journal-page .journal-summary-main .journal-range-tabs button { min-height: 28px; padding: 0 8px; font-size: 11px; border-radius: 7px; white-space: nowrap; }
+  .journal-page .journal-summary-main > p { display: none; }
+  .journal-page .journal-summary-details { gap: 12px; }
+  .journal-page .journal-summary-details dt { font-size: 10px; margin-bottom: 3px; }
+  .journal-page .journal-summary-details dd { font-size: 16px; }
+  .journal-page .journal-toolbar { flex-wrap: nowrap; gap: 6px; margin-bottom: 12px; }
+  .journal-page .journal-month-nav { width: auto; flex: 1; min-width: 0; justify-content: flex-start; gap: 2px; }
+  .journal-page .journal-month-label { min-width: 0; flex: 1; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .journal-page .journal-nav-btn { width: 34px; height: 34px; flex-shrink: 0; }
+  .journal-page .journal-today-button { margin-left: 0; min-height: 34px; padding: 6px 9px; font-size: 11px; white-space: nowrap; }
+  .journal-page .journal-toolbar-add { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 34px; height: 34px; border: 1px solid #494b70; border-radius: 10px; background: #292a41; color: #e4e5ff; cursor: pointer; }
+  .journal-page .journal-weekdays { margin-bottom: 4px; }
+  .journal-page .journal-cell { min-height: 44px; gap: 2px; padding: 5px 3px; }
+  /* Hover-only "+" — invisible on touch, but its 19px line was still
+     setting every empty row's height. */
+  .journal-page .journal-cell-add { display: none; }
+  .journal-page .journal-trade-count { display: none; }
+  .journal-page .journal-calendar-hint-idle { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .journal-page * { transition: none !important; } }
