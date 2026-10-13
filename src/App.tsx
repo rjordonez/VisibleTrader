@@ -40,6 +40,7 @@ const ProtectedRoute = lazy(() => import('./ProtectedRoute'))
 const SearchPage = lazy(() => import('./SearchPage'))
 const CreatorLeaderboardPage = lazy(() => import('./CreatorLeaderboardPage'))
 const ReferralRedirect = lazy(() => import('./ReferralRedirect'))
+const PromoRedirect = lazy(() => import('./PromoRedirect'))
 
 function PageLoading() {
   return (
@@ -104,6 +105,9 @@ function MarketingRoutes() {
       {/* Affiliate referral links — logs the visit then bounces straight to
           the homepage, no chrome of its own to render. */}
       <Route path="/r/:code" element={<ReferralRedirect />} />
+      {/* Public promo link — its own tracking, separate from creator
+          referral links (see PromoRedirect.tsx). */}
+      <Route path="/promo" element={<PromoRedirect />} />
       <Route path="/app/*" element={<CrossDomainRedirect />} />
       <Route path="/login" element={<CrossDomainRedirect />} />
       <Route path="/signup" element={<CrossDomainRedirect />} />
