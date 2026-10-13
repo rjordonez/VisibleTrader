@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, Share2 } from 'lucide-react'
 import { fmtAbbrev, fmtAbbrevSigned } from './helpers'
+import { W, H, GREEN, RED, FONT, roundRect, loadImage, fitFont } from './shareCanvas'
 
 // A shareable image of a trader's profile: their P&L curve and headline
 // stats on a dark card, with a VisibleTrader-branded footer bar. Drawn
@@ -17,8 +18,6 @@ export interface TraderShareData {
   cumulative: { d: string; cum: number }[]
 }
 
-const W = 1080
-const H = 1350
 // Each trader gets one of these for the frame + avatar, picked from their
 // wallet so the same trader always gets the same color. [base, darker, lighter]
 const THEMES: [string, string, string][] = [
@@ -34,34 +33,6 @@ function themeFor(wallet: string) {
   let h = 0
   for (const ch of wallet.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0
   return THEMES[h % THEMES.length]
-}
-const GREEN = '#00d17a'
-const RED = '#ff3b5c'
-const FONT = "Manrope, system-ui, -apple-system, sans-serif"
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath()
-  ctx.roundRect(x, y, w, h, r)
-}
-
-function loadImage(src: string) {
-  return new Promise<HTMLImageElement | null>(resolve => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () => resolve(null)
-    img.src = src
-  })
-}
-
-// Shrinks the font until `text` fits in `maxWidth`.
-function fitFont(ctx: CanvasRenderingContext2D, text: string, weight: number, size: number, maxWidth: number) {
-  let s = size
-  ctx.font = `${weight} ${s}px ${FONT}`
-  while (s > 20 && ctx.measureText(text).width > maxWidth) {
-    s -= 2
-    ctx.font = `${weight} ${s}px ${FONT}`
-  }
-  return s
 }
 
 async function drawCard(canvas: HTMLCanvasElement, d: TraderShareData) {
@@ -231,7 +202,15 @@ async function drawCard(canvas: HTMLCanvasElement, d: TraderShareData) {
   ctx.fillText('visibletrader.com', textX, fy + 4)
 }
 
-export function TraderShareModal({ data, onClose }: { data: TraderShareData; onClose: () => void }) {
+// The share-image modal both cards use: draws the card once, then offers
+// the native share sheet (where supported, i.e. phones) and a plain download.
+export function ShareCardModal({ draw, fileName, label, onClose, onAction }: {
+  draw: (canvas: HTMLCanvasElement) => Promise<void>
+  fileName: string
+  label: string
+  onClose: () => void
+  onAction?: (method: 'share' | 'save') => void
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [blob, setBlob] = useState<Blob | null>(null)
 
@@ -249,13 +228,12 @@ export function TraderShareModal({ data, onClose }: { data: TraderShareData; onC
     const canvas = canvasRef.current
     if (!canvas) return
     let cancelled = false
-    void drawCard(canvas, data).then(() => {
+    void draw(canvas).then(() => {
       canvas.toBlob(b => { if (!cancelled) setBlob(b) }, 'image/png')
     })
     return () => { cancelled = true }
-  }, [data])
+  }, [draw])
 
-  const fileName = `${data.name.replace(/[^\w-]+/g, '_')}-visibletrader.png`
   const file = blob ? new File([blob], fileName, { type: 'image/png' }) : null
   const canShare = !!file && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })
 
@@ -267,9 +245,11 @@ export function TraderShareModal({ data, onClose }: { data: TraderShareData; onC
     a.download = fileName
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
+    onAction?.('save')
   }
   const share = () => {
-    if (file) void navigator.share({ files: [file] }).catch(() => {})
+    if (!file) return
+    void navigator.share({ files: [file] }).then(() => onAction?.('share')).catch(() => {})
   }
 
   return (
@@ -277,7 +257,7 @@ export function TraderShareModal({ data, onClose }: { data: TraderShareData; onC
       <div className="sig-modal-wrap share-card-wrap" onClick={e => e.stopPropagation()}>
         <button className="sig-modal-close" onClick={onClose} aria-label="Close">✕</button>
         <div className="sig-modal share-card-modal">
-          <canvas ref={canvasRef} className="share-card-canvas" role="img" aria-label={`${data.name} profile card`} />
+          <canvas ref={canvasRef} className="share-card-canvas" role="img" aria-label={label} />
           <div className="share-card-actions">
             {canShare && (
               <button type="button" className="share-card-btn" onClick={share} disabled={!blob}>
@@ -291,5 +271,17 @@ export function TraderShareModal({ data, onClose }: { data: TraderShareData; onC
         </div>
       </div>
     </div>
+  )
+}
+
+export function TraderShareModal({ data, onClose }: { data: TraderShareData; onClose: () => void }) {
+  const draw = useCallback((canvas: HTMLCanvasElement) => drawCard(canvas, data), [data])
+  return (
+    <ShareCardModal
+      draw={draw}
+      fileName={`${data.name.replace(/[^\w-]+/g, '_')}-visibletrader.png`}
+      label={`${data.name} profile card`}
+      onClose={onClose}
+    />
   )
 }
