@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from './lib/supabase'
 import posthog from './lib/posthog'
 import { useLiveTradeCounter, RollingNumber } from './lib/RollingCounter'
-import { getReferralCode } from './lib/domains'
+import { getReferralCode, getPromoSource } from './lib/domains'
 import { fmtAbbrev } from './app/helpers'
 import './app/app.css'
 
@@ -273,10 +273,17 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
     // not localStorage, since the click happened on the separate
     // visibletrader.com origin — see lib/domains.ts.
     const referralCode = getReferralCode()
+    // Separate from the creator referral code: set by the /promo link
+    // (PromoRedirect.tsx) and stored in its own field.
+    const promoSource = getPromoSource()
+    const attribution = {
+      ...(referralCode ? { referral_code: referralCode } : {}),
+      ...(promoSource ? { promo_source: promoSource } : {}),
+    }
     await supabase.auth.updateUser({
-      data: { ...finalAnswers, onboarding_completed: true, ...(referralCode ? { referral_code: referralCode } : {}) },
+      data: { ...finalAnswers, onboarding_completed: true, ...attribution },
     })
-    posthog.capture('onboarding_completed', { ...finalAnswers, ...(referralCode ? { referral_code: referralCode } : {}) })
+    posthog.capture('onboarding_completed', { ...finalAnswers, ...attribution })
     setSaving(false)
     onComplete()
   }

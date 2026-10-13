@@ -47,3 +47,18 @@ export function getReferralCode(): string | null {
   const match = document.cookie.match(new RegExp(`(?:^|; )${REFERRAL_COOKIE}=([^;]*)`))
   return match ? decodeURIComponent(match[1]) : null
 }
+
+// Same cross-subdomain cookie approach as the referral code above, but a
+// separate cookie: the /promo link (PromoRedirect.tsx) is general marketing
+// traffic, not a UGC creator referral, and must not be confused with one.
+const PROMO_COOKIE = 'vt_promo_source'
+
+export function setPromoSource(source: string) {
+  const domainAttr = import.meta.env.DEV ? '' : '; domain=.visibletrader.com'
+  document.cookie = `${PROMO_COOKIE}=${encodeURIComponent(source)}; path=/; max-age=2592000; SameSite=Lax${domainAttr}`
+}
+
+export function getPromoSource(): string | null {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${PROMO_COOKIE}=([^;]*)`))
+  return match ? decodeURIComponent(match[1]) : null
+}
