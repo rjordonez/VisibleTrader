@@ -6,9 +6,9 @@ import { W, H, GREEN, RED, FONT, roundRect, loadImage, fitFont } from './shareCa
 
 // A shareable image of one Journal month: the month's total P&L, a
 // calendar with each day's result, and headline stats — same 1080x1350
-// canvas, frame and footer style as the trader profile card
-// (TraderShareCard.tsx). The footer carries the visibletrader.com/promo
-// link so anyone who sees a shared month can find us through it.
+// canvas as the trader profile card (TraderShareCard.tsx), but kept
+// low-key: no colored frame or footer, just a small visibletrader.com/promo
+// tag in the header so anyone who sees a shared month can find us.
 
 export interface JournalShareData {
   monthLabel: string // e.g. "October 2026"
@@ -22,7 +22,6 @@ export interface JournalShareData {
   bestDay: number | null
 }
 
-const FRAME: [string, string] = ['#6370ff', '#4b57f0']
 const PROMO_URL = 'visibletrader.com/promo'
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
@@ -35,18 +34,9 @@ async function drawMonthCard(canvas: HTMLCanvasElement, d: JournalShareData) {
   canvas.height = H
   const accent = d.total > 0 ? GREEN : d.total < 0 ? RED : '#ffffff'
 
-  // Colored frame that the footer sits in.
-  const bg = ctx.createLinearGradient(0, 0, 0, H)
-  bg.addColorStop(0, FRAME[0])
-  bg.addColorStop(1, FRAME[1])
-  ctx.fillStyle = bg
-  ctx.fillRect(0, 0, W, H)
-
-  // Dark inner card.
-  const cx = 18, cy = 18, cw = W - 36, ch = 1130
-  roundRect(ctx, cx, cy, cw, ch, 48)
+  // Plain dark card, edge to edge — branding is just the small tag up top.
   ctx.fillStyle = '#0b0c12'
-  ctx.fill()
+  ctx.fillRect(0, 0, W, H)
 
   const pad = 84
   const inner = W - pad * 2
@@ -54,9 +44,18 @@ async function drawMonthCard(canvas: HTMLCanvasElement, d: JournalShareData) {
   // Header: month on the left, total P&L on the right.
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'left'
-  ctx.fillStyle = '#9ca3af'
+  // Subtle brand tag: small logo + the promo link where a label would sit.
+  const tagSize = 36
+  if (icon) {
+    ctx.save()
+    roundRect(ctx, pad, 128 - tagSize + 6, tagSize, tagSize, 9)
+    ctx.clip()
+    ctx.drawImage(icon, pad, 128 - tagSize + 6, tagSize, tagSize)
+    ctx.restore()
+  }
+  ctx.fillStyle = '#8b90a0'
   ctx.font = `700 30px ${FONT}`
-  ctx.fillText('My trading month', pad, 128)
+  ctx.fillText(PROMO_URL, icon ? pad + tagSize + 14 : pad, 128)
   ctx.fillStyle = '#fff'
   fitFont(ctx, d.monthLabel, 800, 64, inner * 0.55)
   ctx.fillText(d.monthLabel, pad, 200)
@@ -76,9 +75,11 @@ async function drawMonthCard(canvas: HTMLCanvasElement, d: JournalShareData) {
   const rows = Math.ceil((firstWeekday + daysInMonth) / 7)
   const gap = 12
   const cellW = (inner - gap * 6) / 7
-  const gridTop = 300
-  const gridBottom = 905
-  const cellH = Math.min(cellW, (gridBottom - gridTop - gap * (rows - 1)) / rows)
+  const statsTop = H - 84 - 180
+  const areaTop = 300, areaBottom = statsTop - 50
+  const cellH = Math.min(cellW, (areaBottom - areaTop - gap * (rows - 1)) / rows)
+  const gridH = rows * cellH + gap * (rows - 1)
+  const gridTop = areaTop + (areaBottom - areaTop - gridH) / 2
 
   ctx.textAlign = 'center'
   ctx.fillStyle = '#6b7080'
@@ -112,7 +113,7 @@ async function drawMonthCard(canvas: HTMLCanvasElement, d: JournalShareData) {
   }
 
   // Stats panel.
-  const px = cx + 36, pw = cw - 72, py = 935, ph = 180
+  const px = pad - 30, pw = W - (pad - 30) * 2, py = statsTop, ph = 180
   roundRect(ctx, px, py, pw, ph, 36)
   ctx.fillStyle = '#15161f'
   ctx.fill()
@@ -139,23 +140,6 @@ async function drawMonthCard(canvas: HTMLCanvasElement, d: JournalShareData) {
     ctx.font = `800 48px ${FONT}`
     ctx.fillText(c.value, mid, py + 134)
   })
-
-  // Footer: logo + the promo link, as big as the space allows.
-  const fy = cy + ch + (H - cy - ch) / 2
-  ctx.textBaseline = 'middle'
-  const iconSize = 110
-  if (icon) {
-    ctx.save()
-    roundRect(ctx, 48, fy - iconSize / 2, iconSize, iconSize, 26)
-    ctx.clip()
-    ctx.drawImage(icon, 48, fy - iconSize / 2, iconSize, iconSize)
-    ctx.restore()
-  }
-  const textX = icon ? 48 + iconSize + 28 : 48
-  ctx.textAlign = 'left'
-  ctx.fillStyle = '#fff'
-  fitFont(ctx, PROMO_URL, 800, 84, W - 48 - textX)
-  ctx.fillText(PROMO_URL, textX, fy + 4)
 }
 
 export function JournalShareModal({ data, onClose }: { data: JournalShareData; onClose: () => void }) {
