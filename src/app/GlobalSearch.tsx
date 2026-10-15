@@ -72,7 +72,13 @@ export default function GlobalSearch({
   // query — separate from the "suggestions" fetch above.
   useEffect(() => {
     const q = query.trim()
-    if (!q) {
+    // Match each word on its own, so "return darth maul" finds
+    // "TheReturnOfDarthMaul" (no spaces, extra words in between) and
+    // "trump election" finds titles where the words aren't adjacent.
+    // Splitting on non-alphanumerics also keeps commas/parens out of the
+    // PostgREST filter string.
+    const words = q.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+    if (!words.length) {
       setTraderResults([])
       setMarketResults([])
       setSearching(false)
@@ -80,13 +86,14 @@ export default function GlobalSearch({
     }
     setSearching(true)
     const t = setTimeout(() => {
+      let traders = supabase.from('leaderboard').select('wallet, wallet_name, net_profit, deployed')
+      if (/^0x[0-9a-f]+$/i.test(q)) traders = traders.ilike('wallet', `%${q}%`)
+      else for (const w of words) traders = traders.ilike('wallet_name', `%${w}%`)
+      let markets = supabase.from('opportunities_live').select('condition_id, outcome, title, category, cumulative_usd')
+      for (const w of words) markets = markets.ilike('title', `%${w}%`)
       Promise.all([
-        supabase.from('leaderboard').select('wallet, wallet_name, net_profit, deployed')
-          .or(`wallet.ilike.%${q}%,wallet_name.ilike.%${q}%`)
-          .order('net_profit', { ascending: false }).limit(8),
-        supabase.from('opportunities_live').select('condition_id, outcome, title, category, cumulative_usd')
-          .ilike('title', `%${q}%`)
-          .order('cumulative_usd', { ascending: false }).limit(8),
+        traders.order('net_profit', { ascending: false }).limit(8),
+        markets.order('cumulative_usd', { ascending: false }).limit(8),
       ])
         .then(([tRes, mRes]) => {
           setTraderResults((tRes.data ?? []) as TraderResult[])
