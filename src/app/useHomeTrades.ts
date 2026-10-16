@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { onTabVisible } from './helpers'
 import type { TickerTrade } from './types'
@@ -21,7 +21,12 @@ interface FeedState {
 export function useHomeTrades(tab: 'following' | 'discover', wallets: string[]) {
   const walletKey = JSON.stringify(tab === 'following' ? [...new Set(wallets.map(w => w.toLowerCase()))].sort() : [])
   const key = `${tab}:${walletKey}`
-  const [state, setState] = useState<FeedState>({ key: '', trades: [], records: new Map(), error: false, loading: true })
+  // Keep loading data stable while a feed's first request is pending. Consumers
+  // can synchronize against trades without receiving a new [] on every render.
+  const loadingState = useMemo<FeedState>(() => ({
+    key, trades: [], records: new Map(), error: false, loading: true,
+  }), [key])
+  const [state, setState] = useState<FeedState>(loadingState)
   useEffect(() => {
     let cancelled = false
     let pending = false
@@ -71,5 +76,5 @@ export function useHomeTrades(tab: 'following' | 'discover', wallets: string[]) 
     const unsubscribe = onTabVisible(() => { void load() })
     return () => { cancelled = true; clearInterval(interval); unsubscribe() }
   }, [key, tab, walletKey])
-  return state.key === key ? state : { key, trades: [], records: new Map<string, TraderRecord>(), loading: true, error: false }
+  return state.key === key ? state : loadingState
 }
