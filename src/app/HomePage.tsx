@@ -48,10 +48,9 @@ function HomePage({ alerts }: { alerts: ReturnType<typeof useAlerts> }) {
     // Sync the shown list to the live feed only while at the top (or
     // before it's first populated). Scrolled down it stays pinned, so the
     // 30s refresh can't reshuffle cards under the reader.
-    if (scrolledDown && displayed.length > 0) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDisplayed(feed.trades)
-  }, [feed.trades, scrolledDown, displayed])
+    setDisplayed(current => scrolledDown && current.length > 0 ? current : feed.trades)
+  }, [feed.trades, scrolledDown])
 
   const newCount = scrolledDown
     ? feed.trades.reduce((n, t) => n + (displayed.some(d => d.id === t.id) ? 0 : 1), 0)
