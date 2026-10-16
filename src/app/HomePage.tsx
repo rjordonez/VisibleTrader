@@ -57,6 +57,7 @@ function HomePage({ alerts }: { alerts: ReturnType<typeof useAlerts> }) {
     : 0
 
   const changeTab = (next: 'following' | 'discover') => {
+    if (next === tab) return
     setDisplayed([])
     setTab(next)
   }

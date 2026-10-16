@@ -74,7 +74,14 @@ try {
     await page.getByText('Synthetic market 1', { exact: true }).waitFor({ timeout: 10000 })
     assert.deepEqual(errors, [], 'slow first load does not crash')
 
+    await page.getByRole('button', { name: 'Discover', exact: true }).click()
+    assert.equal(await page.getByText('Synthetic market 1', { exact: true }).count(), 1,
+      'clicking the selected feed keeps loaded trades visible')
+    assert.equal(await page.getByLabel('Loading trades', { exact: true }).count(), 0)
+
     // Empty following feed is immediate; switching back must stay responsive.
+    await page.getByRole('button', { name: /^Following/ }).click()
+    await page.getByRole('heading', { name: 'Who are you watching?' }).waitFor()
     await page.getByRole('button', { name: /^Following/ }).click()
     await page.getByRole('heading', { name: 'Who are you watching?' }).waitFor()
     await page.getByRole('button', { name: 'Discover', exact: true }).click()
