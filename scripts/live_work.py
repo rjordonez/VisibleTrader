@@ -21,16 +21,19 @@ class TradeWorkers:
     reading the next batch, leaving excess fills in the database.
 
     Capacity is enforced two ways: a global ceiling across all lanes (as
-    before), and a per-lane ceiling (max_per_lane, default 1/4 of capacity).
-    Without the per-lane cap, a single hot token -- strictly serial by
-    design, one lane, one worker -- can queue enough backlog to consume the
-    *entire* shared budget. Since admission is gated on that one shared
-    counter, a backed-up hot lane then blocks admission for every other
-    token's lane too, even ones sitting completely idle. Confirmed live
-    (2026-10-16): a handful of tokens accounted for the majority of a
-    sustained ~45-minute feed lag this way. Capping any one lane at a
-    fraction of the total means a hot lane can never leave less than that
-    fraction of the budget unavailable to everyone else.
+    before), and a per-lane ceiling (max_per_lane, default ~2x each lane's
+    fair share: 2*capacity/workers). Without the per-lane cap, a single hot
+    token -- strictly serial by design, one lane, one worker -- can queue
+    enough backlog to consume a large fraction of the shared budget. Since
+    admission is gated on that one shared counter, a backed-up hot lane then
+    blocks admission for every other token's lane too, even ones sitting
+    completely idle. Confirmed live (2026-10-16): a handful of tokens
+    accounted for the majority of a sustained ~45-minute feed lag this way.
+    The original default here (1/4 of total capacity) turned out too loose
+    to matter in practice -- the hottest token measured live was holding
+    ~9-11% of the shared budget, well under a 25% cap -- so this caps each
+    lane much closer to its fair share instead of only stopping total
+    domination.
     """
     def __init__(self, workers, capacity, max_per_lane=None):
         if workers < 1 or capacity < 1:
@@ -40,7 +43,7 @@ class TradeWorkers:
         self._capacity = capacity
         # Floor of 4 so small capacities (as in the unit tests) don't make
         # the per-lane cap bind before the global one ever would.
-        self._max_per_lane = max_per_lane if max_per_lane is not None else max(4, capacity // 4)
+        self._max_per_lane = max_per_lane if max_per_lane is not None else max(4, (2 * capacity) // workers)
         self._pending = 0
         self._lane_pending = [0] * workers
         self._lock = threading.Lock()
