@@ -20,7 +20,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from _env import load_env
-from live_work import TradeWorkers, SingleFlightJobs, PendingPrices, MarketLocks
+from live_work import TradeWorkers, SingleFlightJobs, PendingPrices, MarketLocks, LaneFullError
 
 WS_HOST = 'ws-subscriptions-clob.polymarket.com'
 WS_PATH = '/ws/market'
@@ -664,11 +664,28 @@ class Database:
         yet to redo or undo. See also the ORDER BY fixes on the bulk
         upserts in refresh_wallet_balances/refresh_leaderboard/
         refresh_opportunity_aggregates, which remove the deadlock cycles
-        that *do* have a fixable row order; this covers what's left over."""
+        that *do* have a fixable row order; this covers what's left over.
+
+        Wrapped in conn.pipeline() (2026-10-16) — confirmed live that each
+        conn.execute() inside fn was its own network round trip to the
+        database even though they shared one connection/transaction:
+        checking out a connection from the pool is local and cheap, but
+        each individual statement still had to cross the network and wait
+        for its own response before the next one could be sent. Measured
+        ~45ms per round trip from the production VM to the database, which
+        lines up almost exactly with record_contribution's 6 statements
+        (~270ms) and the heartbeat's own avg_process_trade_ms. Pipeline
+        mode batches fn's statements onto the wire without waiting for
+        each response individually — same statements, same one commit,
+        same error/retry semantics, but a fraction of the round trips. Any
+        RETURNING value fn reads mid-pipeline (e.g. record_contribution's
+        ON CONFLICT ... RETURNING) still forces a sync at that point, so
+        this isn't free for every caller, but it's never worse than before."""
         for attempt in range(3):
             with self.pool.connection() as conn:
                 try:
-                    result = fn(conn)
+                    with conn.pipeline():
+                        result = fn(conn)
                 except (psycopg.errors.DeadlockDetected, psycopg.errors.SerializationFailure):
                     conn.rollback()
                     if attempt == 2:
@@ -2276,12 +2293,12 @@ def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor, tra
 
     ids = []
     for row_id, tx_hash, maker, taker, side, token_id, maker_amt, taker_amt, block_ts in rows:
-        ids.append(row_id)
         if side == 0:  # maker's order was BUY -> maker pays USDC, receives the outcome token
             usdc_raw, token_raw = float(maker_amt), float(taker_amt)
         else:  # maker's order was SELL -> maker gives up the outcome token, receives USDC
             usdc_raw, token_raw = float(taker_amt), float(maker_amt)
         if token_raw <= 0:
+            ids.append(row_id)
             continue
         price = usdc_raw / token_raw  # decimals cancel — both legs are 6-decimal
         size = token_raw / 1_000_000
@@ -2296,18 +2313,28 @@ def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor, tra
         # process_trade; avoid allocating workers for those no-op calls.
         info = keyed_token_info.get(token_id)
         if info is None:
+            ids.append(row_id)
+            continue
+        try:
+            executor.submit(token_id, process_fill, trade_db or db,
+                            {token_id: info}, token_id, price, size, tx_hash,
+                            buyer, seller, roster, wallet_names, block_ts)
+        except LaneFullError:
+            # This token's own lane already has its share of the shared
+            # budget queued (see TradeWorkers) — leave processed=false and
+            # retry it next tick instead of letting one hot market's
+            # backlog block admission for every other lane too.
             continue
         with state_lock:
             stats['process_trade_submitted'] += 2
-        executor.submit(token_id, process_fill, trade_db or db,
-                        {token_id: info}, token_id, price, size, tx_hash,
-                        buyer, seller, roster, wallet_names, block_ts)
+        ids.append(row_id)
 
     # Existing acknowledgment semantics: processed means dispatched, not
     # committed. Do NOT add automatic replay here: contributions/exits are
     # not idempotent across a partially successful fill. See the deployment
     # notes in docs/live-processing.md before restarting a loaded service.
-    db.execute('UPDATE onchain_fills SET processed = true WHERE id = ANY(%s)', (ids,))
+    if ids:
+        db.execute('UPDATE onchain_fills SET processed = true WHERE id = ANY(%s)', (ids,))
 
 
 def process_fill(db, token_info, token_id, price, size, tx_hash,

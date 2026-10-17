@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
-from live_work import TradeWorkers, SingleFlightJobs, PendingPrices
+from live_work import TradeWorkers, SingleFlightJobs, PendingPrices, LaneFullError
 
 
 def load_service():
@@ -57,6 +57,24 @@ class SchedulingTests(unittest.TestCase):
         finally:
             release.set()
             jobs.shutdown()
+            workers.shutdown()
+
+    def test_hot_lane_does_not_block_other_lanes(self):
+        # A per-lane cap stops one key's backlog from exhausting the whole
+        # shared budget and starving unrelated, idle lanes -- the exact
+        # failure mode confirmed live on 2026-10-16.
+        workers = TradeWorkers(4, 20, max_per_lane=2)
+        release = threading.Event()
+        try:
+            workers.submit('hot', release.wait, 2)
+            workers.submit('hot', release.wait, 2)
+            with self.assertRaises(LaneFullError):
+                workers.submit('hot', release.wait, 2)
+            # Plenty of global capacity (18 of 20) remains, but a different
+            # key must still go through -- it hashes to its own lane.
+            self.assertEqual(workers.submit('cold', lambda: 'ok').result(1), 'ok')
+        finally:
+            release.set()
             workers.shutdown()
 
     def test_failure_releases_capacity(self):
