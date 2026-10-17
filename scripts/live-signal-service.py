@@ -748,6 +748,14 @@ def record_contribution(conn, condition_id, outcome, wallet, wallet_name, usd, p
     processed_at = datetime.now(timezone.utc)
     shares = usd / price
 
+    # market_position_state (2026-10-17): marks this pair as needing a
+    # resolution check, without which sweep_resolved_positions and startup
+    # rehydration would have no bounded way to find it short of scanning
+    # all of opportunity_wallets. One row per distinct (condition_id,
+    # outcome) ever contributed to, regardless of trade count.
+    conn.execute('''INSERT INTO market_position_state (condition_id, outcome)
+        VALUES (%s,%s) ON CONFLICT DO NOTHING''', (condition_id, outcome))
+
     # opportunity_stats/opportunity_contributors: the incrementally-
     # maintained aggregates opportunities_live will read from once cut over,
     # instead of a GROUP BY over all of opportunity_wallets on every query.
@@ -1613,19 +1621,21 @@ def sweep_resolved_positions(db):
     """Runs periodically (not per-trade — this is a network call per distinct open
     market, too slow to do inline). Finds every market with still-open positions,
     checks whether it has resolved, and closes out all its open rows at once."""
-    # Deriving the small distinct (condition_id, outcome) set from
-    # opportunity_wallets first, then joining to opportunities, lets Postgres
-    # use a cheap merge join. Joining the other way round (opportunities
-    # driving a per-row probe into opportunity_wallets) made the planner loop
-    # 150k+ times through a thrashing cache — confirmed live via EXPLAIN
-    # ANALYZE this was the single largest disk-I/O query in the project.
-    rows = db.fetchall('''SELECT DISTINCT dc.condition_id, dc.outcome, o.slug
-        FROM (
-            SELECT DISTINCT condition_id, outcome
-            FROM opportunity_wallets
-            WHERE exit_ts IS NULL AND (market_closed IS NULL OR market_closed = false)
-        ) dc
-        JOIN opportunities o ON o.condition_id = dc.condition_id AND o.outcome = dc.outcome''')
+    # Candidates come from market_position_state (2026-10-17), not a DISTINCT
+    # scan of opportunity_wallets directly -- that table has grown to 7.5M+
+    # rows (every trade from a tracked wallet, never pruned since the rows
+    # feed permanent P&L history) and the DISTINCT scan over it was
+    # confirmed live as the single largest disk-I/O query in the project,
+    # capable of running 60-90s+ and exhausting the connection pool under
+    # real traffic. market_position_state is bounded by the number of
+    # DISTINCT markets ever traded by a tracked wallet, not by trade count --
+    # record_contribution inserts a row (resolved=false) on first contact,
+    # and this function flips it to resolved=true once closed below, so it
+    # never needs to be rescanned again.
+    rows = db.fetchall('''SELECT mps.condition_id, mps.outcome, o.slug
+        FROM market_position_state mps
+        JOIN opportunities o ON o.condition_id = mps.condition_id AND o.outcome = mps.outcome
+        WHERE NOT mps.resolved''')
 
     distinct_slugs = list({slug for _, _, slug in rows})
     # One HTTP call per distinct slug — confirmed live this backlog can be
@@ -1662,6 +1672,15 @@ def sweep_resolved_positions(db):
             n = cur.rowcount
             if n == 0:
                 return 0
+            # Flips this pair out of market_position_state's unresolved set
+            # (see the candidate query above) so it's never rescanned by a
+            # future sweep or startup rehydration. Upsert, not a plain
+            # UPDATE -- a pair can reach here without ever having been
+            # inserted by record_contribution if it predates this table's
+            # backfill.
+            conn.execute('''INSERT INTO market_position_state (condition_id, outcome, resolved)
+                VALUES (%s,%s,true) ON CONFLICT (condition_id, outcome) DO UPDATE SET resolved = true''',
+                (condition_id, outcome))
             # Resolution is exactly the event that moves a pair from profit
             # bot's "open picks" bucket to its "resolved" bucket — mark it
             # dirty so refresh_profit_bot re-evaluates both. See
@@ -2440,21 +2459,22 @@ def main():
         tiers_hit[(cond_id, outcome)].add(tier)
     print(f'{len(tiers_hit)} already-tracked condition/outcome pairs rehydrated for mark-to-market.')
 
-    # Bounded with a statement_timeout (2026-10-17) -- this DISTINCT scans
-    # opportunity_wallets, which has grown to 7.5M+ rows. Confirmed live:
-    # unbounded, this can hang long enough to block the service from ever
-    # starting (every restart attempt stalls at exactly this query). An
-    # incomplete resolved_markets set here only risks a resolved market's
-    # last real-time price tick briefly overwriting latest_price with a
-    # stale mid-market quote -- a minor, self-correcting display gap, not a
-    # reason to block startup. See docs/live-processing.md for the
-    # longer-term fix (this table needs the same retention/indexing
-    # treatment already given to ticker/onchain_fills).
+    # Reads from market_position_state (2026-10-17), not a DISTINCT scan of
+    # opportunity_wallets -- that table has grown to 7.5M+ rows (every trade
+    # from a tracked wallet, never pruned) and this query, unbounded, was
+    # confirmed live to hang long enough to block the service from ever
+    # starting (every restart attempt stalled exactly here). The
+    # statement_timeout stays as defense-in-depth, but market_position_state
+    # is bounded by distinct markets ever traded, not trade count, so this
+    # should no longer come close to it in practice. See
+    # docs/live-processing.md for why opportunity_wallets itself needed this
+    # treatment (it can't just be pruned like ticker/onchain_fills -- its
+    # rows are permanent P&L history, not a transient feed).
     try:
         with db.pool.connection() as conn:
             conn.execute("SET statement_timeout = '15s'")
             rows = conn.execute(
-                'SELECT DISTINCT condition_id, outcome FROM opportunity_wallets WHERE market_closed = true'
+                'SELECT condition_id, outcome FROM market_position_state WHERE resolved'
             ).fetchall()
             conn.commit()
         for cond_id, outcome in rows:
