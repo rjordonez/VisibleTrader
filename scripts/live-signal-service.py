@@ -699,7 +699,11 @@ class Database:
                 return result
 
 
-def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, tier, wallet_count, price, trade_ts):
+def record_tier_crossed(conn, condition_id, outcome, token_info, cumulative_usd, tier, wallet_count, price, trade_ts):
+    """Takes an already-open connection (2026-10-16) — called only from
+    process_trade's single run_transaction, so it shares that one
+    connection/commit/pipeline instead of opening its own. See
+    process_trade's docstring for why."""
     slug = title = event_slug = None
     category = 'other'
     meta = token_info.get((condition_id, outcome))
@@ -708,37 +712,35 @@ def record_tier_crossed(db, condition_id, outcome, token_info, cumulative_usd, t
         event_slug = meta.get('eventSlug')
         category = fetch_event_category(meta.get('eventId'))
 
-    def txn(conn):
-        # Serializes tier-crossing writes for this exact market (rare — at
-        # most 6 per market, ever) so the is_current MAX(tier) subquery below
-        # always sees a consistent picture, even though worker threads now
-        # run against a pooled connection instead of one shared connection.
-        conn.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))',
-                      (f'{condition_id}|{outcome}',))
-        conn.execute('''INSERT INTO opportunities
-            (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, first_seen, last_updated, latest_price, category)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (condition_id, outcome, tier) DO NOTHING''',
-            (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, trade_ts, trade_ts, price, category))
-        conn.execute('''UPDATE opportunities SET cumulative_usd=%s, wallet_count=%s, last_updated=%s, latest_price=%s, category=%s
-            WHERE condition_id=%s AND outcome=%s AND tier=%s''',
-            (cumulative_usd, wallet_count, trade_ts, price, category, condition_id, outcome, tier))
-        # is_current replaces the view's old MAX(tier) GROUP BY — flip it here
-        # instead of recomputing it on every read, via an actual MAX(tier)
-        # subquery rather than "tier = this call's tier" (different trades
-        # for the same market can commit out of tier order across worker
-        # threads — confirmed live via a dev dry-run). Self-correcting
-        # regardless of commit order, protected by the advisory lock above.
-        conn.execute('''UPDATE opportunities SET is_current = (tier = (
-                SELECT MAX(tier) FROM opportunities WHERE condition_id=%s AND outcome=%s
-            )) WHERE condition_id=%s AND outcome=%s''',
-                   (condition_id, outcome, condition_id, outcome))
-
-    db.run_transaction(txn)
+    # Serializes tier-crossing writes for this exact market (rare — at
+    # most 6 per market, ever) so the is_current MAX(tier) subquery below
+    # always sees a consistent picture, even though worker threads now
+    # run against a pooled connection instead of one shared connection.
+    conn.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))',
+                  (f'{condition_id}|{outcome}',))
+    conn.execute('''INSERT INTO opportunities
+        (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, first_seen, last_updated, latest_price, category)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT (condition_id, outcome, tier) DO NOTHING''',
+        (condition_id, outcome, slug, event_slug, title, cumulative_usd, tier, wallet_count, trade_ts, trade_ts, price, category))
+    conn.execute('''UPDATE opportunities SET cumulative_usd=%s, wallet_count=%s, last_updated=%s, latest_price=%s, category=%s
+        WHERE condition_id=%s AND outcome=%s AND tier=%s''',
+        (cumulative_usd, wallet_count, trade_ts, price, category, condition_id, outcome, tier))
+    # is_current replaces the view's old MAX(tier) GROUP BY — flip it here
+    # instead of recomputing it on every read, via an actual MAX(tier)
+    # subquery rather than "tier = this call's tier" (different trades
+    # for the same market can commit out of tier order across worker
+    # threads — confirmed live via a dev dry-run). Self-correcting
+    # regardless of commit order, protected by the advisory lock above.
+    conn.execute('''UPDATE opportunities SET is_current = (tier = (
+            SELECT MAX(tier) FROM opportunities WHERE condition_id=%s AND outcome=%s
+        )) WHERE condition_id=%s AND outcome=%s''',
+               (condition_id, outcome, condition_id, outcome))
     mark_opportunity_dirty(condition_id, outcome)
 
 
-def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, price, trade_ts):
+def record_contribution(conn, condition_id, outcome, wallet, wallet_name, usd, price, trade_ts):
+    """Takes an already-open connection — see record_tier_crossed above."""
     # trade_ts (the real on-chain trade time) is what "ts" means to anyone
     # reading it later — used for FIFO exit ordering and displayed as "Xm
     # ago". updated_at stays processing time deliberately: if it ever
@@ -752,111 +754,107 @@ def record_contribution(db, condition_id, outcome, wallet, wallet_name, usd, pri
     # wallet_count only needs "have I already counted this wallet" (rows are
     # never deleted, so it's monotonic) — the INSERT ... ON CONFLICT DO
     # NOTHING RETURNING tells us that in one statement, no separate
-    # existence check needed. All three statements run as one transaction —
-    # a connection hiccup partway through must never leave the wallet row
-    # persisted with its paired stats delta lost.
-    def txn(conn):
-        conn.execute('''INSERT INTO opportunity_wallets (condition_id, outcome, wallet, wallet_name, usd, price, ts)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)''', (condition_id, outcome, wallet, wallet_name, usd, price, trade_ts))
-        cur = conn.execute('''INSERT INTO opportunity_contributors (condition_id, outcome, wallet)
-            VALUES (%s,%s,%s) ON CONFLICT DO NOTHING RETURNING 1''', (condition_id, outcome, wallet))
-        is_new_wallet = 1 if cur.fetchone() is not None else 0
-        # A new contribution can move both best_win_rate (new candidate
-        # wallet) and best_bet_ratio (new usd/balance candidate) for this
-        # pair — see opportunity_aggregate_dirty / refresh_opportunity_aggregates.
-        conn.execute('''INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
-            VALUES (%s,%s) ON CONFLICT DO NOTHING''', (condition_id, outcome))
-        # Same signal moves profit-bot eligibility (a new proven-wallet
-        # contribution can push a pair past the 5+ bar) — see
-        # profit_bot_dirty / refresh_profit_bot.
-        conn.execute('''INSERT INTO profit_bot_dirty (condition_id, outcome)
-            VALUES (%s,%s) ON CONFLICT DO NOTHING''', (condition_id, outcome))
-        # opportunity_wallet_max_usd: this wallet's largest trade in this
-        # market so far. O(1) regardless of how many trades this market has
-        # ever had — usd is immutable once inserted, so a wallet's max in a
-        # market only ever grows, never needs to shrink. This is what lets
-        # refresh_opportunity_aggregates recompute best_bet_ratio by scanning
-        # a market's distinct wallets instead of rescanning every trade row —
-        # see supabase/migrations/20260921120000_opportunity_wallet_max_usd_rollup.sql.
-        conn.execute('''INSERT INTO opportunity_wallet_max_usd (condition_id, outcome, wallet, max_usd)
-            VALUES (%s,%s,%s,%s)
-            ON CONFLICT (condition_id, outcome, wallet) DO UPDATE SET
-              max_usd = GREATEST(opportunity_wallet_max_usd.max_usd, EXCLUDED.max_usd)''',
-            (condition_id, outcome, wallet, usd))
-        conn.execute('''INSERT INTO opportunity_stats
-                (condition_id, outcome, entries, wallet_count, cumulative_usd, open_shares_sum, open_invested_usd, updated_at)
-            VALUES (%s,%s,1,%s,%s,%s,%s,%s)
-            ON CONFLICT (condition_id, outcome) DO UPDATE SET
-                entries = opportunity_stats.entries + 1,
-                wallet_count = opportunity_stats.wallet_count + %s,
-                cumulative_usd = opportunity_stats.cumulative_usd + %s,
-                open_shares_sum = opportunity_stats.open_shares_sum + %s,
-                open_invested_usd = opportunity_stats.open_invested_usd + %s,
-                updated_at = %s''',
-            (condition_id, outcome, is_new_wallet, usd, shares, usd, processed_at,
-             is_new_wallet, usd, shares, usd, processed_at))
-
-    db.run_transaction(txn)
+    # existence check needed. All statements here run inside process_trade's
+    # one shared transaction — a connection hiccup partway through must
+    # never leave the wallet row persisted with its paired stats delta lost.
+    conn.execute('''INSERT INTO opportunity_wallets (condition_id, outcome, wallet, wallet_name, usd, price, ts)
+        VALUES (%s,%s,%s,%s,%s,%s,%s)''', (condition_id, outcome, wallet, wallet_name, usd, price, trade_ts))
+    cur = conn.execute('''INSERT INTO opportunity_contributors (condition_id, outcome, wallet)
+        VALUES (%s,%s,%s) ON CONFLICT DO NOTHING RETURNING 1''', (condition_id, outcome, wallet))
+    is_new_wallet = 1 if cur.fetchone() is not None else 0
+    # A new contribution can move both best_win_rate (new candidate
+    # wallet) and best_bet_ratio (new usd/balance candidate) for this
+    # pair — see opportunity_aggregate_dirty / refresh_opportunity_aggregates.
+    conn.execute('''INSERT INTO opportunity_aggregate_dirty (condition_id, outcome)
+        VALUES (%s,%s) ON CONFLICT DO NOTHING''', (condition_id, outcome))
+    # Same signal moves profit-bot eligibility (a new proven-wallet
+    # contribution can push a pair past the 5+ bar) — see
+    # profit_bot_dirty / refresh_profit_bot.
+    conn.execute('''INSERT INTO profit_bot_dirty (condition_id, outcome)
+        VALUES (%s,%s) ON CONFLICT DO NOTHING''', (condition_id, outcome))
+    # opportunity_wallet_max_usd: this wallet's largest trade in this
+    # market so far. O(1) regardless of how many trades this market has
+    # ever had — usd is immutable once inserted, so a wallet's max in a
+    # market only ever grows, never needs to shrink. This is what lets
+    # refresh_opportunity_aggregates recompute best_bet_ratio by scanning
+    # a market's distinct wallets instead of rescanning every trade row —
+    # see supabase/migrations/20260921120000_opportunity_wallet_max_usd_rollup.sql.
+    conn.execute('''INSERT INTO opportunity_wallet_max_usd (condition_id, outcome, wallet, max_usd)
+        VALUES (%s,%s,%s,%s)
+        ON CONFLICT (condition_id, outcome, wallet) DO UPDATE SET
+          max_usd = GREATEST(opportunity_wallet_max_usd.max_usd, EXCLUDED.max_usd)''',
+        (condition_id, outcome, wallet, usd))
+    conn.execute('''INSERT INTO opportunity_stats
+            (condition_id, outcome, entries, wallet_count, cumulative_usd, open_shares_sum, open_invested_usd, updated_at)
+        VALUES (%s,%s,1,%s,%s,%s,%s,%s)
+        ON CONFLICT (condition_id, outcome) DO UPDATE SET
+            entries = opportunity_stats.entries + 1,
+            wallet_count = opportunity_stats.wallet_count + %s,
+            cumulative_usd = opportunity_stats.cumulative_usd + %s,
+            open_shares_sum = opportunity_stats.open_shares_sum + %s,
+            open_invested_usd = opportunity_stats.open_invested_usd + %s,
+            updated_at = %s''',
+        (condition_id, outcome, is_new_wallet, usd, shares, usd, processed_at,
+         is_new_wallet, usd, shares, usd, processed_at))
 
 
-def touch_tracked_wallet(db, wallet):
+def touch_tracked_wallet(conn, wallet):
     """No-op for wallets that are only in the top-N-by-pnl roster (not in
     tracked_wallets at all) — the UPDATE just affects zero rows for those.
     For a manually-tracked wallet, this is what keeps it from expiring out
-    of load_config()'s 30-day-inactivity filter."""
-    db.execute('UPDATE tracked_wallets SET last_active_at = %s WHERE wallet = %s',
+    of load_config()'s 30-day-inactivity filter. Takes an already-open
+    connection — see record_tier_crossed above."""
+    conn.execute('UPDATE tracked_wallets SET last_active_at = %s WHERE wallet = %s',
                 (datetime.now(timezone.utc), wallet))
 
 
-def record_exit(db, condition_id, outcome, wallet, price, usd, trade_ts):
+def record_exit(conn, condition_id, outcome, wallet, price, usd, trade_ts):
     """Closes the oldest still-open contribution row for this wallet+market
     (FIFO — this is a best-effort signal classifier, not real accounting) and
     classifies the round trip as a scalp (held < SCALP_WINDOW_SECONDS) or a
     genuine exit. Returns (hold_seconds, is_scalp) or None if this wallet has
     no tracked open entry here (e.g. they sold a position opened before this
-    process started watching, or before it started tracking sells at all)."""
+    process started watching, or before it started tracking sells at all).
+    Takes an already-open connection — see record_tier_crossed above."""
     # hold_seconds/exit_ts use trade_ts (the real SELL time) — using
     # processing time here would inflate hold_seconds by however long the
     # trade sat queued, which could misclassify a genuine scalp as a
     # longer hold. updated_at stays processing time (see record_contribution).
     processed_at = datetime.now(timezone.utc)
 
-    def txn(conn):
-        # FOR UPDATE SKIP LOCKED: under a pooled connection, two concurrent
-        # SELLs for the same wallet+market could otherwise both SELECT the
-        # same oldest-open row before either commits, double-closing one
-        # position and double-decrementing opportunity_stats. SKIP LOCKED
-        # makes a second concurrent SELL skip the row already claimed by an
-        # in-flight transaction and fall through to the next genuinely-open
-        # one — correct FIFO behavior under real concurrency.
-        row = conn.execute('''SELECT id, ts, usd, price FROM opportunity_wallets
-            WHERE condition_id=%s AND outcome=%s AND wallet=%s AND exit_ts IS NULL
-            ORDER BY ts ASC LIMIT 1 FOR UPDATE SKIP LOCKED''', (condition_id, outcome, wallet)).fetchone()
-        if not row:
-            return None
-        row_id, buy_ts, entry_usd, entry_price = row
-        hold_seconds = trade_ts.timestamp() - buy_ts.timestamp()
-        is_scalp = hold_seconds <= SCALP_WINDOW_SECONDS
-        conn.execute('''UPDATE opportunity_wallets SET exit_ts=%s, exit_price=%s, exit_usd=%s, hold_seconds=%s, is_scalp=%s
-            WHERE id=%s''', (trade_ts, price, usd, hold_seconds, is_scalp, row_id))
-        # Realized profit uses the ORIGINAL entry's implied shares valued at
-        # exit price, not the actual exit_usd — matches the formula the view
-        # (and the backfill) already use: (entry_usd/entry_price)*exit_price
-        # - entry_usd, not anything derived from the sell trade's own $ size.
-        shares = float(entry_usd) / float(entry_price)
-        realized_delta = shares * price - float(entry_usd)
-        conn.execute('''UPDATE opportunity_stats SET
-                exited = exited + 1,
-                scalped = scalped + %s,
-                realized_profit = realized_profit + %s,
-                open_shares_sum = open_shares_sum - %s,
-                open_invested_usd = open_invested_usd - %s,
-                updated_at = %s
-            WHERE condition_id=%s AND outcome=%s''',
-            (1 if is_scalp else 0, realized_delta, shares, entry_usd, processed_at, condition_id, outcome))
-        return hold_seconds, is_scalp
-
-    return db.run_transaction(txn)
+    # FOR UPDATE SKIP LOCKED: under a pooled connection, two concurrent
+    # SELLs for the same wallet+market could otherwise both SELECT the
+    # same oldest-open row before either commits, double-closing one
+    # position and double-decrementing opportunity_stats. SKIP LOCKED
+    # makes a second concurrent SELL skip the row already claimed by an
+    # in-flight transaction and fall through to the next genuinely-open
+    # one — correct FIFO behavior under real concurrency.
+    row = conn.execute('''SELECT id, ts, usd, price FROM opportunity_wallets
+        WHERE condition_id=%s AND outcome=%s AND wallet=%s AND exit_ts IS NULL
+        ORDER BY ts ASC LIMIT 1 FOR UPDATE SKIP LOCKED''', (condition_id, outcome, wallet)).fetchone()
+    if not row:
+        return None
+    row_id, buy_ts, entry_usd, entry_price = row
+    hold_seconds = trade_ts.timestamp() - buy_ts.timestamp()
+    is_scalp = hold_seconds <= SCALP_WINDOW_SECONDS
+    conn.execute('''UPDATE opportunity_wallets SET exit_ts=%s, exit_price=%s, exit_usd=%s, hold_seconds=%s, is_scalp=%s
+        WHERE id=%s''', (trade_ts, price, usd, hold_seconds, is_scalp, row_id))
+    # Realized profit uses the ORIGINAL entry's implied shares valued at
+    # exit price, not the actual exit_usd — matches the formula the view
+    # (and the backfill) already use: (entry_usd/entry_price)*exit_price
+    # - entry_usd, not anything derived from the sell trade's own $ size.
+    shares = float(entry_usd) / float(entry_price)
+    realized_delta = shares * price - float(entry_usd)
+    conn.execute('''UPDATE opportunity_stats SET
+            exited = exited + 1,
+            scalped = scalped + %s,
+            realized_profit = realized_profit + %s,
+            open_shares_sum = open_shares_sum - %s,
+            open_invested_usd = open_invested_usd - %s,
+            updated_at = %s
+        WHERE condition_id=%s AND outcome=%s''',
+        (1 if is_scalp else 0, realized_delta, shares, entry_usd, processed_at, condition_id, outcome))
+    return hold_seconds, is_scalp
 
 
 def check_market_closed(slug):
@@ -1743,25 +1741,27 @@ def parse_trade_ts(item):
         return datetime.now(timezone.utc)
 
 
-def record_ticker_trade(db, info, usd, price, side, tx_hash, trade_ts):
+def record_ticker_trade(conn, info, usd, price, side, tx_hash, trade_ts):
     """Inserted immediately on a big-enough trade, BEFORE on-chain wallet
     resolution — this is what makes the ticker sub-second instead of waiting
-    on an RPC round trip like the roster-matched signals do."""
+    on an RPC round trip like the roster-matched signals do. Takes an
+    already-open connection — see record_tier_crossed above."""
     # No RETURNING/return value here — update_ticker_wallet matches by
     # tx_hash, not a ticker_id threaded back through the caller.
-    db.execute('''INSERT INTO ticker
+    conn.execute('''INSERT INTO ticker
         (condition_id, outcome, slug, title, usd, price, side, tx_hash, wallet, roster_tagged, ts, epoch)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NULL,false,%s,%s)''',
         (info['conditionId'], info['outcome'], info['slug'], info['title'],
          usd, price, side, tx_hash, trade_ts, trade_ts.timestamp()))
 
 
-def update_ticker_wallet(db, tx_hash, wallet, wallet_name, roster_tagged, category):
+def update_ticker_wallet(conn, tx_hash, wallet, wallet_name, roster_tagged, category):
+    """Takes an already-open connection — see record_tier_crossed above."""
     # Matched by tx_hash (+ still-unresolved guard) rather than the
     # ticker_id record_ticker_trade returns — simpler than threading that
     # id all the way through process_trade, and just as correct since a
     # tx_hash only ever gets one ticker row.
-    db.execute('''UPDATE ticker SET wallet=%s, wallet_name=%s, roster_tagged=%s, category=%s
+    conn.execute('''UPDATE ticker SET wallet=%s, wallet_name=%s, roster_tagged=%s, category=%s
         WHERE tx_hash=%s AND wallet IS NULL''',
                 (wallet, wallet_name, bool(roster_tagged), category, tx_hash))
 
@@ -1968,7 +1968,21 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
     every ticker entry for a fill showed the same trader on both the BUY
     and SELL line. Roster-matching (is this wallet one we track, did they
     enter or exit) still runs independently for both parties either way —
-    only the ticker feed itself is per-fill, not per-party."""
+    only the ticker feed itself is per-fill, not per-party.
+
+    All of this trade's writes now go through ONE db.run_transaction call
+    (2026-10-16) — previously the ticker insert, price update, ticker-wallet
+    update, contribution/exit, and touch_tracked_wallet were each their own
+    top-level db call, each its own network round trip to the database,
+    even though they all belong to the same trade. Confirmed live that this
+    was the dominant cost in avg_process_trade_ms (~45ms per round trip,
+    cross-cloud). Non-DB work (wallet-name/category lookups, roster
+    membership, the in-memory conviction/tier-crossing bookkeeping) stays
+    outside the transaction and runs exactly once — only the actual DB
+    writes are inside the retried unit, so a rare deadlock retry re-sends
+    the same writes from a clean slate (safe: nothing here is non-
+    idempotent across a full rollback) at the cost of a possible duplicate
+    log line, not duplicated DB state or double-counted in-memory trackers."""
     if side not in ('BUY', 'SELL') or not tx_hash:
         return
     info = keyed_token_info.get(tid)
@@ -1978,108 +1992,123 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
         stats['trades_seen'] += 1
 
     usd = (float(price) if price else 0) * (float(size) if size else 0)
-
-    # Ticker: fires on size alone, immediately, before any RPC wait — this is
-    # what makes it sub-second instead of gated on wallet resolution.
-    if record_ticker and usd >= TICKER_MIN_USD:
-        record_ticker_trade(db, info, usd, float(price) if price else 0, side, tx_hash, trade_ts)
-        with state_lock:
-            stats['ticker_trades'] += 1
-
-    # Mark-to-market: keep latest_price tracking the real market, not just
-    # the price at the last top-trader tier crossing. Previously latest_price
-    # only got written inside record_tier_crossed, so a market's displayed
-    # price/unrealized-profit went stale the moment top traders stopped
-    # entering — even while the real price kept moving (e.g. a live sports
-    # game swinging to 99% on ordinary market activity). Every trade tick on
-    # a market we already track is a free, sub-second price update — no
-    # extra network call, since we already receive it over the WS.
     key_probe = (info['conditionId'], info['outcome'])
-    if record_ticker and price and float(price) > 0 and key_probe in tiers_hit:
-        with price_write_locks.hold([key_probe]):
-            if key_probe not in resolved_markets:
-                pending_prices.discard(key_probe)
-                last_mtm_update[key_probe] = time.time()
-                db.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
-                           (float(price), key_probe[0], key_probe[1]))
-                mark_opportunity_dirty(*key_probe)
 
-    if usd <= 0:
-        return
+    # Everything below that depends on usd>0 (wallet identity, roster
+    # membership, conviction/tier-crossing bookkeeping) is resolved here,
+    # once, outside the transaction — see this function's docstring for why.
+    wallet_name = None
+    is_roster_wallet = False
+    is_first_ever = False
+    newly_crossed = []
+    distinct_wallets = set()
+    total_usd = 0.0
 
-    wallet_name = wallet_names.get(wallet) if wallet else None
-    if wallet and not wallet_name:
-        if wallet in live_profile_cache:
-            wallet_name = live_profile_cache[wallet]
-            with state_lock:
-                stats['profile_fetch_cache_hits'] += 1
-        else:
-            _t0 = time.time()
-            wallet_name = fetch_live_profile_name(wallet)  # not in our local 261k dataset — try live, covers anyone with a profile
-            live_profile_cache[wallet] = wallet_name
-            with state_lock:
-                stats['profile_fetch_count'] += 1
-                stats['profile_fetch_ms'] += (time.time() - _t0) * 1000
-
-    # roster is mutated (clear+update) by apply_config on a config-poll
-    # thread while trade-processing threads read it here — state_lock
-    # makes the membership check atomic w.r.t. that clear+update pair, so a
-    # trade can never see a momentarily-empty roster and get silently
-    # dropped between the clear() and the update() landing.
-    with state_lock:
-        is_roster_wallet = bool(wallet and wallet in roster)
-
-    if record_ticker and usd >= TICKER_MIN_USD:
-        category = fetch_event_category(info.get('eventId'))
-        update_ticker_wallet(db, tx_hash, wallet, wallet_name, is_roster_wallet, category)
-
-    if not is_roster_wallet:
-        return
-    with state_lock:
-        stats['roster_matches'] += 1
-
-    if side == 'SELL':
-        result = record_exit(db, info['conditionId'], info['outcome'], wallet, float(price), usd, trade_ts)
-        touch_tracked_wallet(db, wallet)
-        if result:
-            hold_seconds, is_scalp = result
-            who = wallet_name or f'{wallet[:10]}…'
-            if is_scalp:
-                print(f'  [scalp] {info["title"]!r} -> {info["outcome"]}  {who} bought+sold within {hold_seconds/60:.0f}m — sold ${usd:,.0f}')
+    if usd > 0:
+        wallet_name = wallet_names.get(wallet) if wallet else None
+        if wallet and not wallet_name:
+            if wallet in live_profile_cache:
+                wallet_name = live_profile_cache[wallet]
+                with state_lock:
+                    stats['profile_fetch_cache_hits'] += 1
             else:
-                held = f'{hold_seconds/3600:.1f}h' if hold_seconds < 86400 else f'{hold_seconds/86400:.1f}d'
-                print(f'  [exit] {info["title"]!r} -> {info["outcome"]}  {who} sold ${usd:,.0f} after holding {held}')
-        return
+                _t0 = time.time()
+                wallet_name = fetch_live_profile_name(wallet)  # not in our local 261k dataset — try live, covers anyone with a profile
+                live_profile_cache[wallet] = wallet_name
+                with state_lock:
+                    stats['profile_fetch_count'] += 1
+                    stats['profile_fetch_ms'] += (time.time() - _t0) * 1000
 
-    key = (info['conditionId'], info['outcome'])
-    trade_epoch = trade_ts.timestamp()
-    with state_lock:
-        bucket = conviction[key]
-        already_hit = tiers_hit[key]
-        is_first_ever = len(bucket) == 0 and SOLO_TIER not in already_hit
-        bucket.append((trade_epoch, wallet, usd, float(price)))
-        cutoff = trade_epoch - CONVICTION_WINDOW_SECONDS
-        while bucket and bucket[0][0] < cutoff:
-            bucket.pop(0)
-        distinct_wallets = {w for _, w, _, _ in bucket}
-        total_usd = sum(u for _, _, u, _ in bucket)
-        newly_crossed = [t for t in TIERS if total_usd >= t and t not in already_hit]
-        for t in newly_crossed:
-            already_hit.add(t)
+        # roster is mutated (clear+update) by apply_config on a config-poll
+        # thread while trade-processing threads read it here — state_lock
+        # makes the membership check atomic w.r.t. that clear+update pair, so a
+        # trade can never see a momentarily-empty roster and get silently
+        # dropped between the clear() and the update() landing.
+        with state_lock:
+            is_roster_wallet = bool(wallet and wallet in roster)
+
+        if is_roster_wallet:
+            with state_lock:
+                stats['roster_matches'] += 1
+            if side == 'BUY':
+                trade_epoch = trade_ts.timestamp()
+                with state_lock:
+                    bucket = conviction[key_probe]
+                    already_hit = tiers_hit[key_probe]
+                    is_first_ever = len(bucket) == 0 and SOLO_TIER not in already_hit
+                    bucket.append((trade_epoch, wallet, usd, float(price)))
+                    cutoff = trade_epoch - CONVICTION_WINDOW_SECONDS
+                    while bucket and bucket[0][0] < cutoff:
+                        bucket.pop(0)
+                    distinct_wallets = {w for _, w, _, _ in bucket}
+                    total_usd = sum(u for _, _, u, _ in bucket)
+                    newly_crossed = [t for t in TIERS if total_usd >= t and t not in already_hit]
+                    for t in newly_crossed:
+                        already_hit.add(t)
+                    if is_first_ever:
+                        already_hit.add(SOLO_TIER)
+
+    def txn(conn):
+        # Ticker: fires on size alone, immediately, before any RPC wait — this is
+        # what makes it sub-second instead of gated on wallet resolution.
+        if record_ticker and usd >= TICKER_MIN_USD:
+            record_ticker_trade(conn, info, usd, float(price) if price else 0, side, tx_hash, trade_ts)
+            with state_lock:
+                stats['ticker_trades'] += 1
+
+        # Mark-to-market: keep latest_price tracking the real market, not just
+        # the price at the last top-trader tier crossing. Previously latest_price
+        # only got written inside record_tier_crossed, so a market's displayed
+        # price/unrealized-profit went stale the moment top traders stopped
+        # entering — even while the real price kept moving (e.g. a live sports
+        # game swinging to 99% on ordinary market activity). Every trade tick on
+        # a market we already track is a free, sub-second price update — no
+        # extra network call, since we already receive it over the WS.
+        if record_ticker and price and float(price) > 0 and key_probe in tiers_hit:
+            with price_write_locks.hold([key_probe]):
+                if key_probe not in resolved_markets:
+                    pending_prices.discard(key_probe)
+                    last_mtm_update[key_probe] = time.time()
+                    conn.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
+                               (float(price), key_probe[0], key_probe[1]))
+                    mark_opportunity_dirty(*key_probe)
+
+        if usd <= 0:
+            return
+
+        if record_ticker and usd >= TICKER_MIN_USD:
+            category = fetch_event_category(info.get('eventId'))
+            update_ticker_wallet(conn, tx_hash, wallet, wallet_name, is_roster_wallet, category)
+
+        if not is_roster_wallet:
+            return
+
+        if side == 'SELL':
+            result = record_exit(conn, info['conditionId'], info['outcome'], wallet, float(price), usd, trade_ts)
+            touch_tracked_wallet(conn, wallet)
+            if result:
+                hold_seconds, is_scalp = result
+                who = wallet_name or f'{wallet[:10]}…'
+                if is_scalp:
+                    print(f'  [scalp] {info["title"]!r} -> {info["outcome"]}  {who} bought+sold within {hold_seconds/60:.0f}m — sold ${usd:,.0f}')
+                else:
+                    held = f'{hold_seconds/3600:.1f}h' if hold_seconds < 86400 else f'{hold_seconds/86400:.1f}d'
+                    print(f'  [exit] {info["title"]!r} -> {info["outcome"]}  {who} sold ${usd:,.0f} after holding {held}')
+            return
+
+        record_contribution(conn, key_probe[0], key_probe[1], wallet, wallet_name, usd, float(price), trade_ts)
+        touch_tracked_wallet(conn, wallet)
+        meta_lookup = {key_probe: info}
         if is_first_ever:
-            already_hit.add(SOLO_TIER)
+            record_tier_crossed(conn, key_probe[0], key_probe[1], meta_lookup, usd, SOLO_TIER, 1, float(price), trade_ts)
+            who = wallet_name or f'{wallet[:10]}…'
+            print(f'  [solo pick] {info["title"]!r} -> {info["outcome"]}  {who} bought ${usd:,.0f}')
+        for t in newly_crossed:
+            record_tier_crossed(conn, key_probe[0], key_probe[1], meta_lookup, total_usd, t, len(distinct_wallets), float(price), trade_ts)
+            print(f'  [OPPORTUNITY] {info["title"]!r} -> {info["outcome"]}  '
+                  f'${total_usd:,.0f} from {len(distinct_wallets)} roster wallets (crossed ${t:,} tier)')
 
-    record_contribution(db, key[0], key[1], wallet, wallet_name, usd, float(price), trade_ts)
-    touch_tracked_wallet(db, wallet)
-    meta_lookup = {key: info}
-    if is_first_ever:
-        record_tier_crossed(db, key[0], key[1], meta_lookup, usd, SOLO_TIER, 1, float(price), trade_ts)
-        who = wallet_name or f'{wallet[:10]}…'
-        print(f'  [solo pick] {info["title"]!r} -> {info["outcome"]}  {who} bought ${usd:,.0f}')
-    for t in newly_crossed:
-        record_tier_crossed(db, key[0], key[1], meta_lookup, total_usd, t, len(distinct_wallets), float(price), trade_ts)
-        print(f'  [OPPORTUNITY] {info["title"]!r} -> {info["outcome"]}  '
-              f'${total_usd:,.0f} from {len(distinct_wallets)} roster wallets (crossed ${t:,} tier)')
+    db.run_transaction(txn)
 
 
 def process_trade_timed(*args, **kwargs):
