@@ -590,7 +590,27 @@ class Database:
     connection on return) — belt and suspenders, matches this file's
     existing explicit style, and removes any doubt."""
 
-    def __init__(self, database_url, pool_size=8):
+    def __init__(self, database_url, pool_size=8, statement_timeout_ms=None):
+        # statement_timeout_ms: a hard per-statement cap applied via
+        # `SET LOCAL statement_timeout` inside each transaction this pool
+        # runs (see _apply_timeout). Added 2026-10-17 as a systemic backstop
+        # after an incident where unbounded maintenance full-scans held
+        # backends for 60-90s+ each and, stacking up, exhausted the
+        # database's 90-connection ceiling -- taking the whole site down, not
+        # just the slow job. Capping per-statement time means a pathological
+        # maintenance query aborts (QueryCanceled) and retries/skips next
+        # cycle instead of starving every other connection (trade pipeline
+        # and frontend alike).
+        #
+        # Deliberately NOT done via the libpq startup `options` parameter
+        # (`-c statement_timeout=...`): confirmed live against the Supabase
+        # pooler (Supavisor) that it silently drops the startup options
+        # packet -- `show statement_timeout` still returned the role default
+        # and a pg_sleep over the cap was NOT aborted. SET LOCAL inside the
+        # transaction is a plain SQL command the pooler forwards normally, so
+        # it actually takes effect, and it auto-resets at commit/rollback so
+        # it never leaks onto a pooled backend's next checkout.
+        self._statement_timeout_ms = statement_timeout_ms
         self.pool = ConnectionPool(
             database_url, min_size=pool_size, max_size=pool_size,
             # prepare_threshold=None disables psycopg3's server-side
@@ -609,8 +629,17 @@ class Database:
         # fail-fast-at-startup behavior instead of failing lazily on first use.
         self.pool.open(wait=True, timeout=30)
 
+    def _apply_timeout(self, conn):
+        # SET LOCAL is transaction-scoped: it applies to the rest of this
+        # transaction and reverts automatically on commit/rollback, so it's
+        # safe on a pooled connection that will be handed to someone else
+        # next. No-op when this pool has no cap configured.
+        if self._statement_timeout_ms is not None:
+            conn.execute(f"SET LOCAL statement_timeout = {int(self._statement_timeout_ms)}")
+
     def fetchall(self, sql, params=None):
         with self.pool.connection() as conn:
+            self._apply_timeout(conn)
             cur = conn.execute(sql, params)
             rows = cur.fetchall()
             conn.commit()
@@ -618,6 +647,7 @@ class Database:
 
     def fetchone(self, sql, params=None):
         with self.pool.connection() as conn:
+            self._apply_timeout(conn)
             cur = conn.execute(sql, params)
             row = cur.fetchone()
             conn.commit()
@@ -625,11 +655,13 @@ class Database:
 
     def execute(self, sql, params=None):
         with self.pool.connection() as conn:
+            self._apply_timeout(conn)
             conn.execute(sql, params)
             conn.commit()
 
     def executemany(self, sql, params_seq):
         with self.pool.connection() as conn:
+            self._apply_timeout(conn)
             with conn.cursor() as cur:
                 cur.executemany(sql, params_seq)
                 affected = cur.rowcount
@@ -685,6 +717,7 @@ class Database:
             with self.pool.connection() as conn:
                 try:
                     with conn.pipeline():
+                        self._apply_timeout(conn)  # no-op unless this pool has a cap (e.g. maintenance_db)
                         result = fn(conn)
                 except (psycopg.errors.DeadlockDetected, psycopg.errors.SerializationFailure):
                     conn.rollback()
@@ -1054,8 +1087,16 @@ def refresh_opportunity_aggregates(db):
     just drains over more 15s cycles instead of one slow call. Combined
     with the opportunity_wallet_max_usd rollup below (which fixed the
     actual root cause — see that query's comment), this is now just cheap
-    insurance against any future unexpected spike, not load-bearing."""
-    DIRTY_BATCH_LIMIT = 300
+    insurance against any future unexpected spike, not load-bearing.
+
+    Batch raised 300 -> 1500 (2026-10-17): at 300/15s (20 pairs/s) the drain
+    couldn't keep up with insert rate under the traffic growth this week,
+    and opportunity_aggregate_dirty accumulated to ~58k rows instead of
+    hovering near zero. The per-pair recompute below is index-bounded (see
+    opportunity_wallet_max_usd), and the whole job now runs on a pool capped
+    at a 120s statement_timeout, so a larger batch is safe -- worst case it
+    aborts and retries rather than running away."""
+    DIRTY_BATCH_LIMIT = 1500
     now = datetime.now(timezone.utc)
     rows = db.fetchall('''
         DELETE FROM opportunity_aggregate_dirty
@@ -1424,8 +1465,15 @@ def refresh_profit_bot(db):
     instead of every PROFIT_BOT_REFRESH_SECONDS — the correction pass for
     whatever this incremental path might have missed, same role reconcile
     plays for leaderboard/opportunity aggregates. See
-    supabase/migrations/20261005000000_profit_bot_dirty_tracking.sql."""
-    PROFIT_BOT_DIRTY_BATCH_LIMIT = 300
+    supabase/migrations/20261005000000_profit_bot_dirty_tracking.sql.
+
+    Batch raised 300 -> 1500 (2026-10-17): this runs only every 120s, so the
+    old 300/120s (2.5 pairs/s) drain was far below insert rate and
+    profit_bot_dirty accumulated to ~86k rows. The resolved/open recomputes
+    below are bounded to the claimed batch via the opportunity_wallets
+    partial indexes (pbot_resolved/pbot_open), and the job's pool is capped
+    at a 120s statement_timeout, so the larger batch is safe."""
+    PROFIT_BOT_DIRTY_BATCH_LIMIT = 1500
     now = datetime.now(timezone.utc)
     rows = db.fetchall('''
         DELETE FROM profit_bot_dirty
@@ -2437,7 +2485,19 @@ def main():
     price_db = Database(args.database_url, pool_size=1)
     delivery_db = Database(args.database_url, pool_size=1)
     ingestion_db = Database(args.database_url, pool_size=2)
-    maintenance_db = Database(args.database_url, pool_size=2)
+    # maintenance_db carries every periodic aggregate/reconcile/sweep job.
+    # These are the only queries in the service that touch whole tables, so
+    # this is where an unbounded scan can run away -- cap every statement on
+    # this pool at 60s (via SET LOCAL per transaction; see Database) so a
+    # pathological maintenance query aborts instead of holding one of the
+    # database's limited backends and starving the trade pipeline and
+    # frontend. 60s is deliberately well under the role's 2min default: the
+    # incident's worst queries ran 52-90s -- under 2min, yet still long
+    # enough to stack up two maintenance backends plus frontend reads into
+    # pool exhaustion. A legitimate incremental refresh is normally <10s, so
+    # 60s stays generous while cutting worst-case backend hold time roughly
+    # in half.
+    maintenance_db = Database(args.database_url, pool_size=2, statement_timeout_ms=60_000)
 
     all_users = load_all_users(db)
     config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page
