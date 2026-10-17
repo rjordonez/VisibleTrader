@@ -2440,9 +2440,28 @@ def main():
         tiers_hit[(cond_id, outcome)].add(tier)
     print(f'{len(tiers_hit)} already-tracked condition/outcome pairs rehydrated for mark-to-market.')
 
-    for cond_id, outcome in db.fetchall(
-        'SELECT DISTINCT condition_id, outcome FROM opportunity_wallets WHERE market_closed = true'):
-        resolved_markets.add((cond_id, outcome))
+    # Bounded with a statement_timeout (2026-10-17) -- this DISTINCT scans
+    # opportunity_wallets, which has grown to 7.5M+ rows. Confirmed live:
+    # unbounded, this can hang long enough to block the service from ever
+    # starting (every restart attempt stalls at exactly this query). An
+    # incomplete resolved_markets set here only risks a resolved market's
+    # last real-time price tick briefly overwriting latest_price with a
+    # stale mid-market quote -- a minor, self-correcting display gap, not a
+    # reason to block startup. See docs/live-processing.md for the
+    # longer-term fix (this table needs the same retention/indexing
+    # treatment already given to ticker/onchain_fills).
+    try:
+        with db.pool.connection() as conn:
+            conn.execute("SET statement_timeout = '15s'")
+            rows = conn.execute(
+                'SELECT DISTINCT condition_id, outcome FROM opportunity_wallets WHERE market_closed = true'
+            ).fetchall()
+            conn.commit()
+        for cond_id, outcome in rows:
+            resolved_markets.add((cond_id, outcome))
+    except Exception as exc:
+        print(f'[startup] resolved_markets rehydration timed out or failed ({exc!r}) -- '
+              f'continuing with a possibly-incomplete set rather than block startup.')
     print(f'{len(resolved_markets)} already-resolved condition/outcome pairs rehydrated (mark-to-market writes blocked for these).')
 
     executor = TradeWorkers(args.workers, args.trade_queue_size)
