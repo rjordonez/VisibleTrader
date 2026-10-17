@@ -5,19 +5,44 @@ import threading
 import zlib
 
 
+class LaneFullError(RuntimeError):
+    """Raised when the specific lane a key hashes to is at its own cap.
+
+    Distinct from the plain RuntimeError raised when the *global* budget is
+    exhausted: callers can catch this one specifically and skip just this
+    key, since unrelated lanes may still have room.
+    """
+
+
 class TradeWorkers:
     """FIFO per token, parallel across tokens, bounded across all lanes.
 
     The caller is the single fill dispatcher. It checks available before
     reading the next batch, leaving excess fills in the database.
+
+    Capacity is enforced two ways: a global ceiling across all lanes (as
+    before), and a per-lane ceiling (max_per_lane, default 1/4 of capacity).
+    Without the per-lane cap, a single hot token -- strictly serial by
+    design, one lane, one worker -- can queue enough backlog to consume the
+    *entire* shared budget. Since admission is gated on that one shared
+    counter, a backed-up hot lane then blocks admission for every other
+    token's lane too, even ones sitting completely idle. Confirmed live
+    (2026-10-16): a handful of tokens accounted for the majority of a
+    sustained ~45-minute feed lag this way. Capping any one lane at a
+    fraction of the total means a hot lane can never leave less than that
+    fraction of the budget unavailable to everyone else.
     """
-    def __init__(self, workers, capacity):
+    def __init__(self, workers, capacity, max_per_lane=None):
         if workers < 1 or capacity < 1:
             raise ValueError('workers and capacity must be positive')
         self._lanes = [ThreadPoolExecutor(max_workers=1, thread_name_prefix=f'trades-{i}')
                        for i in range(workers)]
         self._capacity = capacity
+        # Floor of 4 so small capacities (as in the unit tests) don't make
+        # the per-lane cap bind before the global one ever would.
+        self._max_per_lane = max_per_lane if max_per_lane is not None else max(4, capacity // 4)
         self._pending = 0
+        self._lane_pending = [0] * workers
         self._lock = threading.Lock()
 
     @property
@@ -26,20 +51,25 @@ class TradeWorkers:
             return self._capacity - self._pending
 
     def submit(self, key, fn, *args):
+        lane = zlib.crc32(str(key).encode()) % len(self._lanes)
         with self._lock:
+            if self._lane_pending[lane] >= self._max_per_lane:
+                raise LaneFullError(f'lane {lane} is full ({self._max_per_lane} pending)')
             if self._pending >= self._capacity:
                 raise RuntimeError('trade queue is full')
             self._pending += 1
-        lane = zlib.crc32(str(key).encode()) % len(self._lanes)
+            self._lane_pending[lane] += 1
         try:
             future = self._lanes[lane].submit(fn, *args)
         except BaseException:
             with self._lock:
                 self._pending -= 1
+                self._lane_pending[lane] -= 1
             raise
         def finished(result):
             with self._lock:
                 self._pending -= 1
+                self._lane_pending[lane] -= 1
             if not result.cancelled() and result.exception() is not None:
                 print(f'[trade-error] {result.exception()!r}', flush=True)
         future.add_done_callback(finished)
