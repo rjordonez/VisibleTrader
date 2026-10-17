@@ -2462,6 +2462,46 @@ def report_pipeline_freshness(db):
 
 # ---------------- main loop ----------------
 
+def startup_read_with_retry(label, fn, attempts=6, essential=True):
+    """Run an essential startup DB read, retrying on transient failure in
+    process instead of letting the exception crash main() and trigger a
+    systemd restart -> crash-loop.
+
+    Confirmed live (2026-10-17): during a deploy, wallet_directory (607k
+    rows, read in full by load_all_users to build the roster) was briefly
+    contended by its external sync job -- a bare count(*) took 78s -- so the
+    read exceeded the role's 2min statement_timeout and raised QueryCanceled.
+    That crashed startup; systemd restarted; the next attempt hit the same
+    contention; repeat. Each loop also hung ~30-60s tearing down the
+    connection pool and re-attacked an already-loaded database, making the
+    contention worse. The same read completes in ~3s once the contention
+    clears, so simply waiting it out in-process -- holding the pool we
+    already opened -- is strictly better than crash-looping.
+
+    Backoff is capped so total wait is bounded. For an essential read
+    (roster), exhausting all attempts re-raises so systemd can restart as a
+    true last resort; for a non-essential one (e.g. mark-to-market
+    rehydration, which self-heals as trades arrive), it logs and returns
+    None so startup proceeds rather than blocking on a degraded-but-livable
+    gap."""
+    delay = 5
+    for attempt in range(1, attempts + 1):
+        try:
+            return fn()
+        except Exception as exc:
+            if attempt == attempts:
+                if essential:
+                    print(f'[startup] {label} failed after {attempts} attempts ({exc!r}) -- '
+                          f'giving up so systemd can restart.')
+                    raise
+                print(f'[startup] {label} failed after {attempts} attempts ({exc!r}) -- '
+                      f'continuing without it (self-heals as trades arrive).')
+                return None
+            print(f'[startup] {label} attempt {attempt} failed ({exc!r}); retrying in {delay}s...')
+            time.sleep(delay)
+            delay = min(delay * 2, 60)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--roster-size', type=int, default=ROSTER_SIZE)
@@ -2499,7 +2539,11 @@ def main():
     # in half.
     maintenance_db = Database(args.database_url, pool_size=2, statement_timeout_ms=60_000)
 
-    all_users = load_all_users(db)
+    # Retry-wrapped: load_all_users reads all of wallet_directory (607k rows)
+    # and is essential (the roster is built from it), so a transient timeout
+    # here must retry rather than crash-loop the service — see
+    # startup_read_with_retry.
+    all_users = startup_read_with_retry('load_all_users', lambda: load_all_users(db))
     config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page
     print(f'Loading roster (top {config["whale_roster_size"]} by best_pnl + top {config["active_roster_size"]} by recent activity)...')
     roster = set()
@@ -2515,8 +2559,14 @@ def main():
     # sat stale post-restart while its real price moved dramatically
     # (0.16 shown vs Polymarket's actual ~1.0 after a late-game swing) —
     # rehydrating from opportunities on startup closes that gap.
-    for cond_id, outcome, tier in db.fetchall('SELECT condition_id, outcome, tier FROM opportunities'):
-        tiers_hit[(cond_id, outcome)].add(tier)
+    # Retry-wrapped but NOT essential: if this can't load, the service still
+    # starts -- mark-to-market just rehydrates lazily as each tracked market
+    # gets its next trade (same degradation rationale as the resolved_markets
+    # block below), which is far better than crash-looping startup over it.
+    def _rehydrate_tiers():
+        for cond_id, outcome, tier in db.fetchall('SELECT condition_id, outcome, tier FROM opportunities'):
+            tiers_hit[(cond_id, outcome)].add(tier)
+    startup_read_with_retry('tiers_hit rehydration', _rehydrate_tiers, essential=False)
     print(f'{len(tiers_hit)} already-tracked condition/outcome pairs rehydrated for mark-to-market.')
 
     # Reads from market_position_state (2026-10-17), not a DISTINCT scan of
