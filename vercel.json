@@ -1,6 +1,16 @@
 {
   "rewrites": [
-    { "source": "/api/polymarket/:path*", "destination": "https://gamma-api.polymarket.com/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/market-image/:path*",
+      "destination": "https://polymarket-upload.s3.us-east-2.amazonaws.com/:path*"
+    },
+    {
+      "source": "/api/polymarket/:path*",
+      "destination": "https://gamma-api.polymarket.com/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }
