@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowUp, ArrowDown, Share2 } from 'lucide-react'
+import { ArrowUp, ArrowDown, Share2, Film } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { traderLabel, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './helpers'
 import { SkelStatsRow, SkelTableRows, SkelBlock } from './Skeleton'
 import { TraderShareModal, type TraderShareData } from './TraderShareCard'
+import type { PositionExportData } from './TradeProgressModal'
+import { PositionProgressExport } from './PositionProgressExport'
 import {
   CumulativeChartSection, HighlightsRow, CategoryBreakdownSection, SimilarTradersTable,
   type CategoryRow, type SimilarTrader,
@@ -210,6 +212,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   const [similarLoading, setSimilarLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
+  const [exportTrade, setExportTrade] = useState<PositionExportData | null>(null)
   const [livePositions, setLivePositions] = useState<LivePosition[]>([])
   const [liveClosed, setLiveClosed] = useState<LiveClosedPosition[]>([])
   const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([])
@@ -530,6 +533,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     resolved: summary.n,
     cumulative: trackedCumulative,
   } : null, [summary, trackedCumulative, wallet, usdWinRate])
+  const closeProgress = useCallback(() => setExportTrade(null), [])
   const closeShare = useCallback(() => setShareOpen(false), [])
 
   return (
@@ -560,6 +564,8 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         </div>
       </div>
 
+      {exportTrade && <PositionProgressExport key={`${wallet}:${exportTrade.conditionId}:${exportTrade.outcome}`}
+        name={traderLabel(wallet, summary?.wallet_name ?? null)} wallet={wallet} trade={exportTrade} onClose={closeProgress} />}
       {shareOpen && shareData && <TraderShareModal data={shareData} onClose={closeShare} />}
 
       <div className="sig-panel">
@@ -679,6 +685,12 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                                     <div style={{ color: 'var(--text-faint)', fontSize: '0.85em' }}>
                                       Avg {Math.round(p.avgPrice * 100)}{terminalLayout ? '%' : '¢'} · Now {Math.round(p.curPrice * 100)}{terminalLayout ? '%' : '¢'}
                                     </div>
+                                    <button type="button" className="trader-share-trigger" style={{ marginLeft: 0, marginTop: 6 }}
+                                      disabled={p.size == null && p.initialValue == null}
+                                      onClick={() => setExportTrade({ title: p.title, outcome: p.outcome, conditionId: p.conditionId,
+                                        size: p.size, invested: p.initialValue ?? (p.size ?? 0) * p.avgPrice, avgPrice: p.avgPrice, curPrice: p.curPrice, pnl: p.cashPnl })}>
+                                      <Film size={13} aria-hidden="true" /> Trade progress
+                                    </button>
                                   </td>
                                   <td data-label="Result" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{p.cashPnl >= 0 ? 'Up' : 'Down'}</td>
                                   <td className="num" data-label="Total Traded">{totalTraded != null ? fmtFull(totalTraded) : '—'}</td>
@@ -841,7 +853,12 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                             <tbody>
                               {livePositions.map((p, i) => (
                                 <tr key={i}>
-                                  <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
+                                  <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span><div><button type="button" className="trader-share-trigger" style={{ marginLeft: 0, marginTop: 6 }}
+                                      disabled={p.size == null && p.initialValue == null}
+                                      onClick={() => setExportTrade({ title: p.title, outcome: p.outcome, conditionId: p.conditionId,
+                                        size: p.size, invested: p.initialValue ?? (p.size ?? 0) * p.avgPrice, avgPrice: p.avgPrice, curPrice: p.curPrice, pnl: p.cashPnl })}>
+                                      <Film size={13} aria-hidden="true" /> Trade progress
+                                    </button></div></td>
                                   <td className="num" data-label="Avg Price">{Math.round(p.avgPrice * 100)}{terminalLayout ? '%' : '¢'}</td>
                                   <td className="num" data-label="Current Price">{Math.round(p.curPrice * 100)}{terminalLayout ? '%' : '¢'}</td>
                                   <td className="num" data-label="Unrealized P&L" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.cashPnl)}</td>
