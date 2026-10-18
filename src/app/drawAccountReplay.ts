@@ -1,3 +1,4 @@
+import { avatarGradient } from './helpers'
 import { accountSnapshot, type AccountEvent } from './accountReplay'
 import { fitFont, FONT, GREEN, RED, roundRect } from './shareCanvas'
 const W=1080,H=1180
@@ -14,17 +15,16 @@ export function drawAccountReplay(canvas:HTMLCanvasElement,data:{name:string;wal
   const pnl=event?.cumulative??0,accent=pnl>=0?GREEN:RED
   ctx.fillStyle='#5662ff';ctx.fillRect(0,0,W,H)
   ctx.fillStyle='#030312';roundRect(ctx,12,12,W-24,H-24,64);ctx.fill()
-  const avatar=images.get('avatar')
-  ctx.save();ctx.beginPath();ctx.arc(118,118,70,0,Math.PI*2);ctx.clip()
-  if(avatar)ctx.drawImage(avatar,48,48,140,140)
-  else {
-    let hash=0;for(const ch of wallet.toLowerCase())hash=(hash*31+ch.charCodeAt(0))>>>0
-    ctx.fillStyle=`hsl(${hash%360},55%,42%)`;ctx.fillRect(48,48,140,140)
-    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff';ctx.font=`700 52px ${FONT}`
-    ctx.fillText(name.replace(/^0x/i,'').slice(0,2).toUpperCase(),118,120)
-  }
+  const colors=avatarGradient(wallet.toLowerCase()).match(/#[0-9a-f]{6}/gi)!
+  const background=ctx.createLinearGradient(48,48,188,188)
+  background.addColorStop(0,colors[0]);background.addColorStop(1,colors[1])
+  ctx.save();ctx.beginPath();ctx.arc(118,118,70,0,Math.PI*2);ctx.fillStyle=background;ctx.fill();ctx.clip()
+  ctx.translate(63,92);ctx.scale(.7,.7)
+  ctx.fillStyle='#0C2557';ctx.fill(new Path2D('M38.9914 32.498C32.5691 38.0021 25.1226 48.7343 15.1622 55.224C11.3094 57.7343 9.14352 61.0649 13.1785 63.2705C23.4997 68.912 48.6107 74.7065 54.5 60.5C60.5108 46.0005 72.503 38.9998 83.503 36.4998C89.2046 35.204 102.625 48.8099 114.497 60.4554C123.854 69.6348 137.961 69.3431 146.948 59.8007C151.248 55.2356 153.948 51.7871 155.55 49.3577C157.565 46.3 155.19 45.5609 151.553 45.9863C136.527 47.7437 104.491 45.8832 93.503 30.4998C83.503 16.5 56.4914 17.5001 38.9914 32.498Z'))
+  ctx.strokeStyle='#fff';ctx.lineWidth=9;ctx.stroke(new Path2D('M3 33V40C3 56.5685 16.4315 70 33 70H33.4905C44.2813 70 54.2408 64.2047 59.5726 54.8231L64.8179 45.5936C72.0889 32.7998 90.221 31.9744 98.6243 44.0547L108.965 58.92C113.794 65.8614 121.714 70 130.17 70C144.435 70 156 58.4353 156 44.1696V33C156 16.4315 142.569 3 126 3H33C16.4315 3 3 16.4315 3 33Z'))
   ctx.restore()
   ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillStyle='#fff';fitFont(ctx,name,700,54,700);ctx.fillText(name,222,102)
+  ctx.fillStyle='#8e91ab';ctx.font=`500 30px ${FONT}`;ctx.fillText('VisibleTrader',222,157)
   ctx.fillStyle='#686879';ctx.textAlign='right';ctx.font=`500 26px ${FONT}`
   ctx.fillText(events.length?new Date(end).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'',1020,95)
   const gx=44,gy=310,gw=780,gh=325

@@ -26,25 +26,14 @@ export function AccountProgressModal({name,wallet,trades,coverage,onClose,loadMa
       const url=h.image || (loadMarketImage ? await loadMarketImage(h.marketId,h.outcome).catch(()=>null) : null)
       return [h.id,url?await load(url):null] as const
     })
-    const avatar = async () => {
-      if (!/^0x[0-9a-f]{40}$/i.test(wallet)) return null
-      try {
-        const response = await fetch(`/api/polymarket/public-profile?address=${encodeURIComponent(wallet)}`, {signal:AbortSignal.timeout(5000)})
-        if (!response.ok) return null
-        const profile = await response.json()
-        const url = profile.profileImageOptimized || profile.profileImage
-        return typeof url === 'string' && url.startsWith('https://') ? load(url) : null
-      } catch {return null}
-    }
-    Promise.all([avatar(),...tasks]).then(results=>{
+    Promise.all(tasks).then(results=>{
       if(cancelled)return
       const map=new Map<string,HTMLImageElement>()
-      const avatar=results[0] as HTMLImageElement|null;if(avatar)map.set('avatar',avatar)
-      for(const [key,img] of results.slice(1) as (readonly [string,HTMLImageElement|null])[])if(img)map.set(key,img)
+      for(const [key,img] of results)if(img)map.set(key,img)
       setImages(map);setAssetsReady(true)
     })
     return ()=>{cancelled=true}
-  },[highlights,loadMarketImage,wallet])
+  },[highlights,loadMarketImage])
   const draw=useCallback((canvas:HTMLCanvasElement,progress:number)=>{
     drawAccountReplay(canvas,{name,wallet,events,highlights,images,coverage},progress)
   },[name,wallet,events,highlights,images,coverage])
