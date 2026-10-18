@@ -5,7 +5,7 @@ import './trade-progress.css'
 import { replayPnl, replayValue, replayBounds } from './tradeProgressMath'
 
 export type PositionExportData = {
-  title: string; outcome: string; conditionId: string
+  title: string; outcome: string; conditionId: string; closedAt?: string; historyUnavailable?: boolean; status?: 'Won' | 'Lost' | 'Closed'
   invested: number; size?: number; avgPrice: number; curPrice: number; pnl: number; image?: string | null
 }
 type Point = { d: string; cum: number }
@@ -41,11 +41,11 @@ function drawProgress(canvas: HTMLCanvasElement, name: string, points: Point[], 
   ctx.restore()
   ctx.fillStyle = '#fff'; fitFont(ctx, name, 700, 54, 520); ctx.fillText(name, 222, 102)
   roundRect(ctx, 222, 132, 114, 48, 7); ctx.fillStyle = '#1c1a48'; ctx.fill()
-  ctx.fillStyle = '#8790ff'; ctx.font = `700 32px ${FONT}`; ctx.fillText('Open', 234, 166)
+  ctx.fillStyle = trade.status === 'Lost' ? RED : trade.status === 'Won' ? GREEN : '#8790ff'; ctx.font = `700 30px ${FONT}`; ctx.fillText(trade.status ?? 'Open', 234, 166)
   ctx.textAlign = 'right'; ctx.fillStyle = '#626275'; ctx.font = `500 29px ${FONT}`
-  ctx.fillText(new Date(snapshotTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), 1020, 95)
+  ctx.fillText(new Date(trade.closedAt ?? snapshotTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), 1020, 95)
   const gx = 40, gy = 320, gw = 780, gh = 280
-  if (points.length >= 2) {
+  if (points.length >= 2 && !trade.historyUnavailable) {
     const values = points.map(p => replayValue(trade, p.cum))
     const target = replayBounds(values.slice(0, index + 1))
     const previous = replayBounds(values.slice(0, Math.max(1, index)))
@@ -96,6 +96,12 @@ function drawProgress(canvas: HTMLCanvasElement, name: string, points: Point[], 
     const timeLabel = (t: number) => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     for (let i = 1; i <= 3; i++) ctx.fillText(timeLabel(first + (last - first) * i / 4), gx + gw * i / 4, 686)
   }
+  if (trade.historyUnavailable) {
+    ctx.textAlign = 'center'; ctx.fillStyle = '#aaaabb'; ctx.font = `600 36px ${FONT}`
+    ctx.fillText('Final position result', 540, 445)
+    ctx.fillStyle = '#6e6e81'; ctx.font = `500 26px ${FONT}`
+    ctx.fillText('Market price history unavailable', 540, 498)
+  }
   ctx.textAlign = 'center'; ctx.fillStyle = '#6e6e81'; ctx.font = `500 22px ${FONT}`
   ctx.fillText(`Entry price ${sharePrice(trade.avgPrice)} · Share price ${sharePrice(price)}`, 540, 724)
   ctx.fillStyle = '#10101f'; roundRect(ctx, 36, 752, 1008, 392, 36); ctx.fill()
@@ -119,7 +125,7 @@ function drawProgress(canvas: HTMLCanvasElement, name: string, points: Point[], 
   ctx.textAlign = 'left'; ctx.font = profitFont; ctx.fillStyle = accent; ctx.fillText(profit, left, 956)
   ctx.font = `500 34px ${FONT}`; ctx.fillStyle = accent; ctx.fillText(roiText, left + profitWidth + 28, 945)
   ctx.fillStyle = '#262637'; ctx.fillRect(36, 1000, 1008, 2)
-  const stats = [['Invested', dollars(trade.invested)], ['Avg. entry', `${(trade.avgPrice * 100).toFixed(1)}¢`], ['Current value', dollars(positionValue)]]
+  const stats = [['Invested', dollars(trade.invested)], ['Avg. entry', `${(trade.avgPrice * 100).toFixed(1)}¢`], [trade.closedAt ? 'Exit value' : 'Current value', dollars(positionValue)]]
   stats.forEach(([label, value], i) => {
     const mid = 36 + 336 * i + 168
     if (i) { ctx.fillStyle = '#262637'; ctx.fillRect(36 + 336 * i, 1002, 2, 142) }
@@ -144,10 +150,10 @@ export function TradeProgressModal({ name, wallet, points, trade, loading = fals
   const cleanPoints = useMemo(() => {
     const valid = points.filter(p => Number.isFinite(p.cum) && p.cum >= 0 && p.cum <= 1 && Number.isFinite(Date.parse(p.d))).sort((a, b) => Date.parse(a.d) - Date.parse(b.d))
     if (valid.length && Number.isFinite(trade.curPrice) && valid[valid.length - 1].cum !== trade.curPrice) {
-      valid.push({ d: new Date(Math.max(Date.parse(snapshotTime), Date.parse(valid[valid.length - 1].d) + 1000)).toISOString(), cum: trade.curPrice })
+      valid.push({ d: new Date(Math.max(Date.parse(trade.closedAt ?? snapshotTime), Date.parse(valid[valid.length - 1].d) + 1)).toISOString(), cum: trade.curPrice })
     }
     return valid
-  }, [points, trade.curPrice, snapshotTime])
+  }, [points, trade.curPrice, trade.closedAt, snapshotTime])
   const mime = typeof MediaRecorder === 'undefined' ? '' : ['video/mp4;codecs=avc1.42001E', 'video/mp4;codecs=avc1.42E01E', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(t => MediaRecorder.isTypeSupported(t)) ?? ''
 
   useEffect(() => {
@@ -247,7 +253,7 @@ export function TradeProgressModal({ name, wallet, points, trade, loading = fals
           {recording ? <LoaderCircle size={24} className="trade-progress-spinner" /> : <Download size={24} />}
         </button>}
     </div>
-    <p className="trade-progress-sr-only">Price replay at current position size. Past buys and sells are not reconstructed. Keep this tab visible during download. Press Escape to close.</p>
+    <p className="trade-progress-sr-only">Price replay at a fixed position size. Past buys and sells are not reconstructed. Keep this tab visible during download. Press Escape to close.</p>
     {loading && <p role="status">Loading market history…</p>}
     {recording && <p role="status" className="trade-progress-sr-only">Creating video…</p>}
     {loadError && <p role="alert">Could not load market history. <button type="button" onClick={onRetry}>Retry</button></p>}
