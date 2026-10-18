@@ -61,6 +61,7 @@ interface LivePosition {
 }
 
 interface LiveClosedPosition {
+  totalBought: number
   title: string
   outcome: string
   conditionId: string
@@ -465,7 +466,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   // a handful of small fills at an outlier price.
   const aggregatedPositions = useMemo(() => {
     const map = new Map<string, {
-      title: string; outcome: string; totalStake: number; totalShares: number
+      conditionId: string; title: string; outcome: string; totalStake: number; totalShares: number
       totalProfit: number; resolvedWin: boolean; latestResolvedTs: string; fills: number
     }>()
     for (const p of positions) {
@@ -480,7 +481,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         if (p.resolved_ts > existing.latestResolvedTs) existing.latestResolvedTs = p.resolved_ts
       } else {
         map.set(key, {
-          title: p.title, outcome: p.outcome, totalStake: p.usd, totalShares: shares,
+          conditionId: p.condition_id, title: p.title, outcome: p.outcome, totalStake: p.usd, totalShares: shares,
           totalProfit: p.profit, resolvedWin: p.resolved_win, latestResolvedTs: p.resolved_ts, fills: 1,
         })
       }
@@ -731,6 +732,13 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                                     <div style={{ color: 'var(--text-faint)', fontSize: '0.85em' }}>
                                       Avg {Math.round(p.avgPrice * 100)}{terminalLayout ? '%' : '¢'}{p.fills > 1 ? ` · ${p.fills} fills` : ''} · {timeAgo(p.latestResolvedTs)}
                                     </div>
+                                    <button type="button" className="trader-share-trigger" style={{ marginLeft: 0, marginTop: 6 }}
+                                      onClick={() => setExportTrade({ title: p.title, outcome: p.outcome, conditionId: p.conditionId,
+                                        size: p.totalShares, invested: p.totalStake, avgPrice: p.avgPrice,
+                                        curPrice: p.totalShares > 0 ? Math.max(0, (p.totalStake + p.totalProfit) / p.totalShares) : 0,
+                                        pnl: p.totalProfit, closedAt: p.latestResolvedTs, status: p.resolvedWin ? 'Won' : 'Lost' })}>
+                                      <Film size={13} aria-hidden="true" /> Trade progress
+                                    </button>
                                   </td>
                                   <td data-label="Result" style={{ color: p.resolvedWin ? 'var(--green)' : 'var(--red)' }}>{p.resolvedWin ? 'Won' : 'Lost'}</td>
                                   <td className="num" data-label="Total Traded">{fmtFull(p.totalStake)}</td>
@@ -881,7 +889,15 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                             <tbody>
                               {sortedLiveClosed.slice(0, visibleLive).map((p, i) => (
                                 <tr key={i}>
-                                  <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
+                                  <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span>
+                                    <div><button type="button" className="trader-share-trigger" style={{ marginLeft: 0, marginTop: 6 }}
+                                      onClick={() => setExportTrade({ title: p.title, outcome: p.outcome, conditionId: p.conditionId,
+                                        size: p.totalBought, invested: p.totalBought * p.avgPrice, avgPrice: p.avgPrice,
+                                        curPrice: p.totalBought > 0 ? Math.max(0, p.avgPrice + p.realizedPnl / p.totalBought) : 0,
+                                        pnl: p.realizedPnl, closedAt: new Date(p.timestamp * 1000).toISOString(), status: 'Closed' })}>
+                                      <Film size={13} aria-hidden="true" /> Trade progress
+                                    </button></div>
+                                  </td>
                                   <td data-label="Result" style={{ color: p.curPrice >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{p.curPrice >= 0.5 ? 'Won' : 'Lost'}</td>
                                   <td className="num" data-label="Profit" style={{ color: p.realizedPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.realizedPnl)}</td>
                                   <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(p.timestamp * 1000).toISOString())}</td>

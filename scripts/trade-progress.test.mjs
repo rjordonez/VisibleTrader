@@ -28,3 +28,19 @@ test('scale grows using only supplied observations and handles empty/zero data',
   assert.deepEqual(replayBounds([0]), { min: 0, max: 1 })
   assert.deepEqual(replayBounds([]), { min: 0, max: 1 })
 })
+
+test('closed win and loss exports end at the recorded realized result', () => {
+  const won = { size: 100, invested: 20, avgPrice: .2, curPrice: 1, pnl: 80 }
+  const lost = { ...won, curPrice: 0, pnl: -20 }
+  assert.equal(replayPnl(won, 1), 80)
+  assert.equal(replayValue(won, 1), 100)
+  assert.equal(replayPnl(lost, 0), -20)
+  assert.equal(replayValue(lost, 0), 0)
+})
+test('sold position ends at average exit proceeds, not later market price', () => {
+  const size = 100, invested = 20, pnl = 15
+  const exit = (invested + pnl) / size
+  const closed = { size, invested, avgPrice: .2, curPrice: exit, pnl }
+  assert.equal(replayPnl(closed, exit), pnl)
+  assert.equal(replayValue(closed, exit), 35)
+})
