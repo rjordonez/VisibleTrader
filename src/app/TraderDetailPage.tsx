@@ -7,6 +7,8 @@ import { SkelStatsRow, SkelTableRows, SkelBlock } from './Skeleton'
 import { TraderShareModal, type TraderShareData } from './TraderShareCard'
 import type { PositionExportData } from './TradeProgressModal'
 import { PositionProgressExport } from './PositionProgressExport'
+import { AccountProgressModal } from './AccountProgressModal'
+import type { AccountTrade } from './accountReplay'
 import {
   CumulativeChartSection, HighlightsRow, CategoryBreakdownSection, SimilarTradersTable,
   type CategoryRow, type SimilarTrader,
@@ -213,6 +215,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   const [similarLoading, setSimilarLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
+  const [accountReplayOpen, setAccountReplayOpen] = useState(false)
   const [exportTrade, setExportTrade] = useState<PositionExportData | null>(null)
   const [livePositions, setLivePositions] = useState<LivePosition[]>([])
   const [liveClosed, setLiveClosed] = useState<LiveClosedPosition[]>([])
@@ -535,6 +538,18 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     cumulative: trackedCumulative,
   } : null, [summary, trackedCumulative, wallet, usdWinRate])
   const closeProgress = useCallback(() => setExportTrade(null), [])
+  const accountTrades = useMemo<AccountTrade[]>(() => summary ? aggregatedPositions.map(p => ({
+    id: `${p.conditionId}:${p.outcome}`, marketId: p.conditionId, title: p.title, outcome: p.outcome,
+    closedAt: p.latestResolvedTs, invested: p.totalStake, pnl: p.totalProfit,
+  })) : liveClosed.map((p,i) => ({
+    id: `${p.conditionId}:${p.outcome}:${p.timestamp}:${i}`, marketId: p.conditionId, title: p.title, outcome: p.outcome,
+    closedAt: new Date(p.timestamp * 1000).toISOString(), invested: p.totalBought * p.avgPrice, pnl: p.realizedPnl,
+  })), [summary, aggregatedPositions, liveClosed])
+  const closeAccountReplay = useCallback(() => setAccountReplayOpen(false), [])
+  const loadReplayMarketImage = useCallback(async (marketId: string, outcome: string) => {
+    const { data } = await supabase.functions.invoke('price-chart', { body: { condition_id: marketId, outcome, image_only: true } })
+    return typeof data?.image === 'string' ? data.image : null
+  }, [])
   const closeShare = useCallback(() => setShareOpen(false), [])
 
   return (
@@ -556,6 +571,8 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                 </button>
               )
             )}
+            <button type="button" className="trader-share-trigger" disabled={summaryLoading || (summary ? !positionsComplete : liveLoading) || !accountTrades.length}
+              onClick={() => setAccountReplayOpen(true)}><Film size={14} aria-hidden="true" /> Account progress</button>
             {shareData && (
               <button type="button" className="trader-share-trigger" onClick={() => setShareOpen(true)}>
                 <Share2 size={14} aria-hidden="true" /> Share profile card
@@ -565,6 +582,9 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         </div>
       </div>
 
+      {accountReplayOpen && <AccountProgressModal name={traderLabel(wallet, summary?.wallet_name ?? null)} wallet={wallet} trades={accountTrades}
+        coverage={summary ? 'Recorded closed trade history' : `Recent ${accountTrades.length} closed trades`}
+        loadMarketImage={loadReplayMarketImage} onClose={closeAccountReplay} />}
       {exportTrade && <PositionProgressExport key={`${wallet}:${exportTrade.conditionId}:${exportTrade.outcome}`}
         name={traderLabel(wallet, summary?.wallet_name ?? null)} wallet={wallet} trade={exportTrade} onClose={closeProgress} />}
       {shareOpen && shareData && <TraderShareModal data={shareData} onClose={closeShare} />}

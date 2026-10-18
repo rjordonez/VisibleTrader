@@ -16,3 +16,5 @@
 .trade-progress-replay { position: absolute; left: 5%; top: 54%; padding: 6px; width: 30px; height: 30px; border: 0; background: transparent; color: #737389; cursor: pointer; z-index: 1; }
 .trade-progress-replay:hover { color: #fff; }
 .trade-progress-replay:focus-visible { outline: 2px solid #9aa3ff; outline-offset: 2px; border-radius: 5px; }
+
+.trade-progress-dialog:focus { outline: none; }
