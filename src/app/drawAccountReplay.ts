@@ -3,10 +3,10 @@ import { fitFont, FONT, GREEN, RED, roundRect } from './shareCanvas'
 const W=1080,H=1180
 const usd=(n:number)=>`${n<0?'−':n>0?'+':''}$${Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0})}`
 const cash=(n:number)=>`$${n.toLocaleString('en-US',{maximumFractionDigits:0})}`
-export function drawAccountReplay(canvas:HTMLCanvasElement,data:{name:string;events:AccountEvent[];highlights:AccountEvent[];images:Map<string,HTMLImageElement>;coverage:string},progress:number){
+export function drawAccountReplay(canvas:HTMLCanvasElement,data:{name:string;wallet:string;events:AccountEvent[];highlights:AccountEvent[];images:Map<string,HTMLImageElement>;coverage:string},progress:number){
   const ctx=canvas.getContext('2d');if(!ctx)return
   if(canvas.width!==W)canvas.width=W;if(canvas.height!==H)canvas.height=H
-  const {name,events,highlights,images,coverage}=data
+  const {name,wallet,events,highlights,images,coverage}=data
   const first=events[0]?.time??0,last=events.at(-1)?.time??first
   const start=first-Math.max(1000,(last-first)*.035),end=Math.max(start+1000,last)
   const cursor=start+(end-start)*progress
@@ -15,9 +15,16 @@ export function drawAccountReplay(canvas:HTMLCanvasElement,data:{name:string;eve
   ctx.fillStyle='#5662ff';ctx.fillRect(0,0,W,H)
   ctx.fillStyle='#030312';roundRect(ctx,12,12,W-24,H-24,64);ctx.fill()
   const avatar=images.get('avatar')
+  ctx.save();ctx.beginPath();ctx.arc(118,118,70,0,Math.PI*2);ctx.clip()
   if(avatar)ctx.drawImage(avatar,48,48,140,140)
+  else {
+    let hash=0;for(const ch of wallet.toLowerCase())hash=(hash*31+ch.charCodeAt(0))>>>0
+    ctx.fillStyle=`hsl(${hash%360},55%,42%)`;ctx.fillRect(48,48,140,140)
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff';ctx.font=`700 52px ${FONT}`
+    ctx.fillText(name.replace(/^0x/i,'').slice(0,2).toUpperCase(),118,120)
+  }
+  ctx.restore()
   ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillStyle='#fff';fitFont(ctx,name,700,54,700);ctx.fillText(name,222,102)
-  ctx.fillStyle='#8e91ab';ctx.font=`500 30px ${FONT}`;ctx.fillText('Account overview',222,163)
   ctx.fillStyle='#686879';ctx.textAlign='right';ctx.font=`500 26px ${FONT}`
   ctx.fillText(events.length?new Date(end).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'',1020,95)
   const gx=44,gy=310,gw=780,gh=325

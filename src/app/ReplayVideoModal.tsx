@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Download, LoaderCircle, RotateCcw } from 'lucide-react'
 import './trade-progress.css'
 
+const REPLAY_DURATION_MS = 8000
+const FINAL_HOLD_MS = 750
+
 export function ReplayVideoModal({ label, fileName, draw, ready, description, onClose }: {
   label: string; fileName: string; draw: (canvas: HTMLCanvasElement, progress: number) => void
   ready: boolean; description: string; onClose: () => void
@@ -26,7 +29,7 @@ export function ReplayVideoModal({ label, fileName, draw, ready, description, on
     let frame = 0, start: number | null = null
     const tick = (now: number) => {
       start ??= now
-      const p = Math.min(1,(now - start)/6000); setProgress(p)
+      const p = Math.min(1,(now - start)/REPLAY_DURATION_MS); setProgress(p)
       if (p < 1) frame = requestAnimationFrame(tick); else setEnded(true)
     }
     frame = requestAnimationFrame(tick)
@@ -60,9 +63,9 @@ export function ReplayVideoModal({ label, fileName, draw, ready, description, on
       let start: number | null = null
       const tick = (now: number) => {
         start ??= now
-        const elapsed = now - start, p = Math.min(1,elapsed/5250)
+        const elapsed = now - start, p = Math.min(1,elapsed/(REPLAY_DURATION_MS - FINAL_HOLD_MS))
         draw(canvas,p); setProgress(p)
-        if (elapsed < 6000) frame = requestAnimationFrame(tick); else recorder.stop()
+        if (elapsed < REPLAY_DURATION_MS) frame = requestAnimationFrame(tick); else recorder.stop()
       }
       frame = requestAnimationFrame(tick)
     } catch {

@@ -5,8 +5,6 @@ import { dashboardPath } from '../lib/domains'
 import { traderLabel, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './helpers'
 import { SkelStatsRow, SkelTableRows, SkelBlock } from './Skeleton'
 import { TraderShareModal, type TraderShareData } from './TraderShareCard'
-import type { PositionExportData } from './TradeProgressModal'
-import { PositionProgressExport } from './PositionProgressExport'
 import { AccountProgressModal } from './AccountProgressModal'
 import type { AccountTrade } from './accountReplay'
 import {
@@ -216,7 +214,6 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   const [error, setError] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [accountReplayOpen, setAccountReplayOpen] = useState(false)
-  const [exportTrade, setExportTrade] = useState<PositionExportData | null>(null)
   const [livePositions, setLivePositions] = useState<LivePosition[]>([])
   const [liveClosed, setLiveClosed] = useState<LiveClosedPosition[]>([])
   const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([])
@@ -537,7 +534,6 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
     resolved: summary.n,
     cumulative: trackedCumulative,
   } : null, [summary, trackedCumulative, wallet, usdWinRate])
-  const closeProgress = useCallback(() => setExportTrade(null), [])
   const accountTrades = useMemo<AccountTrade[]>(() => summary ? aggregatedPositions.map(p => ({
     id: `${p.conditionId}:${p.outcome}`, marketId: p.conditionId, title: p.title, outcome: p.outcome,
     closedAt: p.latestResolvedTs, invested: p.totalStake, pnl: p.totalProfit,
@@ -585,8 +581,6 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
       {accountReplayOpen && <AccountProgressModal name={traderLabel(wallet, summary?.wallet_name ?? null)} wallet={wallet} trades={accountTrades}
         coverage={summary ? 'Recorded closed trade history' : `Recent ${accountTrades.length} closed trades`}
         loadMarketImage={loadReplayMarketImage} onClose={closeAccountReplay} />}
-      {exportTrade && <PositionProgressExport key={`${wallet}:${exportTrade.conditionId}:${exportTrade.outcome}`}
-        name={traderLabel(wallet, summary?.wallet_name ?? null)} wallet={wallet} trade={exportTrade} onClose={closeProgress} />}
       {shareOpen && shareData && <TraderShareModal data={shareData} onClose={closeShare} />}
 
       <div className="sig-panel">
@@ -706,12 +700,6 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                                     <div style={{ color: 'var(--text-faint)', fontSize: '0.85em' }}>
                                       Avg {Math.round(p.avgPrice * 100)}{terminalLayout ? '%' : '¢'} · Now {Math.round(p.curPrice * 100)}{terminalLayout ? '%' : '¢'}
                                     </div>
-                                    <button type="button" className="trader-share-trigger" style={{ marginLeft: 0, marginTop: 6 }}
-                                      disabled={p.size == null && p.initialValue == null}
-                                      onClick={() => setExportTrade({ title: p.title, outcome: p.outcome, conditionId: p.conditionId,
-                                        size: p.size, invested: p.initialValue ?? (p.size ?? 0) * p.avgPrice, avgPrice: p.avgPrice, curPrice: p.curPrice, pnl: p.cashPnl })}>
-                                      <Film size={13} aria-hidden="true" /> Trade progress
-                                    </button>
                                   </td>
                                   <td data-label="Result" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{p.cashPnl >= 0 ? 'Up' : 'Down'}</td>
                                   <td className="num" data-label="Total Traded">{totalTraded != null ? fmtFull(totalTraded) : '—'}</td>
@@ -752,13 +740,6 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                                     <div style={{ color: 'var(--text-faint)', fontSize: '0.85em' }}>
                                       Avg {Math.round(p.avgPrice * 100)}{terminalLayout ? '%' : '¢'}{p.fills > 1 ? ` · ${p.fills} fills` : ''} · {timeAgo(p.latestResolvedTs)}
                                     </div>
-                                    <button type="button" className="trader-share-trigger" style={{ marginLeft: 0, marginTop: 6 }}
-                                      onClick={() => setExportTrade({ title: p.title, outcome: p.outcome, conditionId: p.conditionId,
-                                        size: p.totalShares, invested: p.totalStake, avgPrice: p.avgPrice,
-                                        curPrice: p.totalShares > 0 ? Math.max(0, (p.totalStake + p.totalProfit) / p.totalShares) : 0,
-                                        pnl: p.totalProfit, closedAt: p.latestResolvedTs, status: p.resolvedWin ? 'Won' : 'Lost' })}>
-                                      <Film size={13} aria-hidden="true" /> Trade progress
-                                    </button>
                                   </td>
                                   <td data-label="Result" style={{ color: p.resolvedWin ? 'var(--green)' : 'var(--red)' }}>{p.resolvedWin ? 'Won' : 'Lost'}</td>
                                   <td className="num" data-label="Total Traded">{fmtFull(p.totalStake)}</td>
@@ -881,12 +862,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                             <tbody>
                               {livePositions.map((p, i) => (
                                 <tr key={i}>
-                                  <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span><div><button type="button" className="trader-share-trigger" style={{ marginLeft: 0, marginTop: 6 }}
-                                      disabled={p.size == null && p.initialValue == null}
-                                      onClick={() => setExportTrade({ title: p.title, outcome: p.outcome, conditionId: p.conditionId,
-                                        size: p.size, invested: p.initialValue ?? (p.size ?? 0) * p.avgPrice, avgPrice: p.avgPrice, curPrice: p.curPrice, pnl: p.cashPnl })}>
-                                      <Film size={13} aria-hidden="true" /> Trade progress
-                                    </button></div></td>
+                                  <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
                                   <td className="num" data-label="Avg Price">{Math.round(p.avgPrice * 100)}{terminalLayout ? '%' : '¢'}</td>
                                   <td className="num" data-label="Current Price">{Math.round(p.curPrice * 100)}{terminalLayout ? '%' : '¢'}</td>
                                   <td className="num" data-label="Unrealized P&L" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.cashPnl)}</td>
@@ -910,13 +886,6 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                               {sortedLiveClosed.slice(0, visibleLive).map((p, i) => (
                                 <tr key={i}>
                                   <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span>
-                                    <div><button type="button" className="trader-share-trigger" style={{ marginLeft: 0, marginTop: 6 }}
-                                      onClick={() => setExportTrade({ title: p.title, outcome: p.outcome, conditionId: p.conditionId,
-                                        size: p.totalBought, invested: p.totalBought * p.avgPrice, avgPrice: p.avgPrice,
-                                        curPrice: p.totalBought > 0 ? Math.max(0, p.avgPrice + p.realizedPnl / p.totalBought) : 0,
-                                        pnl: p.realizedPnl, closedAt: new Date(p.timestamp * 1000).toISOString(), status: 'Closed' })}>
-                                      <Film size={13} aria-hidden="true" /> Trade progress
-                                    </button></div>
                                   </td>
                                   <td data-label="Result" style={{ color: p.curPrice >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{p.curPrice >= 0.5 ? 'Won' : 'Lost'}</td>
                                   <td className="num" data-label="Profit" style={{ color: p.realizedPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.realizedPnl)}</td>
