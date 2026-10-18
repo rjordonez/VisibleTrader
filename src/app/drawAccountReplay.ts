@@ -36,7 +36,7 @@ export function drawAccountReplay(canvas:HTMLCanvasElement,data:{name:string;wal
   ctx.strokeStyle='#23253a';ctx.lineWidth=2;ctx.setLineDash([8,10]);ctx.beginPath();ctx.moveTo(gx,y(0));ctx.lineTo(830,y(0));ctx.stroke();ctx.setLineDash([])
   ctx.beginPath();ctx.moveTo(gx,y(0))
   for(let i=0;i<=index;i++)ctx.lineTo(x(events[i].time),y(events[i].cumulative))
-  ctx.lineTo(x(cursor),y(pnl));ctx.strokeStyle=accent;ctx.lineWidth=6;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke()
+  ctx.lineTo(x(cursor),y(pnl));ctx.strokeStyle=accent;ctx.lineWidth=8;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke()
   const reached=highlights.filter(h=>h.time<=cursor)
   for(const h of reached){
     const px=x(h.time),py=y(h.cumulative),color=h.pnl>0?GREEN:h.pnl<0?RED:'#a0a0b0'
