@@ -54,7 +54,14 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
     }
-    if (sub.status !== 'trialing') {
+    // The local row can lag the renewal webhook. Check Stripe before deleting
+    // so an already-paid monthly period cannot be canceled as an old trial.
+    const currentResponse = await fetch(`https://api.stripe.com/v1/subscriptions/${sub.stripe_subscription_id}`, {
+      headers: { Authorization: `Bearer ${Deno.env.get('STRIPE_SECRET_KEY')}` },
+    })
+    const current = await currentResponse.json()
+    if (!currentResponse.ok) throw new Error(current.error?.message || 'Could not verify subscription')
+    if (current.status !== 'trialing') {
       return new Response(JSON.stringify({ error: 'not currently trialing — use the billing portal to manage a paid subscription' }), {
         status: 400,
         headers: { ...corsHeaders, 'content-type': 'application/json' },
@@ -75,9 +82,11 @@ Deno.serve(async (req) => {
 
     // Update now for an instant UI result — the customer.subscription.deleted
     // webhook will also land shortly after and confirm the same state.
-    await supabase.from('subscriptions')
+    const { error: updateError } = await supabase.from('subscriptions')
       .update({ status: 'canceled', updated_at: new Date().toISOString() })
       .eq('user_id', user.id)
+      .eq('stripe_subscription_id', sub.stripe_subscription_id)
+    if (updateError) throw updateError
 
     return new Response(JSON.stringify({ canceled: true }), {
       headers: { ...corsHeaders, 'content-type': 'application/json' },

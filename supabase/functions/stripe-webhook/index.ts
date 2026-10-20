@@ -5,6 +5,7 @@
 // so they bypass RLS; users can never reach this table directly (see the
 // subscriptions migration — no insert/update policy for `authenticated`).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { subscriptionForAccess } from './subscription.ts'
 
 async function verifyStripeSignature(payload: string, sigHeader: string | null, secret: string): Promise<boolean> {
   if (!sigHeader) return false
@@ -49,54 +50,74 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   )
 
+  const stripe = async (path: string, method = 'GET') => {
+    const response = await fetch(`https://api.stripe.com/v1${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${Deno.env.get('STRIPE_SECRET_KEY')}` },
+    })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error?.message || 'Stripe subscription lookup failed')
+    return result
+  }
+
+  const syncSubscription = async (id: string, onlyIfCurrent = false) => {
+    if (onlyIfCurrent) {
+      const { data, error } = await supabase.from('subscriptions')
+        .select('stripe_subscription_id').eq('stripe_subscription_id', id).maybeSingle()
+      if (error) throw error
+      // An invoice for an old subscription must not replace a newer one.
+      // Subscription and checkout events handle the initial row creation.
+      if (!data) return
+    }
+    const sub = await subscriptionForAccess(id, stripe)
+    const userId = sub.metadata?.supabase_user_id
+    if (!userId) return
+    const item = sub.items?.data?.[0]
+    const periodEnd = item?.current_period_end ?? sub.current_period_end
+    const { error } = await supabase.from('subscriptions').upsert({
+      user_id: userId,
+      stripe_customer_id: sub.customer,
+      stripe_subscription_id: sub.id,
+      price_id: item?.price?.id,
+      plan: planFromPriceId(item?.price?.id),
+      status: sub.status,
+      current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' })
+    if (error) throw error
+  }
+
   try {
     switch (event.type) {
-      case 'checkout.session.completed': {
+      case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded': {
         const session = event.data.object
-        const userId = session.client_reference_id || session.metadata?.supabase_user_id
-        if (userId) {
-          await supabase.from('subscriptions').upsert({
-            user_id: userId,
-            stripe_customer_id: session.customer,
-            stripe_subscription_id: session.subscription,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'user_id' })
-        }
+        if (session.subscription) await syncSubscription(session.subscription)
         break
       }
-      // subscription.created/updated cover trial start, renewal, plan change,
-      // and past_due/unpaid — the full lifecycle after initial checkout.
+      // Refresh current state to tolerate retried or out-of-order deliveries.
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
-        const sub = event.data.object
-        const userId = sub.metadata?.supabase_user_id
-        const item = sub.items?.data?.[0]
-        const priceId = item?.price?.id
-        // current_period_end lives on each subscription item, not the
-        // subscription root, as of this account's Stripe API version —
-        // confirmed by inspecting a real event payload rather than assuming.
-        const periodEnd = item?.current_period_end ?? sub.current_period_end
-        if (userId) {
-          await supabase.from('subscriptions').upsert({
-            user_id: userId,
-            stripe_customer_id: sub.customer,
-            stripe_subscription_id: sub.id,
-            price_id: priceId,
-            plan: planFromPriceId(priceId),
-            status: sub.status,
-            current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'user_id' })
-        }
+        await syncSubscription(event.data.object.id)
+        break
+      }
+      // Covers a delayed initial $1 payment and renewal payment recovery.
+      case 'invoice.paid':
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object
+        const id = invoice.parent?.subscription_details?.subscription ?? invoice.subscription
+        if (id) await syncSubscription(id, true)
         break
       }
       case 'customer.subscription.deleted': {
         const sub = event.data.object
         const userId = sub.metadata?.supabase_user_id
         if (userId) {
-          await supabase.from('subscriptions')
+          const { error } = await supabase.from('subscriptions')
             .update({ status: 'canceled', updated_at: new Date().toISOString() })
             .eq('user_id', userId)
+            .eq('stripe_subscription_id', sub.id)
+          if (error) throw error
         }
         break
       }
