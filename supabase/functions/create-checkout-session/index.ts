@@ -4,20 +4,12 @@
 // pulling in the stripe SDK — one less dependency to worry about in Deno,
 // and the request shape here is simple enough not to need it.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { checkoutLineItems } from './checkout.ts'
 
 const corsHeaders = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
 }
-
-// Only these price IDs are ever accepted — never trust a client-supplied
-// amount, and this also blocks someone passing an arbitrary Stripe price ID
-// (e.g. someone else's product) through this endpoint.
-const ALLOWED_PRICE_IDS = new Set([
-  Deno.env.get('STRIPE_PRICE_PRO_WEEKLY'),
-  Deno.env.get('STRIPE_PRICE_ELITE_MONTHLY'),
-  Deno.env.get('STRIPE_PRICE_ELITE_YEARLY'),
-].filter(Boolean))
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -25,9 +17,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { price_id } = await req.json()
-    if (!price_id || !ALLOWED_PRICE_IDS.has(price_id)) {
-      return new Response(JSON.stringify({ error: 'invalid price_id' }), {
+    let lineItems: URLSearchParams
+    try {
+      lineItems = checkoutLineItems(await req.json(), {
+        monthlyPrice: Deno.env.get('STRIPE_PRICE_PRO_MONTHLY'),
+        introPrice: Deno.env.get('STRIPE_PRICE_PRO_INTRO_WEEK'),
+        weeklyPrice: Deno.env.get('STRIPE_PRICE_PRO_WEEKLY'),
+        weeklyCoupon: Deno.env.get('STRIPE_COUPON_FIRST_WEEK'),
+        eliteMonthlyPrice: Deno.env.get('STRIPE_PRICE_ELITE_MONTHLY'),
+        eliteYearlyPrice: Deno.env.get('STRIPE_PRICE_ELITE_YEARLY'),
+        legacyCheckoutEnabled: Deno.env.get('STRIPE_LEGACY_CHECKOUT_ENABLED') === 'true',
+      })
+    } catch (error) {
+      return new Response(JSON.stringify({ error: (error as Error).message }), {
         status: 400,
         headers: { ...corsHeaders, 'content-type': 'application/json' },
       })
@@ -63,11 +65,12 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
-    const { data: existing } = await serviceClient
+    const { data: existing, error: subscriptionError } = await serviceClient
       .from('subscriptions')
       .select('status')
       .eq('user_id', user.id)
       .maybeSingle()
+    if (subscriptionError) throw subscriptionError
     if (existing && (existing.status === 'trialing' || existing.status === 'active')) {
       return new Response(JSON.stringify({ error: 'already subscribed' }), {
         status: 400,
@@ -83,8 +86,6 @@ Deno.serve(async (req) => {
     const appOrigin = Deno.env.get('APP_URL') || origin
     const params = new URLSearchParams({
       mode: 'subscription',
-      'line_items[0][price]': price_id,
-      'line_items[0][quantity]': '1',
       // client_reference_id + metadata both carry the Supabase user id through
       // to the webhook — metadata survives onto the subscription object too,
       // client_reference_id only lives on the checkout session itself.
@@ -95,17 +96,7 @@ Deno.serve(async (req) => {
       success_url: `${appOrigin}/?checkout=success`,
       cancel_url: `${origin}/pricing?checkout=cancelled`,
     })
-    // Pro's only price is billed weekly at $40, with a one-time $39 coupon
-    // (duration: 'once' in Stripe, so it only ever discounts the very first
-    // invoice) bringing that first charge down to $1 — replaces the old
-    // free-trial model with "$1 for week one, $40/week after." Any other
-    // price (e.g. Elite, if it ever gets real self-serve checkout) keeps
-    // the standard 7-day free trial instead.
-    if (price_id === Deno.env.get('STRIPE_PRICE_PRO_WEEKLY')) {
-      params.set('discounts[0][coupon]', Deno.env.get('STRIPE_COUPON_FIRST_WEEK')!)
-    } else {
-      params.set('subscription_data[trial_period_days]', '7')
-    }
+    for (const [key, value] of lineItems) params.set(key, value)
 
     const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',

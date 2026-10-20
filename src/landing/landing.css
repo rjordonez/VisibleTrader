@@ -3969,3 +3969,19 @@
   }
   .career-meta { border-bottom: none; padding: 0; }
 }
+
+/* Secondary to the $1 introduction, while keeping the recurring bill readable. */
+.pricing-monthly-label {
+  margin-top: 0.65rem;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+.pricing-daily-equivalent {
+  margin-top: 0.2rem;
+  color: var(--text-3);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
