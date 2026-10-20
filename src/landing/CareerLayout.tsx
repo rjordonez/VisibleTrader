@@ -7,7 +7,7 @@ const META = [
   { label: 'Employment Type', value: 'Contractor' },
   { label: 'Location Type', value: 'Remote' },
   { label: 'Department', value: 'Content' },
-  { label: 'Compensation', value: 'Paid per video (CPM)' },
+  { label: 'Compensation', value: '$15 per video' },
 ]
 
 // Shared by CareerRolePage (Overview tab) and CareerApplyPage (Application
