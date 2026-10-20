@@ -90,7 +90,7 @@ function SettingsPage() {
       .then(({ data, error }) => {
         setCancelLoading(false)
         if (error || !data?.canceled) {
-          setCancelError('Could not cancel the trial — please try again in a moment.')
+          setCancelError('Could not cancel the introductory period — please try again in a moment.')
           return
         }
         // ProtectedRoute only checks subscription status once per auth
@@ -180,7 +180,7 @@ function SettingsPage() {
                 <span style={{ fontWeight: 700 }}>{PLAN_LABEL[subscription.plan ?? ''] ?? subscription.plan ?? 'Unknown plan'}</span>
                 {' — '}
                 {subscription.status === 'trialing' && subscription.current_period_end
-                  ? `trial ends ${new Date(subscription.current_period_end).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}`
+                  ? `introductory period ends ${new Date(subscription.current_period_end).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}`
                   : subscription.status}
               </div>
               <button className="sig-btn secondary" onClick={openPortal} disabled={portalLoading} style={{ marginTop: 8 }}>
@@ -193,11 +193,11 @@ function SettingsPage() {
                 confirmingCancel ? (
                   <div className="settings-cancel-confirm">
                     <p style={{ fontSize: '0.8rem', marginBottom: 8 }}>
-                      Cancel your trial now? You'll lose access immediately — this can't be undone.
+                      Cancel your introductory period now? You'll lose access immediately and won't be billed for renewal — this can't be undone.
                     </p>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button className="sig-btn secondary" onClick={cancelTrial} disabled={cancelLoading} style={{ borderColor: '#f87171', color: '#f87171' }}>
-                        {cancelLoading ? 'Canceling…' : 'Yes, cancel trial'}
+                        {cancelLoading ? 'Canceling…' : 'Yes, cancel subscription'}
                       </button>
                       <button className="sig-btn secondary" onClick={() => setConfirmingCancel(false)} disabled={cancelLoading}>
                         Never mind
@@ -209,7 +209,7 @@ function SettingsPage() {
                   </div>
                 ) : (
                   <button className="sig-btn secondary" onClick={() => setConfirmingCancel(true)} style={{ marginTop: 8, marginLeft: 8, borderColor: '#f87171', color: '#f87171' }}>
-                    Cancel trial
+                    Cancel introductory period
                   </button>
                 )
               )}

@@ -15,8 +15,8 @@ const plans = [
     name: 'Pro',
     badge: 'One win covers the month',
     introPrice: '1' as string | undefined,
-    recurringPrice: '40' as string | undefined,
-    dayPrice: undefined as string | undefined,
+    recurringPrice: '160' as string | undefined,
+    dayPrice: '5.33' as string | undefined,
     desc: 'Everything you need to follow real trading activity, live.',
     features: [
       { bold: 'Unlimited Live Ticker', rest: '' },
@@ -29,7 +29,7 @@ const plans = [
     ],
     cta: 'Start for $1',
     href: appUrl('/signup'),
-    priceId: import.meta.env.VITE_STRIPE_PRICE_PRO_WEEKLY as string | undefined,
+    offer: 'pro_monthly_intro_v1',
     highlighted: true,
   },
 ]
@@ -75,7 +75,7 @@ export default function PricingPage() {
     return () => { cancelled = true }
   }, [])
 
-  const startCheckout = async (priceId: string) => {
+  const startCheckout = async (offer: string) => {
     setCheckingOut(true)
     setCheckoutError(null)
     const { data: { user } } = await supabase.auth.getUser()
@@ -86,14 +86,14 @@ export default function PricingPage() {
       return
     }
     const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-      body: { price_id: priceId },
+      body: { offer },
     })
     if (error || !data?.url) {
       setCheckingOut(false)
       setCheckoutError('Could not start checkout — please try again in a moment.')
       return
     }
-    posthog.capture('checkout_started', { billing_interval: 'weekly' })
+    posthog.capture('checkout_started', { billing_interval: 'monthly', offer })
     setCheckoutUrl(data.url)
   }
 
@@ -106,9 +106,6 @@ export default function PricingPage() {
 
       <div className="pricing-grid">
         {plans.map(plan => {
-          const pct = plan.introPrice && plan.recurringPrice
-            ? Math.round((1 - Number(plan.introPrice) / Number(plan.recurringPrice)) * 100)
-            : null
           return (
           <div key={plan.name} className="pricing-plan-stack">
             <div className={`pricing-card pricing-card-glow ${plan.highlighted ? 'pricing-card-pro' : ''}`}>
@@ -125,12 +122,16 @@ export default function PricingPage() {
                 <div className="pricing-price-block">
                   <div className="pricing-price-row">
                     <span className="pricing-just">Just</span>
-                    <span className="pricing-price-strike">${plan.recurringPrice}</span>
                     <span className="pricing-day-price">${plan.introPrice}</span>
-                    {pct !== null && <span className="pricing-discount-pill">-{pct}%</span>}
                   </div>
                   <div className="pricing-day-label">
-                    first week, then ${plan.recurringPrice}/week
+                    for your first week
+                  </div>
+                  <div className="pricing-monthly-label">
+                    Then ${plan.recurringPrice}/month, billed monthly
+                  </div>
+                  <div className="pricing-daily-equivalent">
+                    About ${plan.dayPrice}/day · based on a 30-day month
                   </div>
                 </div>
               ) : (
@@ -142,11 +143,11 @@ export default function PricingPage() {
                 </div>
               )}
 
-              {plan.priceId ? (
+              {plan.offer ? (
                 <button
                   type="button"
                   className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}
-                  onClick={() => startCheckout(plan.priceId!)}
+                  onClick={() => startCheckout(plan.offer!)}
                   disabled={checkingOut}
                 >
                   {checkingOut ? 'Starting checkout…' : plan.cta}
@@ -199,7 +200,7 @@ export default function PricingPage() {
 
       {signedIn && <RedeemCode />}
 
-      <p className="pricing-fine">No contracts. Cancel anytime.</p>
+      <p className="pricing-fine">No contracts. Cancel anytime. Cancel during your first week to stop future billing; access ends immediately. Applicable tax is additional.</p>
     </div>
   )
 }

@@ -5,7 +5,7 @@ import OceanFloor from './components/OceanFloor'
 import Footer from './components/Footer'
 
 // The pricing section is intentionally omitted from the homepage for now —
-// the $40/week recurring price was moving sticker-shock ahead of any
+// showing the recurring price was moving sticker-shock ahead of any
 // value, and the /pricing page (still linked in the navbar) doubles as the
 // checkout step, so nothing in the funnel breaks. Re-add <PricingPage />
 // here to bring it back.
