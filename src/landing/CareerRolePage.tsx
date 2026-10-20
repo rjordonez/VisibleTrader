@@ -49,7 +49,7 @@ export default function CareerRolePage() {
         </ul>
 
         <p className="aff-step-body" style={{ marginBottom: '2rem' }}>
-          Paid per video via CPM, no base salary. The more your content performs, the more you make.
+          Earn $15 per video.
         </p>
 
         <Link className="career-apply-btn" to="/careers/growth-intern/apply">Apply for this Job</Link>

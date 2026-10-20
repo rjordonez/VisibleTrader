@@ -3934,17 +3934,20 @@
   transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1), width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .career-apply-btn {
-  display: block;
-  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
   box-sizing: border-box;
   text-align: center;
   background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 999px;
-  padding: 1rem 1.5rem;
-  font-size: 1.0625rem;
-  font-weight: 700;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
   cursor: pointer;
   text-decoration: none;
   transition: background 0.15s;
