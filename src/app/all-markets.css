@@ -11,5 +11,6 @@
 .all-markets .sig-load-more { min-height: 48px; border-radius: 14px; font-size: 14px; }
 
 @media (max-width: 640px) {
+  .all-markets .sig-chips.am-categories { flex-wrap: wrap; overflow-x: visible; }
   .all-markets .sig-filters { padding: 18px; }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowUp, ArrowDown, Share2, Film } from 'lucide-react'
+import { ArrowUp, ArrowDown, Share2, Film, UserPlus, UserCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { traderLabel, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './helpers'
@@ -135,9 +135,10 @@ function SortControl<T extends string>({ options, value, onChange, dir, onToggle
   const [open, setOpen] = useState(false)
   const currentLabel = options.find(o => o.value === value)?.label ?? ''
   return (
-    <div style={{ position: 'relative', display: 'inline-flex' }}>
+    <div className="sig-sort-control">
       <button
         type="button" className="sig-filter-input sig-sort-btn"
+        aria-expanded={open}
         onClick={() => setOpen(o => !o)}
       >
         <span
@@ -550,31 +551,30 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
 
   return (
     <div className={`sig-page ${terminalLayout && summary ? 'terminal-trader-profile' : ''}`}>
-      <div className="app-section-header">
-        <div>
+      <div className="app-section-header trader-profile-header">
+        <div className="trader-profile-heading">
           <h1 className="app-section-title">{traderLabel(wallet, summary?.wallet_name ?? null)}</h1>
-          <p className="app-section-sub">
+          <div className="trader-profile-actions" role="group" aria-label="Trader profile actions">
             {summaryLoading ? (
-              <span className="sig-skel" style={{ display: 'inline-block', width: 140, height: 12, borderRadius: 4, verticalAlign: 'middle' }} />
-            ) : error ? 'Connection trouble — retrying…' : (
-              trackedWallets[wallet] ? (
-                <button type="button" className="sig-watch-remove terminal-follow" style={terminalLayout ? undefined : { border: 0, background: 'none', padding: 0, font: 'inherit', cursor: 'pointer' }} disabled={busyWallet === wallet} onClick={() => untrackWallet(wallet)}>
-                  {busyWallet === wallet ? 'Removing…' : 'Unfollow'}
-                </button>
-              ) : (
-                <button type="button" className="terminal-follow" style={terminalLayout ? undefined : { border: 0, background: 'none', padding: 0, font: 'inherit', cursor: 'pointer', color: 'var(--blue)' }} disabled={busyWallet === wallet} onClick={() => trackWallet(wallet)}>
-                  {busyWallet === wallet ? 'Adding…' : '+ Follow this trader'}
-                </button>
-              )
-            )}
-            <button type="button" className="trader-share-trigger" disabled={summaryLoading || (summary ? !positionsComplete : liveLoading) || !accountTrades.length}
-              onClick={() => setAccountReplayOpen(true)}><Film size={14} aria-hidden="true" /> Account progress</button>
-            {shareData && (
-              <button type="button" className="trader-share-trigger" onClick={() => setShareOpen(true)}>
-                <Share2 size={14} aria-hidden="true" /> Share profile card
+              <span className="sig-skel" style={{ width: 120, height: 44, borderRadius: 12 }} />
+            ) : error ? <span className="app-section-sub">Connection trouble — retrying…</span> : (
+              <button type="button"
+                className={`trader-profile-action trader-profile-follow ${trackedWallets[wallet] ? 'is-following' : ''}`}
+                aria-pressed={!!trackedWallets[wallet]}
+                disabled={busyWallet === wallet}
+                onClick={() => trackedWallets[wallet] ? untrackWallet(wallet) : trackWallet(wallet)}>
+                {trackedWallets[wallet] ? <UserCheck size={16} aria-hidden="true" /> : <UserPlus size={16} aria-hidden="true" />}
+                {busyWallet === wallet ? (trackedWallets[wallet] ? 'Removing…' : 'Following…') : trackedWallets[wallet] ? 'Unfollow' : 'Follow trader'}
               </button>
             )}
-          </p>
+            <button type="button" className="trader-profile-action" disabled={summaryLoading || (summary ? !positionsComplete : liveLoading) || !accountTrades.length}
+              onClick={() => setAccountReplayOpen(true)}><Film size={16} aria-hidden="true" /><span>Account progress</span></button>
+            {shareData && (
+              <button type="button" className="trader-profile-action" onClick={() => setShareOpen(true)}>
+                <Share2 size={16} aria-hidden="true" /><span>Share profile</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
