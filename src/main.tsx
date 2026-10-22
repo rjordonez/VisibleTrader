@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { Analytics } from '@vercel/analytics/react'
+import { sanitizeAnalyticsUrl } from './lib/analyticsPrivacy'
 import './lib/posthog.ts'
 import './index.css'
 import App from './App.tsx'
@@ -36,6 +37,6 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <App />
     </BrowserRouter>
-    <Analytics />
+    <Analytics beforeSend={event => ({ ...event, url: sanitizeAnalyticsUrl(event.url) })} />
   </StrictMode>,
 )
