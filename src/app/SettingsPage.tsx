@@ -5,23 +5,6 @@ import { SkelBlock } from './Skeleton'
 import { Link } from 'react-router-dom'
 import { dashboardPath } from '../lib/domains'
 
-/* ── Settings ── */
-interface AppSettings {
-  whale_roster_size: number
-  active_roster_size: number
-  tiers: number[]
-  ticker_min_usd: number
-  scalp_window_minutes: number
-}
-
-const SETTINGS_DEFAULT: AppSettings = {
-  whale_roster_size: 300,
-  active_roster_size: 700,
-  tiers: [1000, 5000, 20000, 50000, 100000],
-  ticker_min_usd: 100,
-  scalp_window_minutes: 30,
-}
-
 interface Subscription {
   plan: string | null
   status: string | null
@@ -31,11 +14,6 @@ interface Subscription {
 const PLAN_LABEL: Record<string, string> = { pro: 'Pro', elite: 'Elite' }
 
 function SettingsPage() {
-  const [settings, setSettings] = useState<AppSettings>(SETTINGS_DEFAULT)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
-
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [subLoading, setSubLoading] = useState(true)
   const [portalLoading, setPortalLoading] = useState(false)
@@ -102,64 +80,13 @@ function SettingsPage() {
       })
   }
 
-  useEffect(() => {
-    Promise.resolve(
-      supabase.from('app_settings').select('whale_roster_size, active_roster_size, tiers, ticker_min_usd, scalp_window_minutes').eq('id', 1).single()
-    )
-      .then(({ data, error }) => {
-        if (error) throw error
-        setSettings(data as AppSettings)
-        setLoading(false)
-      })
-      .catch((e: Error) => {
-        setError(e.message)
-        setLoading(false)
-      })
-  }, [])
-
-  const setTier = (i: number, value: number) => {
-    setSettings(s => ({ ...s, tiers: s.tiers.map((t, idx) => (idx === i ? value : t)) }))
-  }
-
-  const save = () => {
-    setSaveState('saving')
-    // No server in the loop anymore to sanitize this before it hits the table
-    // the Python service trusts — same clamping the old proxy did, now here.
-    const tiers = [...new Set(settings.tiers.map(Number).filter(n => Number.isFinite(n) && n >= 0))].sort((a, b) => a - b)
-    const cfg: AppSettings = {
-      whale_roster_size: Math.max(0, Math.min(2000, Math.round(Number(settings.whale_roster_size)) || SETTINGS_DEFAULT.whale_roster_size)),
-      active_roster_size: Math.max(0, Math.min(2000, Math.round(Number(settings.active_roster_size)) || SETTINGS_DEFAULT.active_roster_size)),
-      tiers: tiers.length > 0 ? tiers : SETTINGS_DEFAULT.tiers,
-      ticker_min_usd: Math.max(1, Math.round(Number(settings.ticker_min_usd)) || SETTINGS_DEFAULT.ticker_min_usd),
-      scalp_window_minutes: Math.max(1, Math.round(Number(settings.scalp_window_minutes)) || SETTINGS_DEFAULT.scalp_window_minutes),
-    }
-    Promise.resolve(
-      supabase.from('app_settings').update(cfg).eq('id', 1)
-        .select('whale_roster_size, active_roster_size, tiers, ticker_min_usd, scalp_window_minutes').single()
-    )
-      .then(({ data, error }) => {
-        if (error) throw error
-        setSettings(data as AppSettings)
-        setSaveState('saved')
-        posthog.capture('settings_saved', {
-          whale_roster_size: data.whale_roster_size,
-          active_roster_size: data.active_roster_size,
-          tier_count: data.tiers.length,
-          ticker_min_usd: data.ticker_min_usd,
-          scalp_window_minutes: data.scalp_window_minutes,
-        })
-        setTimeout(() => setSaveState('idle'), 2500)
-      })
-      .catch(() => setSaveState('idle'))
-  }
-
   return (
     <div className="sig-page">
       <div className="app-section-header">
         <div>
           <h1 className="app-section-title">Settings</h1>
           <p className="app-section-sub">
-            {loading ? 'Loading…' : error ? 'Connection trouble — retrying…' : 'Live pipeline configuration — changes apply within ~10s, no restart needed'}
+            Manage your subscription and connected accounts.
           </p>
         </div>
       </div>
@@ -219,91 +146,7 @@ function SettingsPage() {
           )}
         </div>
 
-        {error && (
-          <div style={{ color: '#ff3b5c', padding: '0 0 20px', fontSize: '0.875rem' }}>{error}</div>
-        )}
 
-        {loading && !error && (
-          <>
-            {[140, 100, 220, 260].map((w, i) => (
-              <div key={i} style={{ marginBottom: 24 }}>
-                <SkelBlock width={w} height={10} style={{ marginBottom: 8 }} />
-                <SkelBlock height={36} radius={6} />
-              </div>
-            ))}
-          </>
-        )}
-
-        {!loading && !error && (
-          <>
-            <div style={{ marginBottom: 24 }}>
-              <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Whale roster size (top N traders by all-time best_pnl)</div>
-              <input
-                className="sig-watch-input"
-                type="number"
-                min={0}
-                max={2000}
-                value={settings.whale_roster_size}
-                onChange={e => setSettings(s => ({ ...s, whale_roster_size: Number(e.target.value) }))}
-              />
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Active roster size (top N traders by recent DAY/WEEK pnl — currently winning, not just historically)</div>
-              <input
-                className="sig-watch-input"
-                type="number"
-                min={0}
-                max={2000}
-                value={settings.active_roster_size}
-                onChange={e => setSettings(s => ({ ...s, active_roster_size: Number(e.target.value) }))}
-              />
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Conviction tiers ($)</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {settings.tiers.map((t, i) => (
-                  <input
-                    key={i}
-                    className="sig-watch-input"
-                    type="number"
-                    min={0}
-                    value={t}
-                    onChange={e => setTier(i, Number(e.target.value))}
-                    style={{ flex: '1 1 90px' }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Ticker minimum ($) — trades below this are ignored entirely</div>
-              <input
-                className="sig-watch-input"
-                type="number"
-                min={1}
-                value={settings.ticker_min_usd}
-                onChange={e => setSettings(s => ({ ...s, ticker_min_usd: Number(e.target.value) }))}
-              />
-            </div>
-
-            <div style={{ marginBottom: 28 }}>
-              <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Scalp window (minutes) — buy→sell faster than this counts as a scalp, not a genuine exit</div>
-              <input
-                className="sig-watch-input"
-                type="number"
-                min={1}
-                value={settings.scalp_window_minutes}
-                onChange={e => setSettings(s => ({ ...s, scalp_window_minutes: Number(e.target.value) }))}
-              />
-            </div>
-
-            <button className="sig-btn" onClick={save} disabled={saveState === 'saving'}>
-              {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved ✓' : 'Save settings'}
-            </button>
-          </>
-        )}
       </div>
     </div>
   )

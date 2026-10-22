@@ -1,5 +1,9 @@
 project_id = "vohtqodprqpobvvcdypy"
 
+[functions.notify-live-activity]
+# Also requires the exact backend service credential inside the handler.
+verify_jwt = true
+
 [functions.polymarket-connect]
 # Validates the user's JWT with auth.getUser before every action.
 verify_jwt = false

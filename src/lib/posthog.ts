@@ -1,4 +1,5 @@
 import posthog from 'posthog-js'
+import { sanitizeAnalyticsProperties } from './analyticsPrivacy'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
@@ -27,6 +28,7 @@ if (!projectToken || !host) {
   }
 } else {
   posthog.init(projectToken, {
+    before_send: event => event ? { ...event, properties: sanitizeAnalyticsProperties(event.properties) } : null,
     api_host: host,
     ui_host: uiHost,
     capture_exceptions: {
