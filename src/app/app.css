@@ -527,6 +527,27 @@
   z-index: 60;
 }
 
+/* The sidebar avatar sits at the bottom of the viewport. Its menu must
+   grow upward; the top-bar avatar keeps the default downward placement. */
+.app-sidebar-bottom-user .app-user-dropdown {
+  top: auto;
+  bottom: calc(100% + 10px);
+  left: 0;
+  right: auto;
+  max-width: calc(100vw - 32px);
+  max-height: min(360px, calc(100dvh - 96px));
+  overflow-y: auto;
+}
+
+@media (min-width: 769px) {
+  /* Escape the narrow, scrollable rail instead of clipping its flyout. */
+  .app-sidebar-collapsed .app-sidebar-bottom-user .app-user-dropdown {
+    position: fixed;
+    left: calc(var(--sidebar-width) + 8px);
+    bottom: 24px;
+  }
+}
+
 .app-user-dropdown-item {
   display: block;
   width: 100%;
@@ -1109,6 +1130,7 @@
 .sig-filter-input::placeholder { color: var(--text-faint); }
 .sig-filter-input:focus { outline: none; border-color: var(--blue); }
 
+.sig-sort-control { position: relative; display: inline-flex; min-width: 0; max-width: 100%; }
 .sig-sort-btn { display: flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }
 .sig-sort-dir { display: inline-flex; color: var(--text-dim); border-radius: 4px; padding: 2px; }
 .sig-sort-dir:hover { color: var(--text); background: var(--border); }
@@ -1186,6 +1208,9 @@
     text-align: left;
   }
   .sig-table td:first-child {
+    /* Keep the title and outcome in normal text flow, with price metadata
+       on its own line instead of three competing horizontal flex items. */
+    display: block;
     font-weight: 700;
     font-size: 14px;
     justify-content: flex-start;
@@ -1193,6 +1218,23 @@
     padding-top: 12px;
   }
   .sig-table td:first-child::before { content: none; }
+  /* The toolbar can wrap the trigger to the left edge on phones. Give it
+     a full row and anchor the menu there, rather than extending left of
+     the narrow trigger. Both short and long sort labels stay in bounds. */
+  .sig-sort-control { flex: 1 0 100%; }
+  .sig-sort-menu {
+    left: 0;
+    right: auto;
+    width: max-content;
+    min-width: min(160px, 100%);
+    max-width: 100%;
+    max-height: min(320px, 50dvh);
+    overflow-y: auto;
+  }
+  .sig-sort-menu-item { min-height: 44px; }
+  /* Filters should remain discoverable without a hidden horizontal swipe. */
+  .sig-filters .sig-chips { flex-wrap: wrap; overflow-x: visible; }
+  .recent-wins .sig-chips.rw-categories { flex-wrap: wrap; overflow-x: visible; }
 }
 
 /* Leaderboard — card-row layout (avatar + name + stat columns) instead of
@@ -1418,6 +1460,29 @@
 }
 .share-card-btn.is-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
 .share-card-btn:disabled { opacity: 0.5; cursor: default; }
+.trader-profile-heading { min-width: 0; width: 100%; }
+.trader-profile-actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; margin-top: 18px; }
+.trader-profile-action {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 10px 15px; min-width: 0;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface-2); color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 600; line-height: 1.4;
+  cursor: pointer; transition: background 150ms, border-color 150ms;
+}
+.trader-profile-action svg { flex-shrink: 0; }
+.trader-profile-action:hover:not(:disabled) { background: var(--chip); border-color: var(--text-faint); }
+.trader-profile-follow { background: var(--blue); border-color: var(--blue); color: #fff; }
+.trader-profile-follow:hover:not(:disabled) { background: var(--blue); filter: brightness(1.12); border-color: var(--blue); }
+.trader-profile-follow.is-following { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+.trader-profile-follow.is-following svg { color: var(--blue); }
+.trader-profile-action:disabled { opacity: .45; cursor: default; }
+@media (max-width: 480px) {
+  .trader-profile-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .trader-profile-follow { grid-column: 1 / -1; }
+  .trader-profile-action { padding: 10px; font-size: 12px; gap: 7px; }
+}
+
 .trader-share-trigger {
   display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; padding: 0;
   border: 0; background: none; color: var(--blue); font: inherit; cursor: pointer;

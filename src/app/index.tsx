@@ -58,6 +58,7 @@ function UserMenu({ user, settingsPath, signOut, expanded = false }: {
         className={`app-avatar-btn ${expanded ? 'app-avatar-btn-expanded' : ''}`}
         onClick={() => setOpen(o => !o)}
         aria-label="Account menu"
+        aria-expanded={open}
       >
         <GogglesAvatar id={user.id} />
         {isProdDb && <span className="app-prod-dot" title="Connected to production data" />}
