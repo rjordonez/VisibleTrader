@@ -7,8 +7,7 @@ import { W, H, GREEN, RED, FONT, roundRect, loadImage, fitFont } from './shareCa
 // A shareable image of one Journal month: the month's total P&L, a
 // calendar with each day's result, and headline stats — same 1080x1350
 // canvas as the trader profile card (TraderShareCard.tsx), but kept
-// low-key: no colored frame or footer, just a small visibletrader.com/promo
-// tag in the header so anyone who sees a shared month can find us.
+// low-key: no colored frame or footer, just a small logo in the header.
 
 export interface JournalShareData {
   monthLabel: string // e.g. "October 2026"
@@ -22,7 +21,6 @@ export interface JournalShareData {
   bestDay: number | null
 }
 
-const PROMO_URL = 'visibletrader.com/promo'
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
 async function drawMonthCard(canvas: HTMLCanvasElement, d: JournalShareData) {
@@ -34,7 +32,7 @@ async function drawMonthCard(canvas: HTMLCanvasElement, d: JournalShareData) {
   canvas.height = H
   const accent = d.total > 0 ? GREEN : d.total < 0 ? RED : '#ffffff'
 
-  // Plain dark card, edge to edge — branding is just the small tag up top.
+  // Plain dark card, edge to edge — branding is just the small logo up top.
   ctx.fillStyle = '#0b0c12'
   ctx.fillRect(0, 0, W, H)
 
@@ -44,7 +42,7 @@ async function drawMonthCard(canvas: HTMLCanvasElement, d: JournalShareData) {
   // Header: month on the left, total P&L on the right.
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'left'
-  // Subtle brand tag: small logo + the promo link where a label would sit.
+  // Subtle brand mark above the month.
   const tagSize = 36
   if (icon) {
     ctx.save()
@@ -53,9 +51,6 @@ async function drawMonthCard(canvas: HTMLCanvasElement, d: JournalShareData) {
     ctx.drawImage(icon, pad, 128 - tagSize + 6, tagSize, tagSize)
     ctx.restore()
   }
-  ctx.fillStyle = '#8b90a0'
-  ctx.font = `700 30px ${FONT}`
-  ctx.fillText(PROMO_URL, icon ? pad + tagSize + 14 : pad, 128)
   ctx.fillStyle = '#fff'
   fitFont(ctx, d.monthLabel, 800, 64, inner * 0.55)
   ctx.fillText(d.monthLabel, pad, 200)
