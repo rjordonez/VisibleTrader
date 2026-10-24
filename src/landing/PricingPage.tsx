@@ -144,14 +144,22 @@ export default function PricingPage() {
               )}
 
               {plan.offer ? (
-                <button
-                  type="button"
-                  className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}
-                  onClick={() => startCheckout(plan.offer!)}
-                  disabled={checkingOut}
-                >
-                  {checkingOut ? 'Starting checkout…' : plan.cta}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}
+                    onClick={() => startCheckout(plan.offer!)}
+                    disabled={checkingOut}
+                  >
+                    {checkingOut ? 'Starting checkout…' : plan.cta}
+                  </button>
+                  {/* Prepaid cards are blocked by a Stripe Radar rule, and
+                      Checkout only shows a generic decline. Say it up front so
+                      people reach for a debit/credit card instead of giving up. */}
+                  <p style={{ color: '#9ca3af', fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center' }}>
+                    Debit or credit card only. Prepaid cards and Apple Cash aren't accepted.
+                  </p>
+                </>
               ) : (
                 <a href={plan.href} className={`pricing-cta ${plan.highlighted ? 'pricing-cta-pro' : ''}`}>
                   {plan.cta}
