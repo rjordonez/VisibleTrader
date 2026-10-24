@@ -95,6 +95,12 @@ Deno.serve(async (req) => {
       customer_email: user.email ?? '',
       success_url: `${appOrigin}/?checkout=success`,
       cancel_url: `${origin}/pricing?checkout=cancelled`,
+      // Prepaid cards almost never cover the full-price renewal (5 of 80
+      // succeeded vs 87 of 359 on debit/credit). Doesn't reach prepaid cards
+      // inside Apple/Google Pay, and leaves existing subscriptions alone.
+      // payment_method_types can't be set here: Managed Payments is on for
+      // the account and rejects it.
+      'payment_method_options[card][restrictions][funding_types_blocked][0]': 'prepaid',
     })
     for (const [key, value] of lineItems) params.set(key, value)
 
