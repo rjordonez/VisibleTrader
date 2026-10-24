@@ -221,15 +221,25 @@ function screenshotTeamQueries(title: string): string[] {
 async function analyze(req: Request, progress: (data: Record<string, unknown>) => void = () => {}, signal: AbortSignal = req.signal) {
   if (req.method === 'OPTIONS') return new Response(null, { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Use POST.' }, 405)
+  let submission: { user_id: string; input_type: string; submitted_url: string | null; market_url: string | null; market_title: string | null; status: string; response_status: number } | null = null
+  const respond = (data: Record<string, unknown>, status = 200) => {
+    if (submission) {
+      submission.status = data.choose ? 'choose_market' : status < 400 ? 'completed' : 'failed'
+      submission.response_status = status
+      if (typeof data.title === 'string') submission.market_title = data.title
+      if (typeof data.url === 'string') submission.market_url = data.url
+    }
+    return json(data, status)
+  }
   try {
     const authorization = req.headers.get('authorization') || ''
     const client = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: authorization } } })
     const { data: auth, error: authError } = await client.auth.getUser()
-    if (authError || !auth.user) return json({ error: 'Sign in to analyze a market.' }, 401)
+    if (authError || !auth.user) return respond({ error: 'Sign in to analyze a market.' }, 401)
     const { data: subscription } = await client.from('subscriptions').select('status').eq('user_id', auth.user.id).maybeSingle()
-    if (!subscription || !['active', 'trialing'].includes(subscription.status)) return json({ error: 'An active subscription is required for market analysis.' }, 403)
+    if (!subscription || !['active', 'trialing'].includes(subscription.status)) return respond({ error: 'An active subscription is required for market analysis.' }, 403)
     const key = Deno.env.get('OPENAI_API_KEY')
-    if (!key) return json({ error: 'Live analysis is not connected yet. You can watch the example briefing while it is being set up.' }, 503)
+    if (!key) return respond({ error: 'Live analysis is not connected yet. You can watch the example briefing while it is being set up.' }, 503)
     // Limit the request before buffering image data; do not log images or prompts.
     // Content-Length is set accurately by fetch() for a string body, so this
     // rejects an oversized screenshot without reading it at all. The previous
@@ -237,20 +247,21 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
     // reader.read() never resolved with done:true for a real screenshot-sized
     // payload in this runtime, wedging every screenshot analysis indefinitely.
     const contentLength = Number(req.headers.get('content-length') || 0)
-    if (contentLength > 5_700_000) return json({ error: 'Choose an image under 4 MB.' }, 413)
+    if (contentLength > 5_700_000) return respond({ error: 'Choose an image under 4 MB.' }, 413)
     let body
-    try { body = await req.json() } catch { return json({ error: 'Invalid request.' }, 400) }
+    try { body = await req.json() } catch { return respond({ error: 'Invalid request.' }, 400) }
     const { url, image } = body
-    if (url != null && (typeof url !== 'string' || url.length > 2048)) return json({ error: 'Invalid market link.' }, 400)
-    if (image != null && (typeof image !== 'string' || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(image))) return json({ error: 'Use a PNG, JPG, or WebP screenshot.' }, 400)
-    if (!url && !image) return json({ error: 'Add a market link or screenshot.' }, 400)
+    if (url != null && (typeof url !== 'string' || url.length > 2048)) return respond({ error: 'Invalid market link.' }, 400)
+    if (image != null && (typeof image !== 'string' || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(image))) return respond({ error: 'Use a PNG, JPG, or WebP screenshot.' }, 400)
+    if (!url && !image) return respond({ error: 'Add a market link or screenshot.' }, 400)
+    submission = { user_id: auth.user.id, input_type: url ? 'url' : 'screenshot', submitted_url: url || null, market_url: null, market_title: null, status: 'failed', response_status: 502 }
     progress({ stage: 'market', label: url ? 'Opening Polymarket' : 'Reading your screenshot' })
     let market: Record<string, unknown> | null = null
     let marketUrl: string | null = null
     let isUS = false
     if (url) {
       let parsed: URL
-      try { parsed = new URL(url) } catch { return json({ error: 'Invalid market link.' }, 400) }
+      try { parsed = new URL(url) } catch { return respond({ error: 'Invalid market link.' }, 400) }
       isUS = parsed.hostname === 'polymarket.us' || parsed.hostname === 'www.polymarket.us'
       const validHost = isUS || parsed.hostname === 'polymarket.com' || parsed.hostname === 'www.polymarket.com'
       const parts = parsed.pathname.split('/').filter(Boolean)
@@ -258,7 +269,7 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
       // prefixed paths like /sports/mlb/{slug} (confirmed live) — same
       // shape .us always uses — so both just need a real trailing segment.
       const pathOk = parts.length >= 1
-      if (parsed.protocol !== 'https:' || !validHost || parsed.port || parsed.username || parsed.password || !pathOk) return json({ error: 'Use a Polymarket event or market link.' }, 400)
+      if (parsed.protocol !== 'https:' || !validHost || parsed.port || parsed.username || parsed.password || !pathOk) return respond({ error: 'Use a Polymarket event or market link.' }, 400)
       const slug = parts[parts.length - 1]
       // A picker-selected link carries this so re-submitting it doesn't
       // loop back into the picker — the moneyline market's own slug is
@@ -295,7 +306,7 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
               // actually chosen.
               return { url: `https://polymarket.us/market/${item.slug}?picked=1&event=${encodeURIComponent(slug)}`, title: normalized.question, images: usTeamLogos(item).map(safeImage), outcomes: marketChips(normalized), group: groupOf(item.marketType) }
             })
-            return json({ choose: true, markets: choices })
+            return respond({ choose: true, markets: choices })
           }
           if (candidates.length === 1) market = normalizeUSMarket(candidates[0])
         }
@@ -321,7 +332,7 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
           // page, the URL never changes — so an event with more than one
           // market always gets a picker rather than a silent guess, sorted
           // by trading volume so the featured line appears first.
-          if (eventMarkets.length > 1) return json({ choose: true, markets: comChoices(eventMarkets) })
+          if (eventMarkets.length > 1) return respond({ choose: true, markets: comChoices(eventMarkets) })
           if (eventMarkets.length === 1) market = eventMarkets[0]
         }
         if (!market) {
@@ -329,8 +340,12 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
           market = Array.isArray(rows) ? rows[0] ?? null : null
         }
       }
-      if (!market) return json({ error: 'We could not find this market. Check the link and try again.' }, 404)
+      if (!market) return respond({ error: 'We could not find this market. Check the link and try again.' }, 404)
       marketUrl = `https://${isUS ? 'polymarket.us' : 'polymarket.com'}/${parts.map(encodeURIComponent).join('/')}`
+    }
+    if (submission && market) {
+      submission.market_title = String(market.question || '') || null
+      submission.market_url = marketUrl
     }
     let outcomes = list(market?.outcomes).map(String)
     let prices = list(market?.outcomePrices).map(Number)
@@ -369,15 +384,16 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
     })
     if (!response.ok) {
       console.error('[analyze] openai error', response.status, await response.text().catch(() => ''))
-      return json({ error: 'The analysis service is unavailable. Please try again shortly.' }, 502)
+      return respond({ error: 'The analysis service is unavailable. Please try again shortly.' }, 502)
     }
     const result = await response.json()
     const output = result.output?.flatMap((item: { content?: { type: string; text?: string }[] }) => item.content || []).find((item: { type: string }) => item.type === 'output_text')?.text
     if (result.status !== 'completed' || !output) {
       console.error('[analyze] openai incomplete', result.status, JSON.stringify(result).slice(0, 2000))
-      return json({ error: 'The analysis could not be completed. Try a clearer screenshot or a market link.' }, 502)
+      return respond({ error: 'The analysis could not be completed. Try a clearer screenshot or a market link.' }, 502)
     }
     const analysis = JSON.parse(output)
+    if (submission && !market && typeof analysis.title === 'string') submission.market_title = analysis.title
     // A screenshot never resolves to an actual on-chain market on its own —
     // there's no clobTokenIds/conditionId to fetch a chart, real bet link, or
     // tracked traders from. Search Gamma's own public search for candidate
@@ -444,7 +460,7 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
             const found = pickedSlug !== 'none' ? candidates.find(c => c.slug === pickedSlug) : undefined
             if (found) {
               const eventMarkets = found.markets
-              if (eventMarkets.length > 1) return json({ choose: true, markets: comChoices(eventMarkets) })
+              if (eventMarkets.length > 1) return respond({ choose: true, markets: comChoices(eventMarkets) })
               const only = eventMarkets[0]
               const matchedOutcome = list(only.outcomes).map(String).find(o => [...outcomeWords].every(w => words(o).includes(w)))
               market = only
@@ -467,10 +483,10 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
     // so every finished analysis is tied to a real market they confirmed.
     if (!market && !url) {
       const open = closest.filter(e => e.closed !== true)
-      return json({ choose: true, unmatched: true, markets: (open.length ? open : closest).slice(0, 8).map(eventChoice) })
+      return respond({ choose: true, unmatched: true, markets: (open.length ? open : closest).slice(0, 8).map(eventChoice) })
     }
     const index = outcomes.indexOf(analysis.outcome)
-    if (market && index === -1) return json({ error: 'The selected outcome could not be verified. Please try again.' }, 502)
+    if (market && index === -1) return respond({ error: 'The selected outcome could not be verified. Please try again.' }, 502)
     const price = index >= 0 && Number.isFinite(prices[index]) && prices[index] >= 0 && prices[index] <= 1 ? prices[index] : null
     // US markets don't have a working public chart endpoint yet (checked
     // live against docs.polymarket.us's own example — empty history even
@@ -491,13 +507,25 @@ async function analyze(req: Request, progress: (data: Record<string, unknown>) =
       seen.add(p.wallet); return true
     }).slice(0, 3).map(p => ({ name: p.wallet_name || `${p.wallet.slice(0, 5)}…${p.wallet.slice(-4)}`, price: Number(p.price), outcome: p.outcome }))
     const investedUsd = (positions || []).filter(p => p.outcome === analysis.outcome).reduce((total, p) => { const value = Number(p.usd); return total + (Number.isFinite(value) && value > 0 ? value : 0) }, 0)
-    return json({ ...analysis, title: market?.question || analysis.title, price, traders, image: safeImage(market?.image), url: marketUrl, asOf: context.asOf, sources: research.sources, researchStatus: research.status, searches: research.searches, positionCount: positions?.length ?? 0, investedUsd: investedUsd || null, history })
+    return respond({ ...analysis, title: market?.question || analysis.title, price, traders, image: safeImage(market?.image), url: marketUrl, asOf: context.asOf, sources: research.sources, researchStatus: research.status, searches: research.searches, positionCount: positions?.length ?? 0, investedUsd: investedUsd || null, history })
   } catch (error) {
     // The generic message below is what the user sees; log the real cause
     // server-side so a failure here is debuggable instead of a dead end.
     console.error('[analyze] error', error instanceof Error ? `${error.name}: ${error.message}` : String(error))
-    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) return json({ error: 'Analysis took too long. Please try again.' }, 504)
-    return json({ error: 'We could not complete this analysis. Please check the market and try again.' }, 502)
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) return respond({ error: 'Analysis took too long. Please try again.' }, 504)
+    return respond({ error: 'We could not complete this analysis. Please check the market and try again.' }, 502)
+  } finally {
+    // Backend-only analytics. Never persist screenshots, prompts, or raw errors.
+    // Await a bounded write so streaming responses don't drop the log on shutdown.
+    if (submission) {
+      try {
+        const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } })
+        const { error } = await admin.from('analyzer_submissions').insert(submission).abortSignal(AbortSignal.timeout(1500))
+        if (error) console.error('[analyze] submission logging failed', error.code)
+      } catch {
+        console.error('[analyze] submission logging unavailable')
+      }
+    }
   }
 }
 
