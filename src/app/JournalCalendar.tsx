@@ -3,6 +3,8 @@ import { ChevronLeft, ChevronRight, X, Plus, MessageSquare, ArrowUpRight, Share2
 import { supabase } from '../lib/supabase'
 import { fmtSigned } from './helpers'
 import { JournalShareModal, type JournalShareData } from './JournalShareCard'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { journalGraphPoints, journalEventPoints } from './journalGraph'
 import './journal.css'
 
 interface JournalEntry {
@@ -100,6 +102,11 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
   const [entries, setEntries] = useState<Map<string, JournalEntry>>(new Map())
   const [tradesByDay, setTradesByDay] = useState<Map<string, USTradeRow[]>>(new Map())
   const [loading, setLoading] = useState(true)
+  const [view, setView] = useState<'calendar' | 'graph'>('calendar')
+  const [tradesLoading, setTradesLoading] = useState(true)
+  const [tradesError, setTradesError] = useState(false)
+  const [selectedTrade, setSelectedTrade] = useState<USTradeRow | null>(null)
+  const tradeDialogRef = useRef<HTMLDialogElement>(null)
   const [editingDate, setEditingDate] = useState<string | null>(initialDay ?? null)
   const [dayTab, setDayTab] = useState<'trades' | 'manual'>('trades')
   const [editAmount, setEditAmount] = useState('')
@@ -170,7 +177,8 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
         }
         setTradesByDay(m)
       })
-      .catch(() => { /* Real trade P&L is additive; a failed fetch just falls back to manual-only stats. */ })
+      .catch(() => { if (active) setTradesError(true) })
+      .finally(() => { if (active) setTradesLoading(false) })
     return () => { active = false }
   }, [userId, monthStart, monthEnd, year, month])
 
@@ -227,11 +235,19 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
     else editorRef.current?.close()
   }, [editingDate])
 
+  useEffect(() => {
+    if (selectedTrade) tradeDialogRef.current?.showModal()
+    else tradeDialogRef.current?.close()
+  }, [selectedTrade])
+
   const changeMonth = (date: Date) => {
     if (date.getFullYear() === year && date.getMonth() === month) return
     setLoading(Boolean(userId))
     setLoadError(false)
     setEntries(new Map())
+    setTradesByDay(new Map())
+    setTradesLoading(Boolean(userId))
+    setTradesError(false)
     setViewDate(date)
   }
 
@@ -269,6 +285,19 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
   const profitableDays = Array.from(loggedDays).filter(d => combinedOn(d) > 0).length
   const bestDay = loggedDays.size ? Math.max(...Array.from(loggedDays).map(combinedOn)) : null
   const monthLabel = viewDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  const dailyGraphPoints = journalGraphPoints(year, month, new Map(
+    Array.from(loggedDays).filter(date => entries.has(date) || (tradesByDay.get(date) ?? []).some(trade => trade.realized_pnl != null)).map(date => [date, combinedOn(date)]),
+  ))
+  const graphTrades = Array.from(tradesByDay.values()).flat()
+  const graphPoints = journalEventPoints(year, month, [
+    ...graphTrades.map((trade, tradeIndex) => {
+      const time = new Date(trade.occurred_at)
+      return { date: toISODate(time), position: time.getDate() + (time.getHours() * 3600 + time.getMinutes() * 60 + time.getSeconds()) / 86400,
+        amount: trade.realized_pnl ?? 0, label: trade.title, tradeIndex }
+    }),
+    ...Array.from(entries.values(), entry => ({ date: entry.entry_date, position: Number(entry.entry_date.slice(-2)) + .99999,
+      amount: entry.amount, label: 'Manual entry', tradeIndex: null })),
+  ])
   const summaryLabel = statsRange === 'month' ? monthLabel : statsRange === 'year' ? String(year) : 'All time'
   const summaryBusy = statsRange === 'month' ? (loading || loadError) : (rangeLoading || !rangeSummary)
   const summary = statsRange === 'month'
@@ -378,7 +407,17 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
         </dl>
       </section>
 
-      <section className="journal-calendar" aria-label="Daily P&L calendar" aria-busy={loading}>
+      <div className="journal-view-tabs" role="tablist" aria-label="Results view" onKeyDown={event => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+        event.preventDefault()
+        const next = event.key === 'Home' ? 'calendar' : event.key === 'End' ? 'graph' : view === 'calendar' ? 'graph' : 'calendar'
+        setView(next)
+        event.currentTarget.querySelector<HTMLButtonElement>(`#journal-${next}-tab`)?.focus()
+      }}>
+        <button type="button" role="tab" id="journal-calendar-tab" aria-controls="journal-results-panel" aria-selected={view === 'calendar'} tabIndex={view === 'calendar' ? 0 : -1} onClick={() => setView('calendar')}>Calendar</button>
+        <button type="button" role="tab" id="journal-graph-tab" aria-controls="journal-results-panel" aria-selected={view === 'graph'} tabIndex={view === 'graph' ? 0 : -1} onClick={() => setView('graph')}>Graph</button>
+      </div>
+      <section className="journal-calendar" id="journal-results-panel" role="tabpanel" aria-labelledby={`journal-${view}-tab`} aria-busy={loading || (view === 'graph' && Boolean(userId) && tradesLoading)}>
         <div className="journal-toolbar">
           <div className="journal-month-nav">
             <button type="button" className="journal-nav-btn" onClick={() => changeMonth(new Date(year, month - 1, 1))} aria-label="Previous month">
@@ -398,7 +437,7 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
           <button type="button" className="journal-toolbar-add" disabled={!userId || loading || loadError} onClick={logADay} aria-label="Log a day"><Plus size={16} /></button>
         </div>
 
-        <div className="journal-weekdays">
+        {view === 'calendar' ? <><div className="journal-weekdays">
           {WEEKDAY_LABELS.map(w => <div key={w}>{w}</div>)}
         </div>
 
@@ -440,10 +479,46 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
           })}
         </div>
 
+        </> : <div className="journal-graph">
+          <h3>Cumulative P&L</h3>
+          <p className="journal-graph-description">{monthLabel} · Realized results + manual entries · USD</p>
+          {!userId && !loading ? <p role="status">Sign in to see your results.</p>
+            : loading || tradesLoading ? <p role="status">Loading your results…</p>
+              : loadError ? <p role="status">Could not load your results. Change months or reload to retry.</p>
+                : <>
+                  {tradesError && <p role="status">Account results are unavailable. Showing manual entries only.</p>}
+                  {graphPoints.length === 0 ? <div className="journal-graph-empty"><h4>No results this month</h4><p>Log a result or sync settled trades to start your P&L graph.</p></div>
+                    : <>
+                      <div className="journal-graph-chart" role="group" aria-label={`${monthLabel} cumulative P&L in USD, ending at ${fmtSigned(graphPoints.at(-1)!.cumulative)}`}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={graphPoints} margin={{ top: 16, right: 16, bottom: 24, left: 0 }} accessibilityLayer>
+                            <CartesianGrid stroke="#ffffff0c" vertical={false} />
+                            <XAxis dataKey="position" type="number" domain={[0, Math.max(1, graphPoints.at(-1)!.position)]} allowDecimals={false} minTickGap={24} tick={{ fill: '#a2a2b0', fontSize: 12 }} tickFormatter={day => day === 0 ? 'Start' : String(day)} label={{ value: 'Day of month', position: 'bottom', fill: '#a2a2b0', fontSize: 12 }} />
+                            <YAxis width={72} tick={{ fill: '#a2a2b0', fontSize: 12 }} tickFormatter={value => `$${Number(value).toLocaleString(undefined, { notation: 'compact', maximumFractionDigits: 1 })}`} />
+                            <ReferenceLine y={0} stroke="#727591" strokeDasharray="4 4" />
+                            <Tooltip contentStyle={{ background: '#18181f', border: '1px solid #494b70', borderRadius: 12 }} labelStyle={{ color: '#a2a2b0' }} labelFormatter={(_value, payload) => { const point = payload?.[0]?.payload; return point?.date ? `${point.date} · ${point.label}` : 'Start of month' }} formatter={value => [fmtSigned(Number(value)), 'Cumulative P&L']} />
+                            <Line key={`${year}-${month}`} className="journal-graph-line" type="linear" dataKey="cumulative" stroke={graphPoints.at(-1)!.cumulative < 0 ? '#ff3b5c' : '#00d17a'} strokeWidth={2.5} dot={({ cx, cy, payload }) => {
+                              const point = payload as (typeof graphPoints)[number]
+                              if (!point.date) return <g key="start" />
+                              const trade = point.tradeIndex === null ? null : graphTrades[point.tradeIndex]
+                              const label = `${point.date}: ${point.label}, ${trade?.realized_pnl == null && trade ? 'No realized P&L' : fmtSigned(point.amount)}. View ${trade ? 'trade' : 'entry'}`
+                              const open = () => trade ? setSelectedTrade(trade) : openDay(Number(point.date.slice(-2)))
+                              return <g key={`${point.date}-${point.tradeIndex}`} className="journal-graph-point" role="button" tabIndex={0} aria-label={label} onClick={open} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open() } }}>
+                                <title>{label}</title><circle cx={cx} cy={cy} r={10} fill="transparent" /><circle cx={cx} cy={cy} r={4} fill="#111115" stroke={point.amount < 0 ? '#ff3b5c' : point.amount > 0 ? '#00d17a' : '#a2a2b0'} strokeWidth={2} />
+                              </g>
+                            }} activeDot={false} isAnimationActive={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <details className="journal-graph-values"><summary>Daily results</summary><table><caption>{monthLabel} results in USD</caption><thead><tr><th scope="col">Day</th><th scope="col">Daily P&L</th><th scope="col">Cumulative P&L</th></tr></thead><tbody>{dailyGraphPoints.filter(point => point.day > 0).map(point => <tr key={point.day}><th scope="row">{point.day}</th><td>{fmtSigned(point.daily)}</td><td>{fmtSigned(point.cumulative)}</td></tr>)}</tbody></table></details>
+                    </>}
+                </>}
+        </div>}
+
         {/* Phone-only: the header (with its Share month button) is hidden there. */}
         <button type="button" className="journal-share-mobile" disabled={!canShareMonth} onClick={openShare}><Share2 size={15} /> Share month</button>
 
-        <p className={`journal-calendar-hint ${!loading && !loadError && userId ? 'journal-calendar-hint-idle' : ''}`} role="status">{loading ? 'Loading your entries…' : loadError ? 'Could not load your entries. Change months or reload to retry.' : !userId ? 'Sign in to keep your personal trading journal.' : 'Select a day to log your P&L or add a note.'}</p>
+        {view === 'calendar' && <p className={`journal-calendar-hint ${!loading && !loadError && userId ? 'journal-calendar-hint-idle' : ''}`} role="status">{loading ? 'Loading your entries…' : loadError ? 'Could not load your entries. Change months or reload to retry.' : !userId ? 'Sign in to keep your personal trading journal.' : 'Select a day to log your P&L or add a note.'}</p>}
       </section>
 
       {!loading && !loadError && <section className="journal-entries" aria-labelledby="journal-entries-title">
@@ -518,6 +593,13 @@ function JournalCalendar({ initialDay }: { initialDay?: string }) {
             </form>}
           </div>
         })()}
+      </dialog>
+      <dialog ref={tradeDialogRef} className="journal-editor" aria-labelledby="journal-trade-title" onCancel={() => setSelectedTrade(null)} onClose={() => setSelectedTrade(null)}>
+        {selectedTrade && <>
+          <div className="journal-editor-head"><h3 id="journal-trade-title">{selectedTrade.title}</h3><button type="button" className="journal-editor-close" aria-label="Close trade" onClick={() => setSelectedTrade(null)}><X size={16} /></button></div>
+          <p className="connection-small">{new Date(selectedTrade.occurred_at).toLocaleString()}</p>
+          <dl className="journal-trade-details"><div><dt>Action</dt><dd>{selectedTrade.side}</dd></div><div><dt>Shares</dt><dd>{selectedTrade.size?.toLocaleString() ?? '—'}</dd></div><div><dt>Realized P&L</dt><dd className={(selectedTrade.realized_pnl ?? 0) < 0 ? 'r' : 'g'}>{selectedTrade.realized_pnl == null ? 'Not realized yet' : fmtSigned(selectedTrade.realized_pnl)}</dd></div></dl>
+        </>}
       </dialog>
     </div>
   )
