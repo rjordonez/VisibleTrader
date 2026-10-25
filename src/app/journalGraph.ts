@@ -12,14 +12,14 @@ export interface JournalGraphEvent {
   tradeIndex: number | null
 }
 
-export function journalEventPoints(year: number, month: number, events: JournalGraphEvent[]) {
-  const prefix = `${year}-${String(month + 1).padStart(2, '0')}-`
+export function journalEventPoints(year: number | null, month: number | null, events: JournalGraphEvent[], baselinePosition?: number) {
+  const prefix = year === null ? '' : month === null ? `${year}-` : `${year}-${String(month + 1).padStart(2, '0')}-`
   const sorted = events.filter(event => event.date.startsWith(prefix) && Number.isFinite(event.amount) && Number.isFinite(event.position))
     .sort((a, b) => a.position - b.position)
   if (!sorted.length) return []
   let cumulative = 0
   return [
-    { date: '', position: 0, amount: 0, label: 'Start of month', tradeIndex: null, cumulative: 0 },
+    { date: '', position: baselinePosition ?? (sorted[0].position > 1e10 ? sorted[0].position - 1 : 0), amount: 0, label: 'Start of period', tradeIndex: null, cumulative: 0 },
     ...sorted.map(event => ({ ...event, cumulative: cumulative += event.amount })),
   ]
 }
