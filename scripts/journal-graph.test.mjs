@@ -34,3 +34,17 @@ test('each trade has a chronological point, including entries without realized P
   assert.deepEqual(points.map(p=>p.cumulative),[0,100,80,80,110])
   assert.deepEqual(points.slice(1).map(p=>p.tradeIndex),[0,1,2,null])
 })
+
+test('month, year and all-time select different trades and retain matching totals', async () => {
+  const { journalEventPoints } = await import('../src/app/journalGraph.ts')
+  const events = [
+    {date:'2025-12-01',position:Date.parse('2025-12-01'),amount:-200,label:'Older trade',tradeIndex:0},
+    {date:'2026-01-01',position:Date.parse('2026-01-01'),amount:500,label:'Earlier this year',tradeIndex:1},
+    {date:'2026-10-01',position:Date.parse('2026-10-01'),amount:100,label:'This month',tradeIndex:2},
+  ]
+  assert.equal(journalEventPoints(2026,9,events).at(-1).cumulative,100)
+  assert.equal(journalEventPoints(2026,null,events).at(-1).cumulative,600)
+  const all = journalEventPoints(null,null,events)
+  assert.equal(all.at(-1).cumulative,400)
+  assert.equal(all[0].position,events[0].position-1)
+})
