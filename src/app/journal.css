@@ -1,4 +1,23 @@
 /* Personal results stay prominent; the calendar uses restrained daily color. */
+.journal-page .journal-view-tabs { display: flex; width: fit-content; gap: 4px; padding: 4px; margin-bottom: 16px; border: 1px solid #ffffff0e; border-radius: 12px; background: #0d0d13; }
+.journal-page .journal-view-tabs button { min-height: 40px; padding: 8px 24px; border: 0; border-radius: 9px; background: transparent; color: #9999ad; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+.journal-page .journal-view-tabs button[aria-selected=true] { background: #292936; color: #f0f0ff; }
+.journal-page .journal-view-tabs button:focus-visible { outline: 2px solid #7a80da; outline-offset: 2px; }
+.journal-page .journal-graph h3 { margin: 0 0 6px; font-size: 18px; font-weight: 650; }
+.journal-page .journal-graph-description, .journal-page .journal-graph > p { color: var(--text-dim); font-size: 12px; line-height: 1.6; }
+.journal-page .journal-graph-chart { width: 100%; height: 340px; margin-top: 20px; }
+.journal-page .journal-graph-line { animation: journal-graph-reveal 1100ms cubic-bezier(.2,.7,.2,1) both; }
+@keyframes journal-graph-reveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@media (prefers-reduced-motion: reduce) { .journal-page .journal-graph-line { animation: none; } }
+.journal-page .journal-graph-empty { min-height: 230px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+.journal-page .journal-graph-empty h4 { margin: 0 0 8px; font-size: 17px; }
+.journal-page .journal-graph-empty p { max-width: 320px; color: var(--text-dim); font-size: 13px; line-height: 1.6; }
+.journal-page .journal-graph-values { margin-top: 20px; color: var(--text-dim); font-size: 12px; }
+.journal-page .journal-graph-values summary { cursor: pointer; padding: 8px 0; }
+.journal-page .journal-graph-values table { width: 100%; border-collapse: collapse; text-align: right; font-variant-numeric: tabular-nums; }
+.journal-page .journal-graph-values th, .journal-page .journal-graph-values td { padding: 10px 4px; border-bottom: 1px solid #ffffff0d; }
+.journal-page .journal-graph-values caption { text-align: left; padding: 12px 0; }
+@media (max-width: 600px) { .journal-page .journal-graph-chart { height: 280px; } }
 .journal-page .journal-cell { aspect-ratio: auto; width: 100%; }
 .journal-page { max-width: 1040px; --text-dim: #a2a2b0; --blue: #6370ff; }
 .journal-header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -163,3 +182,8 @@
   .journal-page .journal-share-mobile { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 40px; margin-top: 10px; border: 1px solid #3a3b55; border-radius: 12px; background: transparent; color: #c9cbf5; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
 }
 @media (prefers-reduced-motion: reduce) { .journal-page * { transition: none !important; } }
+.journal-page .journal-graph-point { cursor: pointer; }
+.journal-page .journal-graph-point:hover circle:last-child, .journal-page .journal-graph-point:focus-visible circle:last-child { r: 6; fill: #292936; stroke-width: 3; }
+.journal-page .journal-trade-details { display: grid; gap: 18px; }
+.journal-page .journal-trade-details dt { color: var(--text-dim); font-size: 12px; margin-bottom: 6px; }
+.journal-page .journal-trade-details dd { margin: 0; font-size: 20px; }
