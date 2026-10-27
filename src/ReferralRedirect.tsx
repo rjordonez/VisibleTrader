@@ -25,6 +25,7 @@ const REFERRAL_CODES: Record<string, string> = {
   // Readable on purpose, at the owner's request (an exception to the
   // random-code rule above).
   jayden: 'jayden',
+  vlad: 'vladdi.trades',
 }
 
 // `referral_link_visited` is queryable in PostHog by both the raw code and
