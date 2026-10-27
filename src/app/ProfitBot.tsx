@@ -115,12 +115,28 @@ export default function ProfitBot() {
   useEffect(() => {
     let cancelled = false
     let retry: ReturnType<typeof setTimeout> | undefined
+    // The API caps each response at 1,000 rows. Fetch the complete history
+    // so the chart and bankroll replay include the newest resolved picks.
+    const loadCurve = async () => {
+      const rows: BotCurvePoint[] = []
+      const pageSize = 1000
+      while (!cancelled) {
+        const { data, error } = await supabase.rpc('profit_bot_resolved_curve')
+          .order('resolved_ts').order('opened_ts').order('pnl')
+          .range(rows.length, rows.length + pageSize - 1)
+        if (error) return { data: null, error }
+        const page = (data ?? []) as BotCurvePoint[]
+        rows.push(...page)
+        if (page.length < pageSize) break
+      }
+      return { data: rows, error: null }
+    }
     const load = async (attempt = 0) => {
       const [pi, re, pe, cu] = await Promise.all([
         supabase.rpc('profit_bot_picks'),
         supabase.rpc('profit_bot_resolved'),
         supabase.rpc('profit_bot_performance'),
-        supabase.rpc('profit_bot_resolved_curve'),
+        loadCurve(),
       ])
       if (cancelled) return
       if (pi.error || re.error || pe.error || cu.error) {

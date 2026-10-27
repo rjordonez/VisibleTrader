@@ -22,6 +22,7 @@ const REFERRAL_CODES: Record<string, string> = {
   '2p348p': 'dretrdzzz',
   '6dek9j': 'cha0spredicts',
   n2u7n5: 'rykertracks',
+  '3jpkjm': 'anthony',
   // Readable on purpose, at the owner's request (an exception to the
   // random-code rule above).
   jayden: 'jayden',
