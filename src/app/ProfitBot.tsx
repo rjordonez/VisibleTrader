@@ -60,8 +60,8 @@ export default function ProfitBot() {
   const betMultiplier = betSize / 100
 
 
-  const [compoundStart, setCompoundStart] = useState(50)
-  const [restakePct, setRestakePct] = useState(15)
+  const [compoundStart, setCompoundStart] = useState(10)
+  const [restakePct, setRestakePct] = useState(10)
   const RESTAKE_MIN = 5
   const RESTAKE_MAX = 30
   
