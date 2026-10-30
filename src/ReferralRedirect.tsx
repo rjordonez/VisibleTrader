@@ -11,6 +11,7 @@ import { setReferralCode } from './lib/domains'
 // a plain hardcoded object since affiliate applications are already
 // reviewed and assigned by hand, one at a time.
 const REFERRAL_CODES: Record<string, string> = {
+  'c8b21c': 'jcwann',
   guukq8: 'toby.bets',
   qx3ezk: 'paxx.prints',
   gb6k9u: 'vladdi.trades',
