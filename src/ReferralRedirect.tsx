@@ -27,6 +27,7 @@ const REFERRAL_CODES: Record<string, string> = {
   // Readable on purpose, at the owner's request (an exception to the
   // random-code rule above).
   anthony: 'anthony',
+  jc: 'jcwann',
   jayden: 'jayden',
   vlad: 'vladdi.trades',
 }
