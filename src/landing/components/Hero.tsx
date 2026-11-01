@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { Users } from 'lucide-react'
 import ProfitCard from './ProfitCard'
 import WinnersPreview from './WinnersPreview'
 import WinnersPreviewMobile from './WinnersPreviewMobile'
@@ -35,6 +36,11 @@ export default function Hero() {
           </h1>
 
           <p className="hero-headline-sub">See exactly who the insider traders and experts are, the moment they make a move.</p>
+
+          <div className="hero-rating">
+            <span className="hero-rating-verified"><Users size={14} /></span>
+            <span className="hero-rating-score">Join 6k+ traders</span>
+          </div>
 
           <div className="hero-form">
             <Link to="/signup" className="btn-primary">Get started</Link>
