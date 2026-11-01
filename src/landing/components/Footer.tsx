@@ -48,7 +48,7 @@ export default function Footer() {
         </div>
 
         <div className="footer-bottom">
-          <p>© 2026 VisibleTrader, Inc. All rights reserved. 18+</p>
+          <p>© 2026 Envy Labs LLC, dba VisibleTrader. All rights reserved.</p>
           <p>Prediction markets involve financial risk. Trade responsibly.</p>
         </div>
 
