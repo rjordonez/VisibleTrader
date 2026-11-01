@@ -50,7 +50,7 @@ export default function Hero() {
                 <span key={a.initial} className="hero-avatar" style={{ background: a.bg }}>{a.initial}</span>
               ))}
             </div>
-            <span className="hero-social-text">Join 6k+ traders</span>
+            <span className="hero-social-text">Join 6k+ whale watchers</span>
           </div>
 
           <div className="hero-form">
