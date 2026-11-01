@@ -1,9 +1,16 @@
 import { Link } from 'react-router-dom'
-import { Users } from 'lucide-react'
 import ProfitCard from './ProfitCard'
 import WinnersPreview from './WinnersPreview'
 import WinnersPreviewMobile from './WinnersPreviewMobile'
 import { useLiveTradeCounter, RollingNumber } from '../../lib/RollingCounter'
+
+// Initial-on-gradient avatars, same convention as WinnersPreview's .wp-avatar,
+// not photos standing in for specific real users.
+const avatars = [
+  { initial: 'J', bg: 'linear-gradient(135deg, #ca8a04, #facc15)' },
+  { initial: 'M', bg: 'linear-gradient(135deg, #9333ea, #c084fc)' },
+  { initial: 'A', bg: 'linear-gradient(135deg, #0891b2, #22d3ee)' },
+]
 
 export default function Hero() {
   const tradeCount = useLiveTradeCounter()
@@ -37,9 +44,13 @@ export default function Hero() {
 
           <p className="hero-headline-sub">See exactly who the insider traders and experts are, the moment they make a move.</p>
 
-          <div className="hero-rating">
-            <span className="hero-rating-verified"><Users size={14} /></span>
-            <span className="hero-rating-score">Join 6k+ traders</span>
+          <div className="hero-social">
+            <div className="hero-avatars" aria-hidden="true">
+              {avatars.map(a => (
+                <span key={a.initial} className="hero-avatar" style={{ background: a.bg }}>{a.initial}</span>
+              ))}
+            </div>
+            <span className="hero-social-text">Join 6k+ traders</span>
           </div>
 
           <div className="hero-form">
