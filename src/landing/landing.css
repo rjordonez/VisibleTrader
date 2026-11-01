@@ -3549,6 +3549,7 @@
   background: var(--bg-3);
   color: #fff;
   border: 2px solid var(--bg);
+  object-fit: cover;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3640,6 +3641,7 @@
   display: flex; align-items: center; justify-content: center;
   font-size: 0.75rem; font-weight: 700; color: #fff;
   border: 2px solid var(--bg);
+  object-fit: cover;
 }
 .hero-avatar + .hero-avatar { margin-left: -10px; }
 .hero-social-text { font-size: 0.875rem; font-weight: 700; color: var(--text-1); white-space: nowrap; }

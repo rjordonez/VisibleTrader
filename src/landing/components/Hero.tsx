@@ -1,16 +1,24 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import ProfitCard from './ProfitCard'
 import WinnersPreview from './WinnersPreview'
 import WinnersPreviewMobile from './WinnersPreviewMobile'
 import { useLiveTradeCounter, RollingNumber } from '../../lib/RollingCounter'
 
-// Initial-on-gradient avatars, same convention as WinnersPreview's .wp-avatar,
-// not photos standing in for specific real users.
+// Photos of people who agreed to be featured (creators/opted-in users).
+// Drop the files at these paths in public/; until a file exists, that slot
+// falls back to the initial-on-gradient avatar (.wp-avatar convention).
 const avatars = [
-  { initial: 'J', bg: 'linear-gradient(135deg, #ca8a04, #facc15)' },
-  { initial: 'M', bg: 'linear-gradient(135deg, #9333ea, #c084fc)' },
-  { initial: 'A', bg: 'linear-gradient(135deg, #0891b2, #22d3ee)' },
+  { src: '/avatars/1.jpg', initial: 'J', bg: 'linear-gradient(135deg, #ca8a04, #facc15)' },
+  { src: '/avatars/2.jpg', initial: 'M', bg: 'linear-gradient(135deg, #9333ea, #c084fc)' },
+  { src: '/avatars/3.jpg', initial: 'A', bg: 'linear-gradient(135deg, #0891b2, #22d3ee)' },
 ]
+
+function Avatar({ src, initial, bg }: { src: string; initial: string; bg: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return <span className="hero-avatar" style={{ background: bg }}>{initial}</span>
+  return <img className="hero-avatar" src={src} alt="" onError={() => setFailed(true)} />
+}
 
 export default function Hero() {
   const tradeCount = useLiveTradeCounter()
@@ -46,9 +54,7 @@ export default function Hero() {
 
           <div className="hero-social">
             <div className="hero-avatars" aria-hidden="true">
-              {avatars.map(a => (
-                <span key={a.initial} className="hero-avatar" style={{ background: a.bg }}>{a.initial}</span>
-              ))}
+              {avatars.map(a => <Avatar key={a.src} {...a} />)}
             </div>
             <span className="hero-social-text">Join 6k+ whale watchers</span>
           </div>
