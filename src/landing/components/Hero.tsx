@@ -5,9 +5,9 @@ import WinnersPreview from './WinnersPreview'
 import WinnersPreviewMobile from './WinnersPreviewMobile'
 import { useLiveTradeCounter, RollingNumber } from '../../lib/RollingCounter'
 
-// Photos of people who agreed to be featured (creators/opted-in users).
-// Drop the files at these paths in public/; until a file exists, that slot
-// falls back to the initial-on-gradient avatar (.wp-avatar convention).
+// Unsplash License stock portraits (ZOPIJ2m7cPY, SNvrVyUYyK0, VdSd8u5N5Ic),
+// not photos of real users. A slot whose file fails to load falls back to
+// the initial-on-gradient avatar (.wp-avatar convention).
 const avatars = [
   { src: '/avatars/1.jpg', initial: 'J', bg: 'linear-gradient(135deg, #ca8a04, #facc15)' },
   { src: '/avatars/2.jpg', initial: 'M', bg: 'linear-gradient(135deg, #9333ea, #c084fc)' },
