@@ -1,9 +1,24 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BadgeCheck, Star } from 'lucide-react'
 import ProfitCard from './ProfitCard'
 import WinnersPreview from './WinnersPreview'
 import WinnersPreviewMobile from './WinnersPreviewMobile'
 import { useLiveTradeCounter, RollingNumber } from '../../lib/RollingCounter'
+
+// Unsplash License stock portraits (ZOPIJ2m7cPY, SNvrVyUYyK0, VdSd8u5N5Ic),
+// not photos of real users. A slot whose file fails to load falls back to
+// the initial-on-gradient avatar (.wp-avatar convention).
+const avatars = [
+  { src: '/avatars/1.jpg', initial: 'J', bg: 'linear-gradient(135deg, #ca8a04, #facc15)' },
+  { src: '/avatars/2.jpg', initial: 'M', bg: 'linear-gradient(135deg, #9333ea, #c084fc)' },
+  { src: '/avatars/3.jpg', initial: 'A', bg: 'linear-gradient(135deg, #0891b2, #22d3ee)' },
+]
+
+function Avatar({ src, initial, bg }: { src: string; initial: string; bg: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return <span className="hero-avatar" style={{ background: bg }}>{initial}</span>
+  return <img className="hero-avatar" src={src} alt="" onError={() => setFailed(true)} />
+}
 
 export default function Hero() {
   const tradeCount = useLiveTradeCounter()
@@ -37,13 +52,11 @@ export default function Hero() {
 
           <p className="hero-headline-sub">See exactly who the insider traders and experts are, the moment they make a move.</p>
 
-          <div className="hero-rating">
-            <span className="hero-rating-stars">
-              {Array.from({ length: 5 }).map((_, i) => <Star key={i} size={13} fill="currentColor" strokeWidth={0} />)}
-            </span>
-            <span className="hero-rating-score">4.9/5</span>
-            <span className="hero-rating-divider">|</span>
-            <span className="hero-rating-verified"><BadgeCheck size={14} /> verified by Proof</span>
+          <div className="hero-social">
+            <div className="hero-avatars" aria-hidden="true">
+              {avatars.map(a => <Avatar key={a.src} {...a} />)}
+            </div>
+            <span className="hero-social-text">Join 6k+ whale watchers</span>
           </div>
 
           <div className="hero-form">
