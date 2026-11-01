@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom'
-import { BadgeCheck, Star } from 'lucide-react'
 import ProfitCard from './ProfitCard'
 import WinnersPreview from './WinnersPreview'
 import WinnersPreviewMobile from './WinnersPreviewMobile'
@@ -35,16 +34,7 @@ export default function Hero() {
             The #1 Whale Tracker To <em className="hero-h1-emphasis">Beat</em> Prediction Markets
           </h1>
 
-          <p className="hero-headline-sub">See exactly who the insider traders and experts are, the moment they make a move.</p>
-
-          <div className="hero-rating">
-            <span className="hero-rating-stars">
-              {Array.from({ length: 5 }).map((_, i) => <Star key={i} size={13} fill="currentColor" strokeWidth={0} />)}
-            </span>
-            <span className="hero-rating-score">4.9/5</span>
-            <span className="hero-rating-divider">|</span>
-            <span className="hero-rating-verified"><BadgeCheck size={14} /> verified by Proof</span>
-          </div>
+          <p className="hero-headline-sub">See exactly who's winning, the moment they make a move.</p>
 
           <div className="hero-form">
             <Link to="/signup" className="btn-primary">Get started</Link>
