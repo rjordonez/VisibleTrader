@@ -9,98 +9,94 @@ import RecentWins from './RecentWins'
 import type { useAlerts } from './useAlerts'
 import './leaderboard.css'
 
-// One row of trader_scores: each wallet scored per market (not per fill)
-// against the odds it paid. See supabase/migrations/20261103000000_trader_scores.sql
-// for how experts are defined.
+// One row of trader_scores: our own roster, scored per market. Top earners,
+// and the Experts fallback before the first Polymarket-wide scan lands.
 interface ScoreRow {
   wallet: string; wallet_name: string | null
-  markets: number; wins: number; expected_wins: number; pnl: number
+  markets: number; wins: number; pnl: number
   open_positions: number; open_usd: number
 }
 // One row of expert_traders: a wallet from anywhere on Polymarket scored on
 // its closed positions. See supabase/migrations/20261103040000_expert_discovery.sql.
 interface ExpertRow {
   wallet: string; wallet_name: string | null
-  positions: number; win_rate: number; pnl: number; roi: number
+  positions: number; wins: number; win_rate: number; pnl: number; roi: number; all_time_pnl: number | null
   open_positions: number; open_usd: number
 }
-// One row of insider_leaders: a wallet from anywhere on Polymarket with
-// insider-pattern long-shot wins, and its biggest one. See
-// supabase/migrations/20261103030000_insider_discovery.sql.
+// One row of insider_leaders: a wallet with a long-shot win we can say why
+// about (bought right before the result, or a new/near-empty account), and
+// that's still up overall. See the 20261103050000/60000 migrations.
 interface InsiderRow {
   wallet: string; wallet_name: string | null; trades: number | null
-  open_positions: number; open_usd: number
-  hits: number; total_pnl: number
-  event_title: string; initial_value: number; final_value: number
-  multiplier: number; entry_odds: number; buy_hours_before: number | null
-}
-interface AlertRow {
-  wallet: string; wallet_name: string | null; token_id: string
-  question: string; event_slug: string; outcome: string
-  entry_cost: number; avg_price: number; current_price: number; end_date: string
+  open_positions: number; open_usd: number; all_time_pnl: number
+  event_title: string; initial_value: number; best_pnl: number
+  buy_hours_before: number | null; quick: boolean; few_bets: boolean; new_account: boolean; account_age_days: number | null
 }
 // What a podium card and a list row render, whichever ranking it came from.
 interface Shown {
   wallet: string; wallet_name: string | null; open_positions: number; open_usd: number
-  sub: string; profit: number
-  rate: ReactNode; rateSub: string
-  record: ReactNode; recordSub: string
+  sentence: string; profit: number
+  side: string; sideSub: string
+  record: string
 }
 type FollowProps = Pick<ReturnType<typeof useAlerts>, 'watchedWallets' | 'addWallet' | 'removeWallet'>
-type Ranking = 'experts' | 'insiders' | 'profit'
-const SCORE_COLUMNS = 'wallet,wallet_name,markets,wins,expected_wins,pnl,open_positions,open_usd'
-const EXPERT_COLUMNS = 'wallet,wallet_name,positions,win_rate,pnl,roi,open_positions,open_usd'
-const INSIDER_COLUMNS = 'wallet,wallet_name,trades,open_positions,open_usd,hits,total_pnl,event_title,initial_value,final_value,multiplier,entry_odds,buy_hours_before'
-const pct = (n: number, d: number) => d > 0 ? Math.round(n / d * 100) : 0
-// Under 1% reads as "0%" otherwise.
-const oddsLabel = (p: number) => p < 0.01 ? '<1%' : `${Math.round(p * 100)}%`
-const timingLabel = (h: number | null) => h == null ? null : h < 1 ? 'under an hour before' : h < 48 ? `${Math.round(h)}h before` : `${Math.round(h / 24)} days before`
+type Ranking = 'insiders' | 'experts' | 'profit'
+const SCORE_COLUMNS = 'wallet,wallet_name,markets,wins,pnl,open_positions,open_usd'
+const EXPERT_COLUMNS = 'wallet,wallet_name,positions,wins,win_rate,pnl,roi,all_time_pnl,open_positions,open_usd'
+const INSIDER_COLUMNS = 'wallet,wallet_name,trades,open_positions,open_usd,all_time_pnl,event_title,initial_value,best_pnl,buy_hours_before,quick,few_bets,new_account,account_age_days'
 
-function fromScore(r: ScoreRow): Shown {
-  const wr = pct(r.wins, r.markets)
+const hoursLabel = (h: number) => h < 1 ? 'under an hour' : h < 48 ? `${Math.round(h)} hours` : `${Math.round(h / 24)} days`
+
+// The evidence, in words: why this win looks like someone knew.
+function insiderWhy(r: InsiderRow) {
+  const why: string[] = []
+  if (r.quick && r.buy_hours_before != null) why.push(`${hoursLabel(r.buy_hours_before)} before it happened`)
+  if (r.new_account && r.account_age_days != null) why.push(r.account_age_days < 1 ? 'from a brand-new account' : `from a ${r.account_age_days}-day-old account`)
+  else if (r.few_bets && r.trades != null) why.push(`from an account with only ${r.trades} bet${r.trades === 1 ? '' : 's'} ever`)
+  return why.join(', ')
+}
+
+function fromInsider(r: InsiderRow): Shown {
   return {
     wallet: r.wallet, wallet_name: r.wallet_name, open_positions: r.open_positions, open_usd: r.open_usd,
-    sub: `${r.markets.toLocaleString()} resolved`, profit: r.pnl,
-    rate: `${wr}%`, rateSub: `${r.wins.toLocaleString()} wins`,
-    record: <>{wr}% <span>win rate</span></>, recordSub: `${r.markets.toLocaleString()} resolved`,
+    sentence: `Bet ${fmtAbbrev(r.initial_value)} on "${r.event_title}" ${insiderWhy(r)}`, profit: r.best_pnl,
+    side: fmtAbbrev(r.all_time_pnl), sideSub: 'up overall',
+    record: `Up ${fmtAbbrev(r.all_time_pnl)} overall`,
   }
 }
 
 function fromExpert(r: ExpertRow): Shown {
-  const wr = Math.round(r.win_rate * 100)
-  const roi = `${r.roi >= 0 ? '+' : ''}${Math.round(r.roi * 100)}% return`
+  const roi = Math.round(r.roi * 100)
   return {
     wallet: r.wallet, wallet_name: r.wallet_name, open_positions: r.open_positions, open_usd: r.open_usd,
-    sub: `${r.positions.toLocaleString()} markets`, profit: r.pnl,
-    rate: `${wr}%`, rateSub: roi,
-    record: <>{wr}% <span>win rate</span></>, recordSub: `${roi} across ${r.positions.toLocaleString()} markets`,
+    sentence: `Won ${r.wins.toLocaleString()} of ${r.positions.toLocaleString()} bets`, profit: r.all_time_pnl ?? r.pnl,
+    side: `${Math.round(r.win_rate * 100)}%`, sideSub: `makes ${roi}¢ per $1`,
+    record: `Makes ${roi}¢ for every $1 bet`,
   }
 }
 
-function fromInsider(r: InsiderRow): Shown {
-  const timing = timingLabel(r.buy_hours_before)
+function fromScore(r: ScoreRow): Shown {
+  const wr = Math.round(r.wins / Math.max(r.markets, 1) * 100)
   return {
     wallet: r.wallet, wallet_name: r.wallet_name, open_positions: r.open_positions, open_usd: r.open_usd,
-    sub: r.event_title, profit: r.total_pnl,
-    rate: `${Math.round(r.multiplier)}x`, rateSub: `${fmtAbbrev(r.initial_value)} → ${fmtAbbrev(r.final_value)}`,
-    record: <>{Math.round(r.multiplier)}x <span>on a {oddsLabel(r.entry_odds)} shot</span></>,
-    recordSub: timing ? `Bought ${timing} · ${r.event_title}` : r.event_title,
+    sentence: `Won ${r.wins.toLocaleString()} of ${r.markets.toLocaleString()} bets`, profit: r.pnl,
+    side: `${wr}%`, sideSub: 'win rate',
+    record: `${wr}% win rate`,
   }
 }
 
-const RANKING_COPY: Record<Ranking, { period: string; profit: string; rate: string; noun: string; empty: string }> = {
-  experts: {
-    period: 'Consistently profitable across 50+ markets, from anywhere on Polymarket', profit: 'Realized P&L', rate: 'Win rate', noun: 'experts',
-    empty: 'No experts found yet. The scan runs every 6 hours.',
-  },
+const RANKING_COPY: Record<Ranking, { label: string; period: string; profit: string; side: string; empty: string }> = {
   insiders: {
-    period: 'Long shots outside sports, bought right before the result or from new wallets. A pattern, not proof.',
-    profit: 'Long-shot profit', rate: 'Best hit', noun: 'insiders',
-    empty: 'No insider-pattern wins found yet. The scan runs every 30 minutes.',
+    label: 'Insiders', period: 'Won big on bets almost nobody saw coming, right before the news, and still up overall.',
+    profit: 'Won on one bet', side: 'Up overall', empty: 'No insiders found yet. Check back soon.',
+  },
+  experts: {
+    label: 'Experts', period: 'Win most of their bets, again and again.',
+    profit: 'Total profit', side: 'Win rate', empty: 'No experts found yet. Check back soon.',
   },
   profit: {
-    period: 'All tracked history', profit: 'Resolved P&L', rate: 'Win rate', noun: 'traders',
-    empty: 'Rankings will appear as tracked positions resolve.',
+    label: 'Top earners', period: 'Most money made.',
+    profit: 'Total profit', side: 'Win rate', empty: 'Rankings will appear as tracked positions resolve.',
   },
 }
 
@@ -130,65 +126,12 @@ function Person({ wallet, wallet_name, children }: { wallet: string; wallet_name
   </Link>
 }
 
-const endsIn = (iso: string) => {
-  const days = (new Date(iso).getTime() - Date.now()) / 86400000
-  return days < 1 ? 'ends today' : `ends in ${Math.round(days)}d`
-}
-
-// Open long-shot bets right now by wallets with little history, in markets
-// resolving within 3 weeks (insider_alerts, rescanned every 10 min).
-function LiveInsiderBets(follow: FollowProps) {
-  const [alerts, setAlerts] = useState<AlertRow[] | null>(null)
-  const [trades, setTrades] = useState<Map<string, number | null>>(new Map())
-  useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      const { data } = await supabase.from('insider_alerts')
-        .select('wallet,wallet_name,token_id,question,event_slug,outcome,entry_cost,avg_price,current_price,end_date')
-        .order('score', { ascending: false }).order('entry_cost', { ascending: false }).limit(20)
-      const rows = (data ?? []) as AlertRow[]
-      const { data: w } = rows.length
-        ? await supabase.from('insider_wallets').select('wallet,trades').in('wallet', [...new Set(rows.map(r => r.wallet))])
-        : { data: [] }
-      if (cancelled) return
-      setAlerts(rows)
-      setTrades(new Map(((w ?? []) as { wallet: string; trades: number | null }[]).map(x => [x.wallet, x.trades])))
-    }
-    void load()
-    const interval = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 60000)
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [])
-  if (!alerts || alerts.length === 0) return null
-  return (
-    <section className="leaders-list" aria-labelledby="leaders-live-title">
-      <div className="leaders-list-heading"><h2 id="leaders-live-title">Live insider-pattern bets</h2><span>Open long shots from wallets with little history, in markets ending within 3 weeks</span></div>
-      <div className="leaders-column-head" aria-hidden="true"><span>Trader</span><span>Bet</span><span>Bought at</span><span /></div>
-      <ol className="leaders-rows">{alerts.map((a, index) => {
-        const t = trades.get(a.wallet)
-        return (
-          <li className="leaders-row" key={`${a.wallet}:${a.token_id}`}>
-            <div className="leaders-person"><span className="leaders-rank">{index + 1}</span>
-              <Person wallet={a.wallet} wallet_name={a.wallet_name}>
-                {a.outcome} · {a.question}{t != null ? ` · ${t.toLocaleString()} lifetime market${t === 1 ? '' : 's'}` : ''}
-              </Person>
-            </div>
-            <div className="leaders-row-profit is-positive"><span className="leaders-mobile-label">Bet</span><strong>{fmtFull(a.entry_cost)}</strong></div>
-            <div className="leaders-row-rate"><span className="leaders-mobile-label">Bought at</span><strong>{oddsLabel(a.avg_price)}</strong><small>now {oddsLabel(a.current_price)} · {endsIn(a.end_date)}</small></div>
-            <FollowButton row={a} {...follow} />
-          </li>
-        )
-      })}</ol>
-    </section>
-  )
-}
-
 function LeaderboardPage(follow: FollowProps) {
   const [rows, setRows] = useState<Shown[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [view, setView] = useState<'rankings' | 'wins'>('rankings')
-  const [ranking, setRanking] = useState<Ranking>('experts')
-  const [total, setTotal] = useState(0)
+  const [ranking, setRanking] = useState<Ranking>('insiders')
   useEffect(() => {
     let cancelled = false
     let pending = false
@@ -196,29 +139,33 @@ function LeaderboardPage(follow: FollowProps) {
       if (pending) return
       pending = true
       try {
-        // Filtered and sorted server-side; both sources are one row per wallet.
+        // Filtered and sorted server-side; every source is one row per wallet.
         let next: Shown[]
-        let count: number | null
         if (ranking === 'insiders') {
-          const res = await supabase.from('insider_leaders').select(INSIDER_COLUMNS, { count: 'exact' })
-            .order('total_pnl', { ascending: false }).order('wallet').limit(100)
+          const res = await supabase.from('insider_leaders').select(INSIDER_COLUMNS)
+            .order('best_pnl', { ascending: false }).order('wallet').limit(100)
           if (res.error) throw res.error
           next = ((res.data ?? []) as InsiderRow[]).map(fromInsider)
-          count = res.count
         } else if (ranking === 'experts') {
-          const res = await supabase.from('expert_traders').select(EXPERT_COLUMNS, { count: 'exact' })
+          const res = await supabase.from('expert_traders').select(EXPERT_COLUMNS)
             .eq('is_expert', true).order('pnl', { ascending: false }).order('wallet').limit(100)
           if (res.error) throw res.error
           next = ((res.data ?? []) as ExpertRow[]).map(fromExpert)
-          count = res.count
+          // Before the first Polymarket-wide scan lands (a few minutes after
+          // a service restart), show our roster's experts, not an empty board.
+          if (next.length === 0) {
+            const fb = await supabase.from('trader_scores').select(SCORE_COLUMNS)
+              .eq('is_expert', true).order('pnl', { ascending: false }).order('wallet').limit(100)
+            if (fb.error) throw fb.error
+            next = ((fb.data ?? []) as ScoreRow[]).map(fromScore)
+          }
         } else {
-          const res = await supabase.from('trader_scores').select(SCORE_COLUMNS, { count: 'exact' })
+          const res = await supabase.from('trader_scores').select(SCORE_COLUMNS)
             .order('pnl', { ascending: false }).order('wallet').limit(100)
           if (res.error) throw res.error
           next = ((res.data ?? []) as ScoreRow[]).map(fromScore)
-          count = res.count
         }
-        if (!cancelled) { setRows(next); setTotal(count ?? next.length); setError(false); setLoading(false) }
+        if (!cancelled) { setRows(next); setError(false); setLoading(false) }
       } catch {
         if (!cancelled) { setError(true); setLoading(false) }
       } finally { pending = false }
@@ -229,9 +176,11 @@ function LeaderboardPage(follow: FollowProps) {
     return () => { cancelled = true; clearInterval(interval); unsubscribe() }
   }, [ranking])
 
-  const ranked = rows
   const copy = RANKING_COPY[ranking]
   const changeRanking = (next: Ranking) => { setLoading(true); setRows([]); setRanking(next) }
+  // The top three are the podium cards; the list carries on from #4 so no one
+  // appears twice.
+  const rest = rows.slice(3)
 
   return (
     <div className="sig-page leaders-page">
@@ -240,10 +189,8 @@ function LeaderboardPage(follow: FollowProps) {
         {view === 'rankings' && (
           <div className="leaders-header-controls">
             <label className="leaders-select">
-              <select aria-label="Rank traders by" value={ranking} onChange={e => changeRanking(e.target.value as Ranking)}>
-                <option value="experts">Experts</option>
-                <option value="insiders">Insiders</option>
-                <option value="profit">Highest P&L</option>
+              <select aria-label="Leaderboard" value={ranking} onChange={e => changeRanking(e.target.value as Ranking)}>
+                {(Object.keys(RANKING_COPY) as Ranking[]).map(r => <option key={r} value={r}>{RANKING_COPY[r].label}</option>)}
               </select>
               <ChevronDown size={15} aria-hidden="true" />
             </label>
@@ -263,31 +210,31 @@ function LeaderboardPage(follow: FollowProps) {
       {view === 'rankings' && (<>
         {error && <p className="leaders-notice" role="status">Unable to refresh rankings. {rows.length > 0 ? 'Showing the last available data. ' : ''}Retrying automatically.</p>}
         <section className="leaders-podium" aria-label="Top three traders" aria-busy={loading}>
-          {loading ? [0, 1, 2].map(i => <div className="leaders-podium-skeleton sig-skel" key={i} aria-hidden="true" />) : ranked.slice(0, 3).map((row, index) => (
+          {loading ? [0, 1, 2].map(i => <div className="leaders-podium-skeleton sig-skel" key={i} aria-hidden="true" />) : rows.slice(0, 3).map((row, index) => (
             <article className={`leaders-card leaders-place-${index + 1}`} key={row.wallet}>
               <div className="leaders-card-top"><span className="leaders-place">#{index + 1}</span><Link to={dashboardPath(`/trader/${row.wallet}`)} aria-label={`View ${traderLabel(row.wallet, row.wallet_name)}`}><ArrowUpRight size={18} /></Link></div>
               <Link className="leaders-card-person" to={dashboardPath(`/trader/${row.wallet}`)}><span className="leaders-avatar" style={{ background: avatarGradient(row.wallet) }}><GogglesMark /></span><h2>{traderLabel(row.wallet, row.wallet_name)}</h2></Link>
               <OpenBadge row={row} long />
               <strong className={`leaders-card-profit ${row.profit >= 0 ? 'is-positive' : 'is-negative'}`}>{fmtSigned(row.profit)}</strong><span className="leaders-metric-label">{copy.profit}</span>
-              <div className="leaders-card-record"><strong>{row.record}</strong><span>{row.recordSub}</span></div>
+              <div className="leaders-card-record"><strong>{row.record}</strong><span>{row.sentence}</span></div>
               <FollowButton row={row} {...follow} />
             </article>
           ))}
         </section>
-        {ranking === 'insiders' && <LiveInsiderBets {...follow} />}
-        <section className="leaders-list" aria-labelledby="leaders-list-title" aria-busy={loading}>
-          <div className="leaders-list-heading"><h2 id="leaders-list-title">The rankings</h2>{!loading && <span>{ranked.length} of {total.toLocaleString()} {copy.noun}</span>}</div>
-          <div className="leaders-column-head" aria-hidden="true"><span>Trader</span><span>{copy.profit}</span><span>{copy.rate}</span><span /></div>
-          {loading ? [0, 1, 2, 3, 4].map(i => <div key={i} className="leaders-row-skeleton sig-skel" aria-hidden="true" />) : <ol className="leaders-rows">{ranked.map((row, index) => (
-            <li className="leaders-row" key={row.wallet}>
-              <div className="leaders-person"><span className="leaders-rank">{index + 1}</span><Person wallet={row.wallet} wallet_name={row.wallet_name}>{row.sub} <OpenBadge row={row} /></Person></div>
-              <div className={`leaders-row-profit ${row.profit >= 0 ? 'is-positive' : 'is-negative'}`}><span className="leaders-mobile-label">{copy.profit}</span><strong>{fmtSigned(row.profit)}</strong></div>
-              <div className="leaders-row-rate"><span className="leaders-mobile-label">{copy.rate}</span><strong>{row.rate}</strong><small>{row.rateSub}</small></div>
-              <FollowButton row={row} {...follow} />
-            </li>
-          ))}</ol>}
-          {!loading && !error && ranked.length === 0 && <p className="leaders-notice">{copy.empty}</p>}
-        </section>
+        {(loading || rest.length > 0) && (
+          <section className="leaders-list" aria-label="More traders" aria-busy={loading}>
+            <div className="leaders-column-head" aria-hidden="true"><span>Trader</span><span>{copy.profit}</span><span>{copy.side}</span><span /></div>
+            {loading ? [0, 1, 2, 3, 4].map(i => <div key={i} className="leaders-row-skeleton sig-skel" aria-hidden="true" />) : <ol className="leaders-rows" start={4}>{rest.map((row, index) => (
+              <li className="leaders-row" key={row.wallet}>
+                <div className="leaders-person"><span className="leaders-rank">{index + 4}</span><Person wallet={row.wallet} wallet_name={row.wallet_name}>{row.sentence} <OpenBadge row={row} /></Person></div>
+                <div className={`leaders-row-profit ${row.profit >= 0 ? 'is-positive' : 'is-negative'}`}><span className="leaders-mobile-label">{copy.profit}</span><strong>{fmtSigned(row.profit)}</strong></div>
+                <div className="leaders-row-rate"><span className="leaders-mobile-label">{copy.side}</span><strong>{row.side}</strong><small>{row.sideSub}</small></div>
+                <FollowButton row={row} {...follow} />
+              </li>
+            ))}</ol>}
+          </section>
+        )}
+        {!loading && !error && rows.length === 0 && <p className="leaders-notice">{copy.empty}</p>}
       </>)}
 
       {view === 'wins' && <RecentWins />}

@@ -1362,19 +1362,20 @@ def refresh_trader_open_positions(db):
 def _insider_stats_cache(db):
     """{wallet: (trades, join_date epoch)} for wallets whose Polymarket
     history was fetched in the last day — skips re-asking for them."""
-    rows = db.fetchall('''SELECT wallet, trades, extract(epoch FROM join_date) FROM insider_wallets
-                          WHERE stats_at > now() - interval '1 day' AND trades IS NOT NULL''')
-    return {w: (t, float(j) if j is not None else None) for w, t, j in rows}
+    rows = db.fetchall('''SELECT wallet, trades, extract(epoch FROM join_date), all_time_pnl FROM insider_wallets
+                          WHERE stats_at > now() - interval '1 day' AND trades IS NOT NULL AND all_time_pnl IS NOT NULL''')
+    return {w: (t, float(j) if j is not None else None, float(p)) for w, t, j, p in rows}
 
 
 def _save_insider_stats(db, stats, names, cached):
-    fresh = [(w, names.get(w), t, j) for w, (t, j) in stats.items() if w not in cached]
+    fresh = [(w, names.get(w), t, j, p) for w, (t, j, p) in stats.items() if w not in cached]
     if fresh:
-        db.executemany('''INSERT INTO insider_wallets (wallet, wallet_name, trades, join_date, stats_at)
-                          VALUES (%s, %s, %s, to_timestamp(%s), now())
+        db.executemany('''INSERT INTO insider_wallets (wallet, wallet_name, trades, join_date, all_time_pnl, stats_at)
+                          VALUES (%s, %s, %s, to_timestamp(%s), %s, now())
                           ON CONFLICT (wallet) DO UPDATE SET
                             wallet_name = COALESCE(EXCLUDED.wallet_name, insider_wallets.wallet_name),
-                            trades = EXCLUDED.trades, join_date = EXCLUDED.join_date, stats_at = now()''', fresh)
+                            trades = EXCLUDED.trades, join_date = EXCLUDED.join_date,
+                            all_time_pnl = EXCLUDED.all_time_pnl, stats_at = now()''', fresh)
 
 
 _last_insider_all_time = 0.0
@@ -1394,6 +1395,11 @@ def discover_insider_hits(db):
     known = {(w, p) for w, p in db.fetchall('SELECT wallet, position_id FROM insider_hits')}
     cached = _insider_stats_cache(db)
     hits, stats = insider_scan.scan_hits(windows, known, cached)
+    # Listed wallets also need a current history/all-time P&L even when no new
+    # hit came in for them (the Leaderboard only lists wallets that are up
+    # overall), so refresh any whose stats are missing or a day old.
+    listed = [w for (w,) in db.fetchall('SELECT DISTINCT wallet FROM insider_hits WHERE is_pattern')]
+    stats = insider_scan.stats_for(listed, stats)
     _save_insider_stats(db, stats, {h['wallet']: h['wallet_name'] for h in hits}, cached)
     if hits:
         db.executemany('''INSERT INTO insider_hits (wallet, position_id, wallet_name, condition_id, event_title, event_slug,
@@ -1421,15 +1427,15 @@ def discover_experts(db):
     if not scored:
         print(f'  [experts] no scores from {n_candidates} candidates; keeping the previous list')
         return
-    db.executemany('''INSERT INTO expert_traders (wallet, wallet_name, positions, wins, win_rate, cost, pnl, roi, t_stat, avg_odds, is_expert, updated_at)
-                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+    db.executemany('''INSERT INTO expert_traders (wallet, wallet_name, positions, wins, win_rate, cost, pnl, roi, t_stat, avg_odds, all_time_pnl, is_expert, updated_at)
+                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
                       ON CONFLICT (wallet) DO UPDATE SET
                         wallet_name = COALESCE(EXCLUDED.wallet_name, expert_traders.wallet_name), positions = EXCLUDED.positions,
                         wins = EXCLUDED.wins, win_rate = EXCLUDED.win_rate, cost = EXCLUDED.cost, pnl = EXCLUDED.pnl,
                         roi = EXCLUDED.roi, t_stat = EXCLUDED.t_stat, avg_odds = EXCLUDED.avg_odds,
-                        is_expert = EXCLUDED.is_expert, updated_at = now()''',
+                        all_time_pnl = EXCLUDED.all_time_pnl, is_expert = EXCLUDED.is_expert, updated_at = now()''',
                    [(e['wallet'], e['wallet_name'], e['positions'], e['wins'], e['win_rate'], e['cost'], e['pnl'],
-                     e['roi'], e['t_stat'], e['avg_odds'], e['is_expert']) for e in scored])
+                     e['roi'], e['t_stat'], e['avg_odds'], e['all_time_pnl'], e['is_expert']) for e in scored])
     # Wallets that fell off every board this pass can't stay listed on a stale score.
     db.execute("UPDATE expert_traders SET is_expert = false WHERE is_expert AND updated_at < now() - interval '1 hour'")
     print(f'  [experts] scored {len(scored)} of {n_candidates} candidates, {sum(e["is_expert"] for e in scored)} experts')
