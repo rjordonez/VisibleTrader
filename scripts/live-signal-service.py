@@ -21,6 +21,8 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from _env import load_env
 from live_work import TradeWorkers, SingleFlightJobs, PendingPrices, MarketLocks, LaneFullError
+import insider_scan
+import expert_scan
 
 WS_HOST = 'ws-subscriptions-clob.polymarket.com'
 WS_PATH = '/ws/market'
@@ -50,6 +52,9 @@ WALLET_CATEGORY_REFRESH_SECONDS = 30  # wallet_category_breakdown_cache — see 
 WALLET_PNL_REFRESH_SECONDS = 30  # wallet_pnl_hourly — see refresh_wallet_pnl()
 TRADER_SCORES_REFRESH_SECONDS = 60  # trader_scores (Leaderboard experts/insiders) — see refresh_trader_scores()
 TRADER_OPEN_REFRESH_SECONDS = 10 * 60  # trader_scores.open_positions — see refresh_trader_open_positions()
+INSIDER_HITS_REFRESH_SECONDS = 30 * 60  # insider_hits — see discover_insider_hits()
+INSIDER_ALERTS_REFRESH_SECONDS = 10 * 60  # insider_alerts — see scan_insider_alerts()
+EXPERT_REFRESH_SECONDS = 6 * 60 * 60  # expert_traders — see discover_experts()
 # PROFIT_BOT_REFRESH_SECONDS is NOT incremental yet (refresh_profit_bot still does a
 # full 5-pass recompute per call) — left untouched. Shrinking this one would make the
 # original I/O problem worse, not better; it needs the same incremental treatment
@@ -1310,6 +1315,8 @@ def refresh_trader_open_positions(db):
         (SELECT wallet FROM trader_scores ORDER BY pnl DESC LIMIT 100)
     ''')
     wallets = [r[0] for r in rows]
+    insiders = [r[0] for r in db.fetchall('SELECT DISTINCT wallet FROM insider_hits WHERE is_pattern')]
+    experts = [r[0] for r in db.fetchall('SELECT wallet FROM expert_traders WHERE is_expert')]
 
     # Data API v2 (v1 was retired and answers 410): status=OPEN is what the
     # wallet holds in markets still trading; worth $1+ so leftover dust shares
@@ -1334,14 +1341,121 @@ def refresh_trader_open_positions(db):
             return None
 
     with ThreadPoolExecutor(max_workers=8) as pool:
-        results = [r for r in pool.map(holdings, wallets) if r]
-    if results:
-        db.executemany('UPDATE trader_scores SET open_positions = %s, open_usd = %s WHERE wallet = %s',
-                       [(n, usd, w) for w, n, usd in results])
+        results = {r[0]: r for r in pool.map(holdings, set(wallets) | set(insiders) | set(experts)) if r}
+    scored = [(n, usd, w) for w, n, usd in results.values() if w in set(wallets)]
+    if scored:
+        db.executemany('UPDATE trader_scores SET open_positions = %s, open_usd = %s WHERE wallet = %s', scored)
     # A wallet that drops off every list would otherwise keep a stale count.
     db.execute('UPDATE trader_scores SET open_positions = 0, open_usd = 0 WHERE open_positions > 0 AND NOT (wallet = ANY(%s))',
                (wallets,))
-    print(f'  [aggregates] refreshed trader open positions ({len(results)}/{len(wallets)} wallets)')
+    insider_rows = [(w, n, usd) for w, n, usd in results.values() if w in set(insiders)]
+    if insider_rows:
+        db.executemany('''INSERT INTO insider_wallets (wallet, open_positions, open_usd) VALUES (%s, %s, %s)
+                          ON CONFLICT (wallet) DO UPDATE SET open_positions = EXCLUDED.open_positions, open_usd = EXCLUDED.open_usd''',
+                       insider_rows)
+    expert_rows = [(n, usd, w) for w, n, usd in results.values() if w in set(experts)]
+    if expert_rows:
+        db.executemany('UPDATE expert_traders SET open_positions = %s, open_usd = %s WHERE wallet = %s', expert_rows)
+    print(f'  [aggregates] refreshed trader open positions ({len(results)}/{len(set(wallets) | set(insiders) | set(experts))} wallets)')
+
+
+def _insider_stats_cache(db):
+    """{wallet: (trades, join_date epoch)} for wallets whose Polymarket
+    history was fetched in the last day — skips re-asking for them."""
+    rows = db.fetchall('''SELECT wallet, trades, extract(epoch FROM join_date) FROM insider_wallets
+                          WHERE stats_at > now() - interval '1 day' AND trades IS NOT NULL''')
+    return {w: (t, float(j) if j is not None else None) for w, t, j in rows}
+
+
+def _save_insider_stats(db, stats, names, cached):
+    fresh = [(w, names.get(w), t, j) for w, (t, j) in stats.items() if w not in cached]
+    if fresh:
+        db.executemany('''INSERT INTO insider_wallets (wallet, wallet_name, trades, join_date, stats_at)
+                          VALUES (%s, %s, %s, to_timestamp(%s), now())
+                          ON CONFLICT (wallet) DO UPDATE SET
+                            wallet_name = COALESCE(EXCLUDED.wallet_name, insider_wallets.wallet_name),
+                            trades = EXCLUDED.trades, join_date = EXCLUDED.join_date, stats_at = now()''', fresh)
+
+
+_last_insider_all_time = 0.0
+
+
+def discover_insider_hits(db):
+    """Runs periodically (INSIDER_HITS_REFRESH_SECONDS, see main()) — the
+    Leaderboard's Insiders view. Pulls Polymarket's biggest resolved wins
+    outside sports (insider_scan.scan_hits), scores each long-shot hit not
+    already stored, and records it in insider_hits. The all-time window is
+    re-read once a day; week and month every pass. See
+    supabase/migrations/20261103030000_insider_discovery.sql."""
+    global _last_insider_all_time
+    windows = ['week', 'month']
+    if time.time() - _last_insider_all_time > 86400:
+        windows.append('all')
+    known = {(w, p) for w, p in db.fetchall('SELECT wallet, position_id FROM insider_hits')}
+    cached = _insider_stats_cache(db)
+    hits, stats = insider_scan.scan_hits(windows, known, cached)
+    _save_insider_stats(db, stats, {h['wallet']: h['wallet_name'] for h in hits}, cached)
+    if hits:
+        db.executemany('''INSERT INTO insider_hits (wallet, position_id, wallet_name, condition_id, event_title, event_slug,
+                            category, initial_value, final_value, pnl, entry_odds, multiplier, resolved_at, first_buy_at,
+                            buy_hours_before, score, is_pattern)
+                          VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, to_timestamp(%s), to_timestamp(%s), %s, %s, %s)
+                          ON CONFLICT (wallet, position_id) DO NOTHING''',
+                       [(h['wallet'], h['position_id'], h['wallet_name'], h['condition_id'], h['event_title'], h['event_slug'],
+                         h['category'], h['initial_value'], h['final_value'], h['pnl'], h['entry_odds'], h['multiplier'],
+                         h['resolved_at'], h['first_buy_at'], h['buy_hours_before'], h['score'], h['is_pattern'])
+                        for h in hits])
+    if 'all' in windows:
+        _last_insider_all_time = time.time()
+    print(f'  [insiders] {len(hits)} new long-shot hits ({sum(h["is_pattern"] for h in hits)} insider-pattern)')
+
+
+def discover_experts(db):
+    """Runs periodically (EXPERT_REFRESH_SECONDS, see main()) — the
+    Leaderboard's Experts view. Scores wallets from Polymarket's own P&L
+    boards on their closed positions (expert_scan.scan_experts, a few
+    minutes of v2 calls) and rewrites expert_traders. Open-position counts
+    are kept from the last refresh_trader_open_positions pass. See
+    supabase/migrations/20261103040000_expert_discovery.sql."""
+    scored, n_candidates = expert_scan.scan_experts()
+    if not scored:
+        print(f'  [experts] no scores from {n_candidates} candidates; keeping the previous list')
+        return
+    db.executemany('''INSERT INTO expert_traders (wallet, wallet_name, positions, wins, win_rate, cost, pnl, roi, t_stat, avg_odds, is_expert, updated_at)
+                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                      ON CONFLICT (wallet) DO UPDATE SET
+                        wallet_name = COALESCE(EXCLUDED.wallet_name, expert_traders.wallet_name), positions = EXCLUDED.positions,
+                        wins = EXCLUDED.wins, win_rate = EXCLUDED.win_rate, cost = EXCLUDED.cost, pnl = EXCLUDED.pnl,
+                        roi = EXCLUDED.roi, t_stat = EXCLUDED.t_stat, avg_odds = EXCLUDED.avg_odds,
+                        is_expert = EXCLUDED.is_expert, updated_at = now()''',
+                   [(e['wallet'], e['wallet_name'], e['positions'], e['wins'], e['win_rate'], e['cost'], e['pnl'],
+                     e['roi'], e['t_stat'], e['avg_odds'], e['is_expert']) for e in scored])
+    # Wallets that fell off every board this pass can't stay listed on a stale score.
+    db.execute("UPDATE expert_traders SET is_expert = false WHERE is_expert AND updated_at < now() - interval '1 hour'")
+    print(f'  [experts] scored {len(scored)} of {n_candidates} candidates, {sum(e["is_expert"] for e in scored)} experts')
+
+
+def scan_insider_alerts(db):
+    """Runs periodically (INSIDER_ALERTS_REFRESH_SECONDS, see main()) —
+    open long-shot bets by thin-history wallets in markets resolving soon
+    (insider_scan.scan_alerts). Upserts what's showing now and drops alerts
+    not seen for 2 hours or whose market has ended."""
+    cached = _insider_stats_cache(db)
+    alerts, stats, n_markets = insider_scan.scan_alerts(cached)
+    _save_insider_stats(db, stats, {a['wallet']: a['wallet_name'] for a in alerts}, cached)
+    if alerts:
+        db.executemany('''INSERT INTO insider_alerts (wallet, token_id, wallet_name, condition_id, question, event_title, event_slug,
+                            category, outcome, entry_cost, avg_price, current_price, current_value, end_date, score)
+                          VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, to_timestamp(%s), %s)
+                          ON CONFLICT (wallet, token_id) DO UPDATE SET
+                            wallet_name = EXCLUDED.wallet_name, entry_cost = EXCLUDED.entry_cost, avg_price = EXCLUDED.avg_price,
+                            current_price = EXCLUDED.current_price, current_value = EXCLUDED.current_value,
+                            end_date = EXCLUDED.end_date, score = EXCLUDED.score, last_seen_at = now()''',
+                       [(a['wallet'], a['token_id'], a['wallet_name'], a['condition_id'], a['question'], a['event_title'],
+                         a['event_slug'], a['category'], a['outcome'], a['entry_cost'], a['avg_price'], a['current_price'],
+                         a['current_value'], a['end_date'], a['score']) for a in alerts])
+    db.execute("DELETE FROM insider_alerts WHERE last_seen_at < now() - interval '2 hours' OR end_date < now()")
+    print(f'  [insiders] {len(alerts)} live insider-pattern bets across {n_markets} markets')
 
 
 def reconcile_caches(db):
@@ -2662,6 +2776,9 @@ def main():
     delivery_jobs = SingleFlightJobs(1, 'delivery')
     ingestion_jobs = SingleFlightJobs(1, 'ingestion')
     maintenance_jobs = SingleFlightJobs(2, 'maintenance')
+    # Insider scans are tens of seconds of outbound HTTP; their own lane so
+    # they never hold up the maintenance jobs above.
+    insider_jobs = SingleFlightJobs(2, 'insiders')
     print(f'Work pools: trade_lanes={args.workers} fill_capacity={args.trade_queue_size} '
           f'database_connections={args.db_pool_size}')
 
@@ -2687,6 +2804,9 @@ def main():
     last_wallet_pnl_refresh = 0.0  # fire once on startup, not just after the first interval
     last_trader_scores_refresh = 0.0
     last_trader_open_refresh = 0.0
+    last_insider_hits_refresh = 0.0
+    last_insider_alerts_refresh = 0.0
+    last_expert_refresh = 0.0
     last_reconcile = time.time()  # don't fire on startup — let the incremental passes run first
     last_warm_search = 0.0  # fire once on startup, not just after the first interval
     last_broadcast_flush = time.time()
@@ -2812,6 +2932,18 @@ def main():
                 if now - last_trader_open_refresh > TRADER_OPEN_REFRESH_SECONDS:  # trader_scores.open_positions
                     maintenance_jobs.submit('trader-open', refresh_trader_open_positions, maintenance_db)
                     last_trader_open_refresh = now
+
+                if now - last_insider_hits_refresh > INSIDER_HITS_REFRESH_SECONDS:  # insider_hits
+                    insider_jobs.submit('insider-hits', discover_insider_hits, maintenance_db)
+                    last_insider_hits_refresh = now
+
+                if now - last_insider_alerts_refresh > INSIDER_ALERTS_REFRESH_SECONDS:  # insider_alerts
+                    insider_jobs.submit('insider-alerts', scan_insider_alerts, maintenance_db)
+                    last_insider_alerts_refresh = now
+
+                if now - last_expert_refresh > EXPERT_REFRESH_SECONDS:  # expert_traders
+                    insider_jobs.submit('experts', discover_experts, maintenance_db)
+                    last_expert_refresh = now
 
                 if now - last_profit_bot_refresh > PROFIT_BOT_REFRESH_SECONDS:  # profit_bot_*_cache
                     maintenance_jobs.submit('profit-bot', refresh_profit_bot, maintenance_db)
