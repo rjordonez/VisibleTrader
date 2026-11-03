@@ -1297,12 +1297,39 @@ def refresh_trader_scores(db):
 
 def refresh_trader_open_positions(db):
     """Runs periodically (TRADER_OPEN_REFRESH_SECONDS, see main()) — the
-    Leaderboard's "N open" marker. Counts open positions for only the
-    wallets the Leaderboard can show (experts, insiders, top 100 by P&L) in
-    refresh_trader_open_positions(), rather than per page view. See
-    supabase/migrations/20261103010000_trader_open_positions.sql."""
-    n = db.fetchone('SELECT refresh_trader_open_positions()')[0]
-    print(f'  [aggregates] refreshed trader open positions ({n} wallets)')
+    Leaderboard's "N open" marker. Reads each listed wallet's current
+    holdings from Polymarket's data API, the same call the trader profile's
+    Active tab makes, so the two always agree. opportunity_wallets can't
+    answer this: a sale or redemption we never saw leaves a fill looking
+    open forever. Only the wallets the Leaderboard can show (experts,
+    insiders, top 100 by P&L). A wallet whose fetch fails keeps its last
+    count rather than flashing to zero."""
+    rows = db.fetchall('''
+        SELECT wallet FROM trader_scores WHERE is_expert OR is_insider
+        UNION
+        (SELECT wallet FROM trader_scores ORDER BY pnl DESC LIMIT 100)
+    ''')
+    wallets = [r[0] for r in rows]
+
+    def holdings(wallet):
+        try:
+            req = urllib.request.Request(
+                f'https://data-api.polymarket.com/positions?user={wallet}&limit=500&redeemable=false', headers=UA)
+            with urllib.request.urlopen(req, timeout=10) as r:
+                positions = json.load(r) or []
+            return wallet, len(positions), sum(float(p.get('currentValue') or 0) for p in positions)
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = [r for r in pool.map(holdings, wallets) if r]
+    if results:
+        db.executemany('UPDATE trader_scores SET open_positions = %s, open_usd = %s WHERE wallet = %s',
+                       [(n, usd, w) for w, n, usd in results])
+    # A wallet that drops off every list would otherwise keep a stale count.
+    db.execute('UPDATE trader_scores SET open_positions = 0, open_usd = 0 WHERE open_positions > 0 AND NOT (wallet = ANY(%s))',
+               (wallets,))
+    print(f'  [aggregates] refreshed trader open positions ({len(results)}/{len(wallets)} wallets)')
 
 
 def reconcile_caches(db):

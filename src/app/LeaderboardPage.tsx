@@ -27,7 +27,7 @@ const winRate = (r: LeaderboardRow) => pct(r.wins, r.markets)
 const oddsPaid = (r: LeaderboardRow) => pct(r.expected_wins, r.markets)
 const longshotOdds = (r: LeaderboardRow) => pct(r.longshot_expected, r.longshots)
 // Small "● 3 open" marker: whether a trader has money in markets right now
-// (refreshed every few minutes server-side, see trader_open_positions migration).
+// (from Polymarket, refreshed every 10 min by live-signal-service.py).
 function OpenBadge({ row, long = false }: { row: LeaderboardRow; long?: boolean }) {
   const n = row.open_positions
   if (!n) return null
