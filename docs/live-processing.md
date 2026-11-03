@@ -93,3 +93,47 @@ not blindly starting a second consumer or replaying all records.
 A separate durable-processing change needs per-fill/per-party identities,
 transactional completion markers, idempotent writes, and failure/restart tests.
 Keep the single service instance assumption until database claims are introduced.
+
+## November 2 queue admission incident
+
+Production sampling found one trade lane busy in all 399 samples while trade
+workers overall were idle in 8,188 of 9,576 samples. A bounded database sample
+contained 1,126 one-cent fills for a single monitored market, each involving a
+roster wallet. Those records cannot be discarded without changing accounting.
+The old `ORDER BY id LIMIT available` query repeatedly returned that lane's
+rejected rows. The worker-level capacity cap did not make later database rows
+reachable, and a WebSocket reconnect also paused dispatch.
+
+The dispatcher now retains rejected token IDs, excludes them from the next
+indexed queue read while their lane is above half capacity, then retries their
+oldest rows. Waiting for half capacity is necessary: retrying after just one
+completion repeatedly brings the same hot prefix back. A rejected token also
+stays blocked for the remainder of its batch to prevent overtaking. Memory
+capacity, per-lane bounds, and both trade-side accounting calls are unchanged.
+One independent poller owns admission and acknowledgement state. An acknowledgement
+failure retries that UPDATE before reading more rows rather than submitting the
+same non-idempotent work twice. Metadata refresh uses a locked snapshot.
+
+Validation: the regression suite places a cold token behind 1,000 blocked hot
+fills, proves it runs before releasing the hot worker, then drains and checks
+every hot fill's order. Tests also cover the resume watermark, acknowledgement
+failure, and independent poller shutdown. A conservative replay of 20,000 actual
+queued token IDs (charging *every* token a fixed 224 ms fill cost, including
+unmonitored ones) changed other-market p95 admission from 817 to 407 seconds and
+full admission from 893 to 518 seconds. These are simulation results, not live
+throughput or recovery guarantees. The exclusion SELECT used the existing
+partial index and took 1.525 ms in production EXPLAIN ANALYZE.
+
+This prevents a saturated lane from blocking all other lanes; it does not make
+an individual token infinitely fast. Hash-colliding tokens still share a lane.
+Monitor both the oldest outstanding fill and the newest ticker age, plus
+`[dispatch]` deferred-token/rejection/acknowledgement counters. A fresh ticker
+alone does not mean all historical accounting has caught up.
+
+New processes handle SIGTERM/SIGINT by stopping admission, finishing pending
+acknowledgements, and draining workers. This does not retroactively give the old
+running process a graceful SIGTERM handler. The first rollout must respect the
+existing recovery constraint above; do not blindly restart or reset processed
+rows. Abrupt process/VM failure still has the pre-existing dispatched-versus-
+committed gap. Exactly-once recovery requires a separate transactional identity
+for each fill and party, not a blanket replay.

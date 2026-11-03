@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
-from live_work import TradeWorkers, SingleFlightJobs, PendingPrices, LaneFullError
+from live_work import TradeWorkers, SingleFlightJobs, PendingPrices, LaneFullError, PollingJob
 
 
 def load_service():
@@ -75,6 +75,44 @@ class SchedulingTests(unittest.TestCase):
             self.assertEqual(workers.submit('cold', lambda: 'ok').result(1), 'ok')
         finally:
             release.set()
+            workers.shutdown()
+
+    def test_dispatch_poller_runs_without_socket_loop_and_stops(self):
+        dispatched = threading.Event()
+        calls = []
+        def poll():
+            calls.append(1)
+            dispatched.set()
+        job = PollingJob(poll, interval=0.01)
+        job.start()
+        try:
+            # No WebSocket callback or main-loop tick is supplied.
+            self.assertTrue(dispatched.wait(1))
+        finally:
+            job.stop()
+        self.assertFalse(job._thread.is_alive())
+        self.assertTrue(calls)
+
+    def test_hot_lane_resume_waits_for_half_capacity(self):
+        workers = TradeWorkers(1, 8, max_per_lane=4)
+        releases = [threading.Event() for _ in range(4)]
+        entered = [threading.Event() for _ in range(4)]
+        def work(i):
+            entered[i].set()
+            releases[i].wait(2)
+        try:
+            for i in range(4):
+                workers.submit('hot', work, i)
+            self.assertFalse(workers.ready_to_resume('hot'))
+            releases[0].set()
+            self.assertTrue(entered[1].wait(1))
+            self.assertFalse(workers.ready_to_resume('hot'))
+            releases[1].set()
+            self.assertTrue(entered[2].wait(1))
+            self.assertTrue(workers.ready_to_resume('hot'))
+        finally:
+            for event in releases:
+                event.set()
             workers.shutdown()
 
     def test_failure_releases_capacity(self):
@@ -190,6 +228,83 @@ class ServiceTests(unittest.TestCase):
         self.assertIn('token', buy[3])
         db.execute.assert_called_once()
         self.assertEqual(db.execute.call_args.args[1], ([1, 2, 3],))
+
+    def test_database_hot_prefix_does_not_starve_unrelated_token(self):
+        # The old worker-only fairness test missed the real failure: the
+        # cold token is OUTSIDE the SQL LIMIT, behind 1,000 hot fills.
+        service = self.service
+        stamp = datetime.now(timezone.utc)
+        rows = [(i, str(i), 'buyer', 'seller', 0, 'hot', 1, 1, stamp)
+                for i in range(1000)]
+        rows.append((1000, 'cold', 'buyer', 'seller', 0, 'cold', 1, 1, stamp))
+        pending = {r[0]: r for r in rows}
+        def read(sql, params):
+            excluded = set(params[0]) if len(params) == 2 else set()
+            return [r for r in pending.values() if r[5] not in excluded][:params[-1]]
+        def ack(sql, params):
+            for row_id in params[0]:
+                pending.pop(row_id)
+        db = Mock()
+        db.fetchall.side_effect = read
+        db.execute.side_effect = ack
+        workers = TradeWorkers(4, 20, max_per_lane=2)
+        release, cold = threading.Event(), threading.Event()
+        seen = []
+        def process(*args):
+            token, tx = args[2], args[5]
+            if token == 'hot':
+                release.wait(5)
+            else:
+                cold.set()
+            seen.append(tx)
+        service.process_fill = process
+        admission = service.FillAdmission()
+        try:
+            metadata = {'hot': {}, 'cold': {}}
+            service.poll_onchain_fills(db, metadata, set(), {}, workers, admission=admission)
+            service.poll_onchain_fills(db, metadata, set(), {}, workers, admission=admission)
+            self.assertTrue(cold.wait(1), 'cold market remains behind the hot SQL prefix')
+            self.assertEqual(len(pending), 998)
+            self.assertIn(2, pending)  # deferred fills were not discarded
+            release.set()
+            for _ in range(1000):
+                for lane in workers._lanes:
+                    lane.submit(lambda: None).result(1)
+                if not pending:
+                    break
+                service.poll_onchain_fills(db, metadata, set(), {}, workers, admission=admission)
+            self.assertEqual(pending, {})
+        finally:
+            release.set()
+            workers.shutdown()
+        self.assertEqual([x for x in seen if x != 'cold'], [str(i) for i in range(1000)])
+
+    def test_ack_retry_does_not_submit_twice(self):
+        service = self.service
+        row = (1, 'tx', 'buyer', 'seller', 0, 'token', 1, 1, datetime.now(timezone.utc))
+        db, workers = Mock(), Mock(available=5)
+        db.fetchall.side_effect = [[row], []]
+        db.execute.side_effect = [RuntimeError('connection lost'), None]
+        admission = service.FillAdmission()
+        with self.assertRaises(RuntimeError):
+            service.poll_onchain_fills(db, {'token': {}}, set(), {}, workers, admission=admission)
+        self.assertEqual(admission.pending_ack, [1])
+        service.poll_onchain_fills(db, {'token': {}}, set(), {}, workers, admission=admission)
+        self.assertEqual(workers.submit.call_count, 1)
+        self.assertEqual(admission.pending_ack, [])
+
+    def test_rejected_token_cannot_overtake_within_same_batch(self):
+        service = self.service
+        stamp = datetime.now(timezone.utc)
+        rows = [(i, str(i), 'buyer', 'seller', 0, 'token', 1, 1, stamp) for i in range(3)]
+        db, workers = Mock(), Mock(available=3)
+        db.fetchall.return_value = rows
+        # The worker becomes free immediately after rejecting the first row.
+        workers.submit.side_effect = [LaneFullError('full'), Mock(), Mock()]
+        admission = service.FillAdmission()
+        service.poll_onchain_fills(db, {'token': {}}, set(), {}, workers, admission=admission)
+        self.assertEqual(workers.submit.call_count, 1)
+        db.execute.assert_not_called()
 
     def test_empty_batch_does_not_write(self):
         db = Mock()

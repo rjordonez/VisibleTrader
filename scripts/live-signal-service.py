@@ -12,6 +12,7 @@ leave it going. Requires DATABASE_URL in the environment (Supabase Settings
 pattern validated live earlier this session; the only non-stdlib dependency
 is psycopg for the Postgres connection.
 """
+import signal
 import argparse, bisect, json, os, random, socket, ssl, struct, base64, threading, time, urllib.error, urllib.parse, urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -20,7 +21,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from _env import load_env
-from live_work import TradeWorkers, SingleFlightJobs, PendingPrices, MarketLocks, LaneFullError
+from live_work import TradeWorkers, SingleFlightJobs, PendingPrices, MarketLocks, LaneFullError, PollingJob
 import insider_scan
 import expert_scan
 
@@ -123,9 +124,13 @@ stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trade
 last_activity = {'ts': time.time()}
 
 
-def watchdog(threshold_seconds=180):
+def watchdog(threshold_seconds=180, stop_event=None):
     while True:
-        time.sleep(30)
+        if stop_event is not None:
+            if stop_event.wait(30):
+                return
+        else:
+            time.sleep(30)
         stale_for = time.time() - last_activity['ts']
         if stale_for > threshold_seconds:
             print(f'[watchdog] no activity in {stale_for:.0f}s (> {threshold_seconds}s) — exiting so systemd restarts us.')
@@ -2533,7 +2538,21 @@ def prune_onchain_fills(db):
     db.execute('DELETE FROM onchain_fills WHERE processed = true AND received_at < %s', (cutoff,))
 
 
-def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor, trade_db=None):
+class FillAdmission:
+    """Single-dispatcher state; deferred tokens stay durable and ordered."""
+    def __init__(self):
+        self.blocked = set()
+        self.pending_ack = []
+        self.rejections = 0
+
+    def acknowledge(self, db):
+        if self.pending_ack:
+            db.execute('UPDATE onchain_fills SET processed = true WHERE id = ANY(%s)',
+                       (self.pending_ack,))
+            self.pending_ack = []
+
+
+def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor, trade_db=None, admission=None):
     """Replaces the old last_trade_price WebSocket branch as the source of
     trade discovery (see the 2026-08-26 investigation: that path measured a
     60% miss rate on rapid trade bursts even on actively-watched markets).
@@ -2561,17 +2580,28 @@ def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor, tra
     outcome-token leg when it was a SELL (side=1); taker_amount_filled is
     always the other leg.
     """
+    admission = admission if admission is not None else FillAdmission()
+    # Retry only the acknowledgement after an UPDATE failure. Resubmitting
+    # already-dispatched fills would duplicate non-idempotent accounting.
+    admission.acknowledge(db)
+    admission.blocked = {token for token in admission.blocked if not executor.ready_to_resume(token)}
     limit = min(200, executor.available)
     if limit == 0:
         return  # Backpressure: leave work durable in onchain_fills.
+    exclusion = ' AND NOT (token_id = ANY(%s))' if admission.blocked else ''
+    params = (sorted(admission.blocked), limit) if admission.blocked else (limit,)
     rows = db.fetchall('''SELECT id, tx_hash, maker, taker, side, token_id,
             maker_amount_filled, taker_amount_filled, block_timestamp
-        FROM onchain_fills WHERE processed = false ORDER BY id LIMIT %s''', (limit,))
+        FROM onchain_fills WHERE processed = false''' + exclusion + ' ORDER BY id LIMIT %s', params)
     if not rows:
         return
 
-    ids = []
+    ids = admission.pending_ack
     for row_id, tx_hash, maker, taker, side, token_id, maker_amt, taker_amt, block_ts in rows:
+        # Once a token is rejected, do not admit a later fill for it even
+        # if its worker finishes during this batch. Retry its oldest first.
+        if token_id in admission.blocked:
+            continue
         if side == 0:  # maker's order was BUY -> maker pays USDC, receives the outcome token
             usdc_raw, token_raw = float(maker_amt), float(taker_amt)
         else:  # maker's order was SELL -> maker gives up the outcome token, receives USDC
@@ -2599,10 +2629,8 @@ def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor, tra
                             {token_id: info}, token_id, price, size, tx_hash,
                             buyer, seller, roster, wallet_names, block_ts)
         except LaneFullError:
-            # This token's own lane already has its share of the shared
-            # budget queued (see TradeWorkers) — leave processed=false and
-            # retry it next tick instead of letting one hot market's
-            # backlog block admission for every other lane too.
+            admission.blocked.add(token_id)
+            admission.rejections += 1
             continue
         with state_lock:
             stats['process_trade_submitted'] += 2
@@ -2612,8 +2640,7 @@ def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor, tra
     # committed. Do NOT add automatic replay here: contributions/exits are
     # not idempotent across a partially successful fill. See the deployment
     # notes in docs/live-processing.md before restarting a loaded service.
-    if ids:
-        db.execute('UPDATE onchain_fills SET processed = true WHERE id = ANY(%s)', (ids,))
+    admission.acknowledge(db)
 
 
 def process_fill(db, token_info, token_id, price, size, tx_hash,
@@ -2798,7 +2825,6 @@ def main():
     last_heartbeat = time.time()
     last_prune = time.time()
     last_onchain_prune = time.time()
-    last_onchain_poll = 0.0  # fire once on startup, not just after the first interval
     last_onchain_rpc_fetch = 0.0  # fire once on startup, not just after the first interval
     last_resolution_sweep = time.time()
     last_config_reload = time.time()
@@ -2819,10 +2845,27 @@ def main():
     last_price_flush = 0.0
     last_trade_submitted = last_trade_completed = last_fills_received = 0
 
+    # Dispatch runs independently of quote socket reads/reconnects and market
+    # refresh HTTP requests. Swap metadata under this lock; never expose the
+    # clear/update gap to the dispatcher as an unmonitored-token decision.
+    token_info_lock = threading.Lock()
+    admission = FillAdmission()
+    def dispatch():
+        with token_info_lock:
+            snapshot = dict(keyed_token_info)
+        poll_onchain_fills(ingestion_db, snapshot, roster, wallet_names,
+                           executor, trade_db, admission)
+    dispatcher = PollingJob(dispatch)
+    stopping = threading.Event()
+    def request_stop(signum, frame):
+        stopping.set()
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    dispatcher.start()
     last_activity['ts'] = time.time()
-    threading.Thread(target=watchdog, daemon=True).start()
+    threading.Thread(target=watchdog, kwargs={"stop_event": stopping}, daemon=True).start()
 
-    while True:
+    while not stopping.is_set():
         try:
             print('Connecting to market WebSocket...')
             ssock = ws_connect()
@@ -2832,7 +2875,7 @@ def main():
             buf = bytearray()
             last_ping = time.time()
 
-            while True:
+            while not stopping.is_set():
                 now = time.time()
                 last_activity['ts'] = now
                 if now - last_ping > 10:
@@ -2848,8 +2891,9 @@ def main():
                     new_tokens, new_info = fetch_active_tokens()
                     if new_tokens:
                         tokens[:] = new_tokens
-                        keyed_token_info.clear()
-                        keyed_token_info.update(new_info)
+                        with token_info_lock:
+                            keyed_token_info.clear()
+                            keyed_token_info.update(new_info)
                         dump_watched_markets(new_info)
                         print(f'{len(tokens)} tokens — reconnecting to apply.')
                         break  # break inner loop -> reconnect with fresh subscription
@@ -2888,6 +2932,8 @@ def main():
                               f'trade_side_failures={stats["trade_side_failures"]} '
                               f'pending_price_markets={len(pending_prices)} '
                               f'old_message_estimate={old_est} broadcast_sends={sends} reduction={reduction}')
+                    print(f'[dispatch] deferred_tokens={len(admission.blocked)} '
+                          f'lane_rejections={admission.rejections} pending_ack={len(admission.pending_ack)}')
                     last_heartbeat = now
                     ingestion_jobs.submit('freshness', report_pipeline_freshness, ingestion_db)
 
@@ -2902,10 +2948,6 @@ def main():
                 if now - last_onchain_rpc_fetch > ONCHAIN_RPC_POLL_SECONDS:  # populates onchain_fills — see fetch_onchain_fills_via_rpc's docstring
                     ingestion_jobs.submit('fetch-fills', fetch_onchain_fills_via_rpc, ingestion_db)  # makes several blocking HTTP calls — off the main loop, like sweep_resolved_positions below
                     last_onchain_rpc_fetch = now
-
-                if now - last_onchain_poll > 1:  # trade discovery — replaces the old last_trade_price WS branch
-                    poll_onchain_fills(ingestion_db, keyed_token_info, roster, wallet_names, executor, trade_db)
-                    last_onchain_poll = now
 
                 if now - last_resolution_sweep > 300:  # every 5 min — catches positions closed out by market resolution, not a sale
                     maintenance_jobs.submit('resolve', sweep_resolved_positions, maintenance_db)
@@ -3011,8 +3053,20 @@ def main():
 
         except Exception as e:
             print(f'Connection error: {e}. Reconnecting in 5s...')
-            time.sleep(5)
+            stopping.wait(5)
             last_market_refresh = time.time()
+
+    dispatcher.stop()
+    while admission.pending_ack:
+        try:
+            admission.acknowledge(ingestion_db)
+        except Exception as exc:
+            print(f"[shutdown] waiting for fill acknowledgement: {exc!r}", flush=True)
+            time.sleep(1)
+    executor.shutdown()
+    for jobs in (price_jobs, delivery_jobs, ingestion_jobs, maintenance_jobs, insider_jobs):
+        jobs.shutdown()
+    print('[shutdown] dispatcher stopped; all admitted trade tasks drained', flush=True)
 
 
 if __name__ == '__main__':
