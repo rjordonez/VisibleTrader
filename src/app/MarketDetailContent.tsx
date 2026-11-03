@@ -40,6 +40,17 @@ function groupByWallet(wallets: WalletContribution[]): TraderGroup[] {
   )
 }
 
+// The preview popup links out to the full market page; the full page
+// scrolls down to its own trader list.
+type SeeMore = { to: string; state?: unknown } | { onClick: () => void }
+
+function SeeMoreLink({ seeMore, label = 'See more' }: { seeMore: SeeMore; label?: string }) {
+  const body = <>{label} <ChevronRight size={14} strokeWidth={2.5} /></>
+  return 'to' in seeMore
+    ? <Link to={seeMore.to} state={seeMore.state} className="mkt-see-more">{body}</Link>
+    : <button type="button" className="mkt-see-more" onClick={seeMore.onClick}>{body}</button>
+}
+
 interface TraderRecord { wallet: string; won: number; lost: number }
 
 const TRADERS_PER_PAGE = 10
@@ -68,11 +79,11 @@ function useTraderRecords(wallets: string[]) {
   return records
 }
 
-function TopTraders({ groups, records, linkToTrader, onSeeMore }: {
+function TopTraders({ groups, records, linkToTrader, seeMore }: {
   groups: TraderGroup[]
   records: Map<string, TraderRecord>
   linkToTrader: (wallet: string) => string
-  onSeeMore: () => void
+  seeMore: SeeMore
 }) {
   const top = groups
     .map(g => ({ g, r: records.get(g.wallet) }))
@@ -85,9 +96,7 @@ function TopTraders({ groups, records, linkToTrader, onSeeMore }: {
     <section className="mkt-card mkt-top">
       <div className="mkt-card-head">
         <span className="sig-drill-label">Top traders</span>
-        <button type="button" className="mkt-see-more" onClick={onSeeMore}>
-          See more <ChevronRight size={14} strokeWidth={2.5} />
-        </button>
+        <SeeMoreLink seeMore={seeMore} />
       </div>
       {top.map(({ g, r }, i) => (
         <Link key={g.wallet} to={linkToTrader(g.wallet)} className="mkt-top-row">
@@ -241,8 +250,12 @@ function ActivitySummary({ wallets }: { wallets: WalletContribution[] }) {
 // full contributing-traders list. Used both inside SignalModal (a popup)
 // and full-width on the Terminal's market route — one implementation, two
 // homes, so neither surface can silently drift out of sync with the other.
-export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220, priceUnit = '¢', chartVariant = 'markers' }: {
+export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220, priceUnit = '¢', chartVariant = 'markers', fullPagePath }: {
   opportunity: Opportunity
+  // Set by the popup: renders the compact preview (header, stats, top
+  // traders, chart) and sends "See more" to this full-page route instead
+  // of listing activity and every trader inline.
+  fullPagePath?: string
   // Overridable so the Terminal keeps trader navigation inside its own
   // route tree instead of bouncing out to the main app — see
   // TraderDetailPage.tsx's identical linkToTrader prop for the same reason.
@@ -281,6 +294,10 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
   const pageGroups = groups.slice((safePage - 1) * TRADERS_PER_PAGE, safePage * TRADERS_PER_PAGE)
 
   const tag = signalsTag(o.tier, o.cumulative_usd)
+  const preview = !!fullPagePath
+  const seeMore: SeeMore = fullPagePath
+    ? { to: fullPagePath, state: { opportunity: o } }
+    : { onClick: () => tradersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 
   return (
     <div className="mkt-detail">
@@ -315,8 +332,7 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
 
       {!walletsLoading && (
         <TopTraders
-          groups={groups} records={records} linkToTrader={linkToTrader}
-          onSeeMore={() => tradersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          groups={groups} records={records} linkToTrader={linkToTrader} seeMore={seeMore}
         />
       )}
 
@@ -348,39 +364,48 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
         </div>
       )}
 
-      {!walletsLoading && wallets.length > 0 && (
+      {preview ? (
+        <div className="mkt-preview-foot">
+          <span>{groups.length > 0 ? `${groups.length} traders · activity and every position` : 'Activity and every position'}</span>
+          <SeeMoreLink seeMore={seeMore} label="View full market" />
+        </div>
+      ) : (
         <>
-          <div className="sig-drill-label">Activity</div>
-          <ActivitySummary wallets={wallets} />
+        {!walletsLoading && wallets.length > 0 && (
+          <>
+            <div className="sig-drill-label">Activity</div>
+            <ActivitySummary wallets={wallets} />
+          </>
+        )}
+
+        {/* Holders table sits full-width below the chart/activity, not beside
+            them in a narrow side column — matches the fomo reference this was
+            modeled on. Its own card (.sig-drill-card), not flush like the
+            chart/activity above it. */}
+        <div className="sig-drill-card" ref={tradersRef}>
+          <div className="sig-drill-label">Contributing traders</div>
+          <div style={{ minHeight: 5 * 36 }}>
+            {walletsLoading && <SkelDrillRows count={5} />}
+            {!walletsLoading && wallets.length === 0 && (
+              <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
+            )}
+            {!walletsLoading && pageGroups.map(g => (
+              <TraderGroupRow key={g.wallet} group={g} latestPrice={o.latest_price} linkToTrader={linkToTrader} priceUnit={priceUnit} />
+            ))}
+          </div>
+          {!walletsLoading && pageCount > 1 && (
+            <div className="sig-pager">
+              <button type="button" className="sig-load-more" disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>Prev</button>
+              <span className="sig-pager-status">
+                Page {safePage} of {pageCount}
+                <span> &middot; {groups.length} traders</span>
+              </span>
+              <button type="button" className="sig-load-more" disabled={safePage === pageCount} onClick={() => setPage(safePage + 1)}>Next</button>
+            </div>
+          )}
+        </div>
         </>
       )}
-
-      {/* Holders table sits full-width below the chart/activity, not beside
-          them in a narrow side column — matches the fomo reference this was
-          modeled on. Its own card (.sig-drill-card), not flush like the
-          chart/activity above it. */}
-      <div className="sig-drill-card" ref={tradersRef}>
-        <div className="sig-drill-label">Contributing traders</div>
-        <div style={{ minHeight: 5 * 36 }}>
-          {walletsLoading && <SkelDrillRows count={5} />}
-          {!walletsLoading && wallets.length === 0 && (
-            <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
-          )}
-          {!walletsLoading && pageGroups.map(g => (
-            <TraderGroupRow key={g.wallet} group={g} latestPrice={o.latest_price} linkToTrader={linkToTrader} priceUnit={priceUnit} />
-          ))}
-        </div>
-        {!walletsLoading && pageCount > 1 && (
-          <div className="sig-pager">
-            <button type="button" className="sig-load-more" disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>Prev</button>
-            <span className="sig-pager-status">
-              Page {safePage} of {pageCount}
-              <span> &middot; {groups.length} traders</span>
-            </span>
-            <button type="button" className="sig-load-more" disabled={safePage === pageCount} onClick={() => setPage(safePage + 1)}>Next</button>
-          </div>
-        )}
-      </div>
     </div>
   )
 }
