@@ -333,5 +333,63 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(service.stats['trade_side_failures'], 1)
 
 
+class TradeNoOpTests(unittest.TestCase):
+    def setUp(self):
+        self.s = load_service()
+        self.info = {'conditionId': 'condition', 'outcome': 'Yes', 'slug': 'market',
+                     'title': 'Market', 'eventId': 'event'}
+        self.conn = Mock()
+        self.db = Mock()
+        self.db.run_transaction.side_effect = lambda fn: fn(self.conn)
+        self.s.fetch_live_profile_name = Mock(return_value='Name')
+        self.s.fetch_event_category = Mock(return_value='sports')
+        self.ts = datetime.now(timezone.utc)
+
+    def trade(self, *, tracked=False, ticker=False, size=1, price=.5, side='SELL'):
+        self.s.process_trade(self.db, {'token': self.info}, 'token', price, size,
+                             side, 'tx', 'wallet', {'wallet'} if tracked else set(),
+                             {}, self.ts, ticker)
+
+    def test_untracked_seller_never_opens_empty_transaction(self):
+        self.trade(size=10000)
+        self.db.run_transaction.assert_not_called()
+        self.s.fetch_live_profile_name.assert_not_called()
+
+    def test_small_untracked_buyer_without_price_write_is_noop(self):
+        self.trade(ticker=True, side='BUY')
+        self.db.run_transaction.assert_not_called()
+        self.s.fetch_live_profile_name.assert_not_called()
+
+    def test_tracked_seller_still_records_close(self):
+        self.s.record_exit = Mock(return_value=None)
+        self.s.touch_tracked_wallet = Mock()
+        self.trade(tracked=True)
+        self.s.record_exit.assert_called_once_with(self.conn, 'condition', 'Yes',
+                                                   'wallet', .5, .5, self.ts)
+        self.s.touch_tracked_wallet.assert_called_once_with(self.conn, 'wallet')
+
+    def test_large_untracked_buyer_keeps_ticker(self):
+        self.s.record_ticker_trade = Mock()
+        self.s.update_ticker_wallet = Mock()
+        self.trade(ticker=True, side='BUY', size=1000)
+        self.s.record_ticker_trade.assert_called_once()
+        self.s.update_ticker_wallet.assert_called_once()
+
+    def test_small_untracked_buyer_keeps_price_without_profile_lookup(self):
+        self.s.tiers_hit[('condition', 'Yes')].add(1000)
+        self.trade(ticker=True, side='BUY')
+        self.db.run_transaction.assert_called_once()
+        self.assertTrue(any('UPDATE opportunities SET latest_price' in c.args[0]
+                            for c in self.conn.execute.call_args_list))
+        self.s.fetch_live_profile_name.assert_not_called()
+
+    def test_tracked_buy_keeps_contribution(self):
+        self.s.record_contribution = Mock()
+        self.s.record_tier_crossed = Mock()
+        self.s.touch_tracked_wallet = Mock()
+        self.trade(tracked=True, ticker=True, side='BUY')
+        self.s.record_contribution.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main()

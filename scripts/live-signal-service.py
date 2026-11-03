@@ -2253,7 +2253,14 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
     # membership, conviction/tier-crossing bookkeeping) is resolved here,
     # once, outside the transaction — see this function's docstring for why.
     wallet_name = None
-    is_roster_wallet = False
+    # Snapshot membership under the same lock used by configuration updates.
+    with state_lock:
+        is_roster_wallet = bool(usd > 0 and wallet and wallet in roster)
+        needs_price = bool(record_ticker and price and float(price) > 0
+                           and key_probe in tiers_hit and key_probe not in resolved_markets)
+    needs_ticker = bool(record_ticker and usd >= TICKER_MIN_USD)
+    if not (is_roster_wallet or needs_ticker or needs_price):
+        return  # No persistent effects: avoid HTTP lookups and an empty transaction.
     is_first_ever = False
     newly_crossed = []
     distinct_wallets = set()
@@ -2261,7 +2268,7 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
 
     if usd > 0:
         wallet_name = wallet_names.get(wallet) if wallet else None
-        if wallet and not wallet_name:
+        if (is_roster_wallet or needs_ticker) and wallet and not wallet_name:
             if wallet in live_profile_cache:
                 wallet_name = live_profile_cache[wallet]
                 with state_lock:
@@ -2273,14 +2280,6 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
                 with state_lock:
                     stats['profile_fetch_count'] += 1
                     stats['profile_fetch_ms'] += (time.time() - _t0) * 1000
-
-        # roster is mutated (clear+update) by apply_config on a config-poll
-        # thread while trade-processing threads read it here — state_lock
-        # makes the membership check atomic w.r.t. that clear+update pair, so a
-        # trade can never see a momentarily-empty roster and get silently
-        # dropped between the clear() and the update() landing.
-        with state_lock:
-            is_roster_wallet = bool(wallet and wallet in roster)
 
         if is_roster_wallet:
             with state_lock:
