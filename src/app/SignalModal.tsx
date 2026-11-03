@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { Opportunity } from './types'
 import { MarketDetailContent } from './MarketDetailContent'
+import { marketPagePath } from './helpers'
 
 export function SignalModal({ opportunity: o, onClose }: { opportunity: Opportunity; onClose: () => void }) {
   useEffect(() => {
@@ -18,7 +19,7 @@ export function SignalModal({ opportunity: o, onClose }: { opportunity: Opportun
       <div className="sig-modal-wrap" onClick={e => e.stopPropagation()}>
         <button className="sig-modal-close" onClick={onClose} aria-label="Close">✕</button>
         <div className="sig-modal">
-          <MarketDetailContent opportunity={o} chartVariant="minimal" />
+          <MarketDetailContent opportunity={o} chartVariant="minimal" chartHeight={160} fullPagePath={marketPagePath(o.condition_id, o.outcome)} />
         </div>
       </div>
     </div>

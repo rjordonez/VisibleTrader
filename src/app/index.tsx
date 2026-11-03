@@ -21,6 +21,7 @@ const HomePage = lazy(() => import('./HomePage'))
 const ProfitsPage = lazy(() => import('./ProfitsPage'))
 const LeaderboardPage = lazy(() => import('./LeaderboardPage'))
 const TraderDetailPage = lazy(() => import('./TraderDetailPage'))
+const MarketPage = lazy(() => import('./MarketPage'))
 const SettingsPage = lazy(() => import('./SettingsPage'))
 const JournalPage = lazy(() => import('./JournalPage'))
 const ConnectionsPage = lazy(() => import('./connections/ConnectionsPage'))
@@ -180,6 +181,12 @@ function TraderDetailRoute() {
   const { wallet } = useParams<{ wallet: string }>()
   if (!wallet) return <Navigate to={dashboardPath('/')} replace />
   return <TraderDetailPage key={wallet} wallet={wallet} />
+}
+
+function MarketRoute() {
+  const { conditionId, outcome } = useParams<{ conditionId: string; outcome: string }>()
+  if (!conditionId || !outcome) return <Navigate to={dashboardPath('/')} replace />
+  return <MarketPage key={`${conditionId}::${outcome}`} conditionId={conditionId} outcome={outcome} />
 }
 
 /* ── App Shell ──
@@ -366,6 +373,7 @@ export default function AppShell() {
                   <Route path="connections" element={<Navigate to={dashboardPath('/settings/connections')} replace />} />
                   <Route path="settings/connections" element={<ConnectionsPage />} />
                   <Route path="trader/:wallet" element={<TraderDetailRoute />} />
+                  <Route path="market/:conditionId/:outcome" element={<MarketRoute />} />
                   <Route path="*" element={<Navigate to={dashboardPath('/')} replace />} />
                 </Routes>
               </Suspense>

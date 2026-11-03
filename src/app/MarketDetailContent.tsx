@@ -1,12 +1,15 @@
 import { MarketIcon } from './MarketIcon'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
 import type { Opportunity, WalletContribution, ChartPoint } from './types'
 import {
   fetchWallets, fetchChart, signalsTag, signalsTraderStatus,
-  walletReturn, fmtFull, fmtSigned, traderLabel, timeAgo,
+  walletReturn, fmtFull, fmtSigned, traderLabel, timeAgo, avatarGradient,
 } from './helpers'
+import GogglesMark from './GogglesMark'
 import { dashboardPath } from '../lib/domains'
+import { supabase } from '../lib/supabase'
 import { PriceChart } from './PriceChart'
 import { PickChart } from './PickChart'
 import { SkelBlock, SkelDrillRows } from './Skeleton'
@@ -34,6 +37,82 @@ function groupByWallet(wallets: WalletContribution[]): TraderGroup[] {
   // more useful sort key here than the order individual buys happened in.
   return Array.from(map.values()).sort(
     (a, b) => b.entries.reduce((s, e) => s + e.usd, 0) - a.entries.reduce((s, e) => s + e.usd, 0)
+  )
+}
+
+// The preview popup links out to the full market page; the full page
+// scrolls down to its own trader list.
+type SeeMore = { to: string; state?: unknown } | { onClick: () => void }
+
+function SeeMoreLink({ seeMore, label = 'See more' }: { seeMore: SeeMore; label?: string }) {
+  const body = <>{label} <ChevronRight size={14} strokeWidth={2.5} /></>
+  return 'to' in seeMore
+    ? <Link to={seeMore.to} state={seeMore.state} className="mkt-see-more">{body}</Link>
+    : <button type="button" className="mkt-see-more" onClick={seeMore.onClick}>{body}</button>
+}
+
+interface TraderRecord { wallet: string; won: number; lost: number }
+
+const TRADERS_PER_PAGE = 10
+const TOP_TRADER_COUNT = 3
+// Same "has a real record" bar the Discover feed uses, so a 1-for-1 wallet
+// can't headline the popup with a 100% win rate.
+const MIN_RESOLVED = 10
+
+const winRate = (r: TraderRecord) => r.won / (r.won + r.lost)
+
+// Win/loss records for just this market's contributors, from the same
+// leaderboard view the Leaderboard page reads.
+function useTraderRecords(wallets: string[]) {
+  const [records, setRecords] = useState<Map<string, TraderRecord>>(new Map())
+  const key = wallets.join(',')
+  useEffect(() => {
+    if (!key) return
+    let cancelled = false
+    Promise.resolve(
+      supabase.from('leaderboard').select('wallet,won,lost').in('wallet', key.split(','))
+    ).then(({ data }) => {
+      if (!cancelled) setRecords(new Map(((data ?? []) as TraderRecord[]).map(r => [r.wallet, r])))
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [key])
+  return records
+}
+
+function TopTraders({ groups, records, linkToTrader, seeMore }: {
+  groups: TraderGroup[]
+  records: Map<string, TraderRecord>
+  linkToTrader: (wallet: string) => string
+  seeMore: SeeMore
+}) {
+  const top = groups
+    .map(g => ({ g, r: records.get(g.wallet) }))
+    .filter((x): x is { g: TraderGroup; r: TraderRecord } => !!x.r && x.r.won + x.r.lost >= MIN_RESOLVED)
+    .sort((a, b) => winRate(b.r) - winRate(a.r) || (b.r.won + b.r.lost) - (a.r.won + a.r.lost))
+    .slice(0, TOP_TRADER_COUNT)
+  if (top.length === 0) return null
+
+  return (
+    <section className="mkt-card mkt-top">
+      <div className="mkt-card-head">
+        <span className="sig-drill-label">Top traders</span>
+        <SeeMoreLink seeMore={seeMore} />
+      </div>
+      {top.map(({ g, r }, i) => (
+        <Link key={g.wallet} to={linkToTrader(g.wallet)} className="mkt-top-row">
+          <span className="mkt-top-rank">{i + 1}</span>
+          <span className="mkt-top-avatar" style={{ background: avatarGradient(g.wallet) }}><GogglesMark /></span>
+          <span className="mkt-top-name">
+            <strong>{traderLabel(g.wallet, g.wallet_name)}</strong>
+            <small>{r.won.toLocaleString()} won · {r.lost.toLocaleString()} lost</small>
+          </span>
+          <span className="mkt-top-rate">
+            <strong>{Math.round(winRate(r) * 100)}%</strong>
+            <small>win rate</small>
+          </span>
+        </Link>
+      ))}
+    </section>
   )
 }
 
@@ -171,8 +250,12 @@ function ActivitySummary({ wallets }: { wallets: WalletContribution[] }) {
 // full contributing-traders list. Used both inside SignalModal (a popup)
 // and full-width on the Terminal's market route — one implementation, two
 // homes, so neither surface can silently drift out of sync with the other.
-export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220, priceUnit = '¢', chartVariant = 'markers' }: {
+export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220, priceUnit = '¢', chartVariant = 'markers', fullPagePath }: {
   opportunity: Opportunity
+  // Set by the popup: renders the compact preview (header, stats, top
+  // traders, chart) and sends "See more" to this full-page route instead
+  // of listing activity and every trader inline.
+  fullPagePath?: string
   // Overridable so the Terminal keeps trader navigation inside its own
   // route tree instead of bouncing out to the main app — see
   // TraderDetailPage.tsx's identical linkToTrader prop for the same reason.
@@ -199,12 +282,25 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
   }, [o.condition_id, o.outcome])
 
   const groups = useMemo(() => groupByWallet(wallets), [wallets])
-
+  const records = useTraderRecords(useMemo(() => groups.map(g => g.wallet), [groups]))
+  const tradersRef = useRef<HTMLDivElement>(null)
+  // Page is remembered per market so opening a different one starts on page 1.
+  const marketKey = `${o.condition_id}::${o.outcome}`
+  const [pageState, setPageState] = useState({ marketKey, page: 1 })
+  const page = pageState.marketKey === marketKey ? pageState.page : 1
+  const setPage = (n: number) => setPageState({ marketKey, page: n })
+  const pageCount = Math.max(1, Math.ceil(groups.length / TRADERS_PER_PAGE))
+  const safePage = Math.min(page, pageCount)
+  const pageGroups = groups.slice((safePage - 1) * TRADERS_PER_PAGE, safePage * TRADERS_PER_PAGE)
 
   const tag = signalsTag(o.tier, o.cumulative_usd)
+  const preview = !!fullPagePath
+  const seeMore: SeeMore = fullPagePath
+    ? { to: fullPagePath, state: { opportunity: o } }
+    : { onClick: () => tradersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 
   return (
-    <>
+    <div className="mkt-detail">
       <div className="sig-hero-top">
         <MarketIcon conditionId={o.condition_id} outcome={o.outcome} category={o.category} className="sig-card-icon" style={{ width: 44, height: 44, fontSize: 20 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -213,15 +309,14 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
             {o.wallet_count} top trader{o.wallet_count > 1 ? 's' : ''} · <span className={`sig-tag ${tag.cls}`} style={{ marginTop: 0 }}>{tag.label}</span>
           </div>
         </div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: o.total_profit >= 0 ? '#00d17a' : '#ff3b5c', flexShrink: 0 }}>
-          {fmtSigned(o.total_profit)}
-        </div>
       </div>
 
-      <div className="sig-stats-row" style={{ margin: '16px 0' }}>
+      <div className="sig-stats-row mkt-stats">
         <div className="sig-stat-cell">
-          <div className="sig-stat-cell-label">Price</div>
-          <div className="sig-stat-cell-val">{Math.round(o.latest_price * 100)}{priceUnit}</div>
+          {/* Odds, not "48¢": cents read as a dollar price to people who
+              don't know a Polymarket share pays $1. */}
+          <div className="sig-stat-cell-label">Chance</div>
+          <div className="sig-stat-cell-val">{Math.round(o.latest_price * 100)}%</div>
         </div>
         <div className="sig-stat-cell">
           <div className="sig-stat-cell-label">Total Deployed</div>
@@ -231,11 +326,13 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
           <div className="sig-stat-cell-label">Traders</div>
           <div className="sig-stat-cell-val">{o.wallet_count}</div>
         </div>
-        <div className="sig-stat-cell">
-          <div className="sig-stat-cell-label">Total Profit</div>
-          <div className={`sig-stat-cell-val ${o.total_profit >= 0 ? 'g' : 'r'}`}>{fmtSigned(o.total_profit)}</div>
-        </div>
       </div>
+
+      {!walletsLoading && (
+        <TopTraders
+          groups={groups} records={records} linkToTrader={linkToTrader} seeMore={seeMore}
+        />
+      )}
 
       <div className="sig-drill-label">{chartVariant === 'minimal' ? 'Price history' : "Price history — dots mark each trader's buy-in"}</div>
       {chartVariant === 'minimal' ? (
@@ -265,29 +362,48 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
         </div>
       )}
 
-      {!walletsLoading && wallets.length > 0 && (
+      {preview ? (
+        <div className="mkt-preview-foot">
+          <span>{groups.length > 0 ? `${groups.length} traders · activity and every position` : 'Activity and every position'}</span>
+          <SeeMoreLink seeMore={seeMore} label="View full market" />
+        </div>
+      ) : (
         <>
-          <div className="sig-drill-label">Activity</div>
-          <ActivitySummary wallets={wallets} />
+        {!walletsLoading && wallets.length > 0 && (
+          <>
+            <div className="sig-drill-label">Activity</div>
+            <ActivitySummary wallets={wallets} />
+          </>
+        )}
+
+        {/* Holders table sits full-width below the chart/activity, not beside
+            them in a narrow side column — matches the fomo reference this was
+            modeled on. Its own card (.sig-drill-card), not flush like the
+            chart/activity above it. */}
+        <div className="sig-drill-card" ref={tradersRef}>
+          <div className="sig-drill-label">Contributing traders</div>
+          <div style={{ minHeight: 5 * 36 }}>
+            {walletsLoading && <SkelDrillRows count={5} />}
+            {!walletsLoading && wallets.length === 0 && (
+              <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
+            )}
+            {!walletsLoading && pageGroups.map(g => (
+              <TraderGroupRow key={g.wallet} group={g} latestPrice={o.latest_price} linkToTrader={linkToTrader} priceUnit={priceUnit} />
+            ))}
+          </div>
+          {!walletsLoading && pageCount > 1 && (
+            <div className="sig-pager">
+              <button type="button" className="sig-load-more" disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>Prev</button>
+              <span className="sig-pager-status">
+                Page {safePage} of {pageCount}
+                <span> &middot; {groups.length} traders</span>
+              </span>
+              <button type="button" className="sig-load-more" disabled={safePage === pageCount} onClick={() => setPage(safePage + 1)}>Next</button>
+            </div>
+          )}
+        </div>
         </>
       )}
-
-      {/* Holders table sits full-width below the chart/activity, not beside
-          them in a narrow side column — matches the fomo reference this was
-          modeled on. Its own card (.sig-drill-card), not flush like the
-          chart/activity above it. */}
-      <div className="sig-drill-card">
-        <div className="sig-drill-label">Contributing traders</div>
-        <div style={{ minHeight: 5 * 36 }}>
-          {walletsLoading && <SkelDrillRows count={5} />}
-          {!walletsLoading && wallets.length === 0 && (
-            <div style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>No contributor detail available.</div>
-          )}
-          {!walletsLoading && groups.map(g => (
-            <TraderGroupRow key={g.wallet} group={g} latestPrice={o.latest_price} linkToTrader={linkToTrader} priceUnit={priceUnit} />
-          ))}
-        </div>
-      </div>
-    </>
+    </div>
   )
 }
