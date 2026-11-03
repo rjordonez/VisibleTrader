@@ -1032,28 +1032,25 @@
 .sig-drill-card .sig-drill-row:first-child { border-top: none; }
 .sig-drill-card { scroll-margin-top: 12px; }
 
-/* ── Market detail (popup + Terminal market view) ──
-   Every block is the same surface-2 card with the same radius and a 20px
-   rhythm between them, so the stats, top traders and holders read as one
-   system instead of mismatched boxes. */
+/* ── Market detail (popup, full market page, Terminal market view) ──
+   Open layout, no boxes: sections are separated by spacing and one
+   hairline each instead of their own bordered cards. */
 .mkt-detail .sig-hero-q { min-height: 0; }
 .mkt-detail .sig-card-meta { margin-top: 8px; display: flex; align-items: center; gap: 6px; }
-.mkt-detail > .sig-drill-label { margin-top: 24px; }
-.mkt-detail .sig-drill-card { margin-top: 20px; border-radius: 12px; }
+.mkt-detail > .sig-drill-label { margin-top: 28px; }
+.mkt-detail .sig-drill-card { margin-top: 28px; background: none; border: 0; border-radius: 0; padding: 0; }
 
-.mkt-detail .mkt-stats { margin: 20px 0 0; gap: 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.mkt-stats .sig-stat-cell { background: none; border: 0; border-left: 1px solid var(--border); border-radius: 0; padding: 14px 18px; }
-.mkt-stats .sig-stat-cell:first-child { border-left: 0; }
-.mkt-stats .sig-stat-cell-label { font-size: 11.5px; margin-bottom: 4px; }
-.mkt-stats .sig-stat-cell-val { font-size: 20px; }
+.mkt-detail .mkt-stats { margin: 24px 0 0; padding-bottom: 20px; gap: 0 24px; background: none; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; overflow: visible; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mkt-detail .mkt-stats .sig-stat-cell { background: none; border: 0; border-radius: 0; padding: 0; }
+.mkt-detail .mkt-stats .sig-stat-cell-label { font-size: 12px; margin-bottom: 4px; }
+.mkt-detail .mkt-stats .sig-stat-cell-val { font-size: 24px; }
 
-.mkt-card { margin-top: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 6px 16px; }
-.mkt-card-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 0 4px; }
+.mkt-card { margin-top: 20px; }
+.mkt-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .mkt-card-head .sig-drill-label { margin-bottom: 0; }
-.mkt-see-more { display: inline-flex; align-items: center; gap: 2px; background: none; border: 0; padding: 0; color: var(--blue); font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.mkt-see-more { display: inline-flex; align-items: center; gap: 2px; background: none; border: 0; padding: 0; color: var(--blue); font-size: 12.5px; font-weight: 700; text-decoration: none; cursor: pointer; }
 .mkt-see-more:hover { color: var(--text); }
-.mkt-top-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); color: var(--text); text-decoration: none; }
-.mkt-card-head + .mkt-top-row { border-top: 0; }
+.mkt-top-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; color: var(--text); text-decoration: none; }
 .mkt-top-row:hover .mkt-top-name strong { color: var(--blue); }
 .mkt-top-rank { width: 14px; flex-shrink: 0; color: var(--text-faint); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .mkt-top-avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; color: #fff; }
@@ -1075,9 +1072,7 @@
 @media (max-width: 640px) {
   .mkt-preview-foot span { display: none; }
   .mkt-preview-foot { justify-content: center; }
-  .mkt-detail .mkt-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .mkt-stats .sig-stat-cell:nth-child(odd) { border-left: 0; }
-  .mkt-stats .sig-stat-cell:nth-child(n+3) { border-top: 1px solid var(--border); }
+  .mkt-detail .mkt-stats { gap: 16px; }
 }
 
 /* ── Loading skeletons — reserve real content's footprint so nothing
@@ -1456,7 +1451,7 @@
   display: flex;
 }
 .sig-modal {
-  background: rgb(20, 22, 29);
+  background: var(--surface, #0c0c0e);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: clamp(16px, 4vw, 24px);
@@ -1485,7 +1480,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgb(40, 44, 56);
+  background: var(--chip, #17171a);
   border: 1px solid var(--border);
   border-radius: 50%;
   color: var(--text-dim);

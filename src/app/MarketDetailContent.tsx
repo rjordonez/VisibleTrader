@@ -313,8 +313,10 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
 
       <div className="sig-stats-row mkt-stats">
         <div className="sig-stat-cell">
-          <div className="sig-stat-cell-label">Price</div>
-          <div className="sig-stat-cell-val">{Math.round(o.latest_price * 100)}{priceUnit}</div>
+          {/* Odds, not "48¢": cents read as a dollar price to people who
+              don't know a Polymarket share pays $1. */}
+          <div className="sig-stat-cell-label">Chance</div>
+          <div className="sig-stat-cell-val">{Math.round(o.latest_price * 100)}%</div>
         </div>
         <div className="sig-stat-cell">
           <div className="sig-stat-cell-label">Total Deployed</div>
@@ -323,10 +325,6 @@ export function MarketDetailContent({ opportunity: o, linkToTrader = w => dashbo
         <div className="sig-stat-cell">
           <div className="sig-stat-cell-label">Traders</div>
           <div className="sig-stat-cell-val">{o.wallet_count}</div>
-        </div>
-        <div className="sig-stat-cell">
-          <div className="sig-stat-cell-label">Total Profit</div>
-          <div className={`sig-stat-cell-val ${o.total_profit >= 0 ? 'g' : 'r'}`}>{fmtSigned(o.total_profit)}</div>
         </div>
       </div>
 
