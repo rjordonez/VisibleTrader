@@ -14,7 +14,7 @@ interface V2Position {
   current_size: number; total_size: number; avg_price: number; current_price: number
   current_value: number; entry_cost_usdc: number
   realized_pnl: number; unrealized_pnl: number; total_pnl: number; percent_pnl: number
-  redeemable: boolean; last_event_at: number
+  redeemable: boolean; last_event_at: number; name?: string
 }
 
 interface V2Trade {
@@ -27,7 +27,7 @@ export interface PolymarketPosition {
   outcome: string; conditionId: string; asset: string
   size: number; totalBought: number; avgPrice: number; curPrice: number
   initialValue: number; currentValue: number; cashPnl: number; percentPnl: number; realizedPnl: number
-  redeemable: boolean; timestamp: number
+  redeemable: boolean; timestamp: number; walletName: string | null
 }
 
 export interface PolymarketTrade {
@@ -49,7 +49,7 @@ const toPosition = (p: V2Position): PolymarketPosition => ({
   size: p.current_size, totalBought: p.total_size, avgPrice: p.avg_price, curPrice: p.current_price,
   initialValue: p.entry_cost_usdc, currentValue: p.current_value, cashPnl: p.unrealized_pnl,
   percentPnl: p.percent_pnl, realizedPnl: p.realized_pnl,
-  redeemable: p.redeemable, timestamp: p.last_event_at,
+  redeemable: p.redeemable, timestamp: p.last_event_at, walletName: p.name || null,
 })
 
 // What the wallet holds right now in markets still trading (v1's
@@ -80,6 +80,28 @@ function toClosed(p: V2Position): PolymarketPosition {
   const pnl = p.total_pnl
   const won = p.status === 'REDEEMABLE' ? p.current_value > 0 : p.status === 'CLOSED' ? pnl > 0 : false
   return { ...toPosition(p), curPrice: won ? 1 : 0, realizedPnl: pnl }
+}
+
+// Every finished position the wallet has, following the cursor (up to
+// maxPages of 1000 per status). The trader profile builds its normal
+// stats/table/chart from this for wallets we don't track ourselves.
+export async function fetchClosedHistory(user: string, maxPages = 5) {
+  const all = async (status: string) => {
+    const rows: V2Position[] = []
+    let cursor: string | null = null
+    for (let i = 0; i < maxPages; i++) {
+      const qs = cursor ? new URLSearchParams({ cursor }) : new URLSearchParams({ user, status, limit: '1000', sort_by: 'TIMESTAMP' })
+      const res = await fetch(`${BASE}/positions?${qs}`)
+      if (!res.ok) break
+      const body = await res.json() as { data?: V2Position[] | null; pagination?: { next_cursor?: string | null } }
+      rows.push(...(body.data ?? []))
+      cursor = body.pagination?.next_cursor ?? null
+      if (!cursor) break
+    }
+    return rows
+  }
+  const batches = await Promise.all(['CLOSED', 'REDEEMABLE', 'REDEEMABLE_LOST'].map(s => all(s).catch(() => [] as V2Position[])))
+  return batches.flat().sort((a, b) => b.last_event_at - a.last_event_at).map(toClosed)
 }
 
 export const fetchTrades = (user: string, limit = 30) =>

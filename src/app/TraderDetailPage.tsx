@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { ArrowUp, ArrowDown, Share2, Film, UserPlus, UserCheck } from 'lucide-react'
-import { fetchOpenPositions, fetchClosedPositions, fetchTrades } from '../lib/polymarketData'
+import { fetchOpenPositions, fetchClosedHistory, type PolymarketPosition } from '../lib/polymarketData'
 import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { traderLabel, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './helpers'
@@ -59,26 +59,6 @@ interface LivePosition {
   size?: number
   initialValue?: number
   currentValue?: number
-}
-
-interface LiveClosedPosition {
-  totalBought: number
-  title: string
-  outcome: string
-  conditionId: string
-  avgPrice: number
-  curPrice: number
-  realizedPnl: number
-  timestamp: number
-}
-
-interface LiveTrade {
-  timestamp: number
-  side: string
-  title: string
-  outcome: string
-  size: number
-  price: number
 }
 
 // Mirrors the wallet-search Edge Function's findSimilarTraders — same
@@ -178,6 +158,33 @@ function SortControl<T extends string>({ options, value, onChange, dir, onToggle
   )
 }
 
+// A wallet we don't track, rebuilt from its Polymarket history into the
+// same shapes the tracked profile reads: one row per position (it already
+// is one, so no fill aggregation needed), the leaderboard-style summary, and
+// hourly realized P&L for the chart.
+function fromPolymarket(wallet: string, closed: PolymarketPosition[]) {
+  if (closed.length === 0) return null
+  const positions: TraderPosition[] = closed.map((p, i) => ({
+    title: p.title, outcome: p.outcome, category: null, condition_id: p.conditionId,
+    usd: p.totalBought * p.avgPrice, price: p.avgPrice, resolved_win: p.curPrice >= 0.5,
+    resolved_ts: new Date(p.timestamp * 1000).toISOString(), profit: p.realizedPnl, id: i,
+  }))
+  const won = positions.filter(p => p.resolved_win)
+  const summary: TraderSummary = {
+    wallet, wallet_name: closed.find(p => p.walletName)?.walletName ?? null,
+    n: positions.length, won: won.length, lost: positions.length - won.length,
+    deployed: positions.reduce((t, p) => t + p.usd, 0), won_usd: won.reduce((t, p) => t + p.usd, 0),
+    net_profit: positions.reduce((t, p) => t + p.profit, 0),
+  }
+  const byHour = new Map<string, number>()
+  for (const p of positions) {
+    const h = new Date(Math.floor(new Date(p.resolved_ts).getTime() / 3600000) * 3600000).toISOString()
+    byHour.set(h, (byHour.get(h) ?? 0) + p.profit)
+  }
+  const pnlHourly = [...byHour.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([h, profit]) => ({ h, profit }))
+  return { summary, positions, pnlHourly }
+}
+
 function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/${w}`), chartHeight = 220, terminalLayout = false }: {
   wallet: string
   // Overridable so the Terminal (its own self-contained route tree, see
@@ -217,23 +224,11 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   const [shareOpen, setShareOpen] = useState(false)
   const [accountReplayOpen, setAccountReplayOpen] = useState(false)
   const [livePositions, setLivePositions] = useState<LivePosition[]>([])
-  const [liveClosed, setLiveClosed] = useState<LiveClosedPosition[]>([])
-  const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([])
-  const [liveLoading, setLiveLoading] = useState(false)
   // Closed markets are numbered pages, not "Load more": heavy traders have
   // 12k+ markets, which 50-at-a-time reveals could never get through.
   const [closedPage, setClosedPage] = useState(1)
   const CLOSED_PAGE_SIZE = 25
-  // Reveals 50 more rows per click instead of an all-or-nothing toggle —
-  // jumping straight from 10 rows to potentially 1000+ table rows in one
-  // go is the same kind of DOM-size performance issue the chart markers
-  // cap (PriceChart.tsx) already fixed.
-  const [visibleLive, setVisibleLive] = useState(10)
-  const PAGE_STEP = 50
-  // Separate from `liveLoading` (which gates the untracked-wallet fallback
-  // branch below) — this one covers the always-fetched open-positions call
-  // that now runs for tracked wallets too, so a tracked wallet's own
-  // skeleton doesn't accidentally piggyback on the fallback branch's flag.
+  // The always-fetched open-positions call (Polymarket, every wallet).
   const [openPositionsLoading, setOpenPositionsLoading] = useState(true)
   const [resolvedSort, setResolvedSort] = useState<'date' | 'profit'>('profit')
   const [activeSort, setActiveSort] = useState<'value' | 'price' | 'pnl'>('value')
@@ -317,8 +312,10 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         if (cancelled) return
         if (err) throw err
         const summaryData = (data ?? null) as TraderSummary | null
-        setSummary(summaryData)
-        setSummaryLoading(false)
+        if (summaryData) {
+          setSummary(summaryData)
+          setSummaryLoading(false)
+        }
         loadTrackedStatus([wallet])
 
         // Open positions always come straight from Polymarket's own public
@@ -337,32 +334,35 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
           .finally(() => { if (!cancelled) setOpenPositionsLoading(false) })
 
         if (!summaryData) {
-          // We only have resolved history for wallets we've tracked
-          // ourselves — for everyone else, fall back to Polymarket's public
-          // data API for closed positions/trades too, so "no tracked
-          // history" doesn't mean "we can't show you anything real."
-          setLiveLoading(true)
-          Promise.all([
-            fetchClosedPositions(wallet, 200),
-            fetchTrades(wallet, 30),
-          ])
-            .then(([closed, trades]) => {
+          // Not one we track: build the same summary, positions table and
+          // P&L chart from the wallet's Polymarket history, so every trader
+          // gets the same profile page.
+          fetchClosedHistory(wallet)
+            .then(closed => {
               if (cancelled) return
-              const liveClosedPos: LiveClosedPosition[] = closed
-              setLiveClosed(liveClosedPos)
-              setLiveTrades(trades)
-              const pairs = liveClosedPos
-                .filter(p => p.conditionId && p.outcome)
-                .map(p => ({ condition_id: p.conditionId, outcome: p.outcome }))
-              setSimilarLoading(true)
-              findSimilarTraders(pairs, wallet).then(st => {
-                if (cancelled) return
-                setSimilarTraders(st)
-                loadTrackedStatus(st.map(t => t.wallet))
-              }).catch(() => {}).finally(() => { if (!cancelled) setSimilarLoading(false) })
+              const built = fromPolymarket(w, closed)
+              setSummary(built?.summary ?? null)
+              setPositions(built?.positions ?? [])
+              setPnlHourly(built?.pnlHourly ?? [])
+              const pairs = (built?.positions ?? []).map(p => ({ condition_id: p.condition_id, outcome: p.outcome }))
+              if (pairs.length) {
+                setSimilarLoading(true)
+                findSimilarTraders(pairs, wallet).then(st => {
+                  if (cancelled) return
+                  setSimilarTraders(st)
+                  loadTrackedStatus(st.map(t => t.wallet))
+                }).catch(() => {}).finally(() => { if (!cancelled) setSimilarLoading(false) })
+              }
             })
             .catch(() => {})
-            .finally(() => { if (!cancelled) setLiveLoading(false) })
+            .finally(() => {
+              if (cancelled) return
+              setSummaryLoading(false)
+              setPositionsLoading(false)
+              setPositionsComplete(true)
+              setPnlLoading(false)
+              setCategoryLoading(false)
+            })
         }
       })
       .catch((e: Error) => {
@@ -399,13 +399,15 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
       }
     }
 
+    // An untracked wallet comes back empty here; its table is built from
+    // Polymarket in the summary branch above, so don't overwrite it.
     fetchAllClosed(soFar => {
       if (cancelled) return
       setPositions(soFar)
       setPositionsLoading(false)
     })
       .then(positionsData => {
-        if (cancelled) return
+        if (cancelled || positionsData.length === 0) return
         setPositions(positionsData)
         setPositionsLoading(false)
         setPositionsComplete(true)
@@ -422,7 +424,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
           }).catch(() => {}).finally(() => { if (!cancelled) setSimilarLoading(false) })
         }
       })
-      .catch(() => { if (!cancelled) { setPositionsLoading(false); setPositionsComplete(true) } })
+      .catch(() => {})
 
     // Up to ~1,400 hours on the busiest wallets, past PostgREST's 1000-row
     // cap, so keyset-page on h (unique per wallet).
@@ -439,17 +441,16 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
       }
     }
     fetchPnlHourly()
-      .then(rows => { if (!cancelled) setPnlHourly(rows) })
+      .then(rows => { if (!cancelled && rows.length) { setPnlHourly(rows); setPnlLoading(false) } })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setPnlLoading(false) })
 
     Promise.resolve(supabase.from('wallet_category_breakdown').select('*').eq('wallet', w).order('profit', { ascending: false }))
       .then(({ data }) => {
-        if (cancelled) return
-        setByCategory((data ?? []) as CategoryRow[])
+        if (cancelled || !data?.length) return
+        setByCategory(data as CategoryRow[])
         setCategoryLoading(false)
       })
-      .catch(() => { if (!cancelled) setCategoryLoading(false) })
+      .catch(() => {})
 
     return () => { cancelled = true }
   }, [wallet, loadTrackedStatus])
@@ -512,20 +513,6 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
       return acc
     }, []), [pnlHourly])
 
-  // Live-fallback stats, computed the same way check_market_closed already
-  // does server-side: a resolved outcome settles at 0 or 1, so curPrice >= 0.5
-  // means that side won.
-  const sortedLiveClosed = [...liveClosed].sort((a, b) => b.timestamp - a.timestamp)
-  const liveWon = sortedLiveClosed.filter(p => p.curPrice >= 0.5).length
-  const liveWinRate = sortedLiveClosed.length > 0 ? (liveWon / sortedLiveClosed.length) * 100 : 0
-  const liveRealizedPnl = sortedLiveClosed.reduce((sum, p) => sum + p.realizedPnl, 0)
-  const liveCumulative = [...sortedLiveClosed].reverse()
-    .reduce<{ d: string; cum: number }[]>((acc, p) => {
-      const prevCum = acc.length > 0 ? acc[acc.length - 1].cum : 0
-      acc.push({ d: new Date(p.timestamp * 1000).toISOString(), cum: prevCum + p.realizedPnl })
-      return acc
-    }, [])
-
   const shareData = useMemo<TraderShareData | null>(() => summary && trackedCumulative.length > 1 ? {
     wallet,
     name: traderLabel(wallet, summary.wallet_name),
@@ -538,10 +525,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
   const accountTrades = useMemo<AccountTrade[]>(() => summary ? aggregatedPositions.map(p => ({
     id: `${p.conditionId}:${p.outcome}`, marketId: p.conditionId, title: p.title, outcome: p.outcome,
     closedAt: p.latestResolvedTs, invested: p.totalStake, pnl: p.totalProfit,
-  })) : liveClosed.map((p,i) => ({
-    id: `${p.conditionId}:${p.outcome}:${p.timestamp}:${i}`, marketId: p.conditionId, title: p.title, outcome: p.outcome,
-    closedAt: new Date(p.timestamp * 1000).toISOString(), invested: p.totalBought * p.avgPrice, pnl: p.realizedPnl,
-  })), [summary, aggregatedPositions, liveClosed])
+  })) : [], [summary, aggregatedPositions])
   const closeAccountReplay = useCallback(() => setAccountReplayOpen(false), [])
   const loadReplayMarketImage = useCallback(async (marketId: string, outcome: string) => {
     const { data } = await supabase.functions.invoke('price-chart', { body: { condition_id: marketId, outcome, image_only: true } })
@@ -567,7 +551,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
                 {busyWallet === wallet ? (trackedWallets[wallet] ? 'Removing…' : 'Following…') : trackedWallets[wallet] ? 'Unfollow' : 'Follow trader'}
               </button>
             )}
-            <button type="button" className="trader-profile-action" disabled={summaryLoading || (summary ? !positionsComplete : liveLoading) || !accountTrades.length}
+            <button type="button" className="trader-profile-action" disabled={summaryLoading || !positionsComplete || !accountTrades.length}
               onClick={() => setAccountReplayOpen(true)}><Film size={16} aria-hidden="true" /><span>Account progress</span></button>
             {shareData && (
               <button type="button" className="trader-profile-action" onClick={() => setShareOpen(true)}>
@@ -579,7 +563,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
       </div>
 
       {accountReplayOpen && <AccountProgressModal name={traderLabel(wallet, summary?.wallet_name ?? null)} wallet={wallet} trades={accountTrades}
-        coverage={summary ? 'Recorded closed trade history' : `Recent ${accountTrades.length} closed trades`}
+        coverage="Recorded closed trade history"
         loadMarketImage={loadReplayMarketImage} onClose={closeAccountReplay} />}
       {shareOpen && shareData && <TraderShareModal data={shareData} onClose={closeShare} />}
 
@@ -592,9 +576,8 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
             once it resolves truthy) — the vast majority of wallets reached
             via internal links (leaderboard rows, contributing-trader lists)
             are tracked, so this avoids the whole grid popping into existence
-            at once the moment summary resolves. The rare untracked case
-            still swaps cleanly to the live-fallback branch below once we
-            know for sure. */}
+            at once the moment summary resolves. Untracked wallets fill the
+            same grid from their Polymarket history (fromPolymarket). */}
         {!error && (summaryLoading || summary) && (
           <>
             {summaryLoading ? <SkelStatsRow count={4} /> : summary && (
@@ -805,153 +788,7 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         )}
 
         {!summaryLoading && !error && !summary && (
-          <>
-            <div className="sig-empty" style={{ marginBottom: 20 }}>
-              Not in our tracked history yet — showing live data straight from Polymarket instead.
-            </div>
-
-            {liveLoading && (
-              <>
-                <SkelStatsRow count={4} />
-                <div className="sig-table-wrap">
-                  <table className="sig-table">
-                    <thead>
-                      <tr><th>Market</th><th className="num">Avg Price</th><th className="num">Current Price</th><th className="num">Unrealized P&L</th></tr>
-                    </thead>
-                    <tbody>
-                      <SkelTableRows cols={4} count={6} />
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-
-            {!liveLoading && (livePositions.length > 0 || liveClosed.length > 0) && (
-              <>
-                <div className="sig-stats-row" style={{ marginBottom: 24 }}>
-                  <div className="sig-stat-cell">
-                    <div className="sig-stat-cell-label">Realized P&L</div>
-                    <div className={`sig-stat-cell-val ${liveRealizedPnl >= 0 ? 'g' : 'r'}`}>{fmtSigned(liveRealizedPnl)}</div>
-                  </div>
-                  <div className="sig-stat-cell">
-                    <div className="sig-stat-cell-label" title="Winning closed positions ÷ total closed positions">Win Rate</div>
-                    <div className="sig-stat-cell-val">{liveWinRate.toFixed(0)}%</div>
-                  </div>
-                  <div className="sig-stat-cell">
-                    <div className="sig-stat-cell-label">Current Positions</div>
-                    <div className="sig-stat-cell-val">{livePositions.length}</div>
-                  </div>
-                  <div className="sig-stat-cell">
-                    <div className="sig-stat-cell-label">Total Positions</div>
-                    <div className="sig-stat-cell-val">{livePositions.length + liveClosed.length}</div>
-                  </div>
-                </div>
-
-                <div className="search-dashboard-grid">
-                  <div className="search-dashboard-main">
-                    <CumulativeChartSection data={liveCumulative} label="Realized P&L over time (live from Polymarket)" height={chartHeight} />
-
-                    {livePositions.length > 0 && (
-                      <>
-                        <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Current positions (live from Polymarket)</div>
-                        <div className="sig-table-wrap" style={{ marginBottom: 24 }}>
-                          <table className="sig-table">
-                            <thead>
-                              <tr><th>Market</th><th className="num">Avg Price</th><th className="num">Current Price</th><th className="num">Unrealized P&L</th></tr>
-                            </thead>
-                            <tbody>
-                              {livePositions.map((p, i) => (
-                                <tr key={i}>
-                                  <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span></td>
-                                  <td className="num" data-label="Avg Price">{Math.round(p.avgPrice * 100)}{terminalLayout ? '%' : '¢'}</td>
-                                  <td className="num" data-label="Current Price">{Math.round(p.curPrice * 100)}{terminalLayout ? '%' : '¢'}</td>
-                                  <td className="num" data-label="Unrealized P&L" style={{ color: p.cashPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.cashPnl)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    )}
-
-                    {sortedLiveClosed.length > 0 && (
-                      <>
-                        <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Closed positions (live from Polymarket)</div>
-                        <div className="sig-table-wrap" style={{ marginBottom: 24 }}>
-                          <table className="sig-table">
-                            <thead>
-                              <tr><th>Market</th><th>Result</th><th className="num">Profit</th><th className="num">Resolved</th></tr>
-                            </thead>
-                            <tbody>
-                              {sortedLiveClosed.slice(0, visibleLive).map((p, i) => (
-                                <tr key={i}>
-                                  <td>{p.title} <span style={{ color: 'var(--text-dim)' }}>— {p.outcome}</span>
-                                  </td>
-                                  <td data-label="Result" style={{ color: p.curPrice >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{p.curPrice >= 0.5 ? 'Won' : 'Lost'}</td>
-                                  <td className="num" data-label="Profit" style={{ color: p.realizedPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtSigned(p.realizedPnl)}</td>
-                                  <td className="num" data-label="Resolved" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(p.timestamp * 1000).toISOString())}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          {sortedLiveClosed.length > visibleLive && (
-                            <button className="sig-load-more" onClick={() => setVisibleLive(v => v + PAGE_STEP)}>
-                              Load more ({sortedLiveClosed.length - visibleLive} remaining)
-                            </button>
-                          )}
-                          {visibleLive > 10 && sortedLiveClosed.length <= visibleLive && (
-                            <button className="sig-load-more" onClick={() => setVisibleLive(10)}>
-                              Show fewer
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    )}
-
-                    {liveTrades.length > 0 && (
-                      <>
-                        <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Recent trades (live from Polymarket)</div>
-                        <div className="sig-table-wrap">
-                          <table className="sig-table">
-                            <thead>
-                              <tr><th>Market</th><th>Side</th><th className="num">Size</th><th className="num">Price</th><th className="num">When</th></tr>
-                            </thead>
-                            <tbody>
-                              {liveTrades.map((t, i) => (
-                                <tr key={i}>
-                                  <td>{t.title} <span style={{ color: 'var(--text-dim)' }}>— {t.outcome}</span></td>
-                                  <td data-label="Side" style={{ color: t.side === 'BUY' ? 'var(--green)' : 'var(--red)' }}>{t.side}</td>
-                                  <td className="num" data-label="Size">{t.size.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                  <td className="num" data-label="Price">{Math.round(t.price * 100)}{terminalLayout ? '%' : '¢'}</td>
-                                  <td className="num" data-label="When" style={{ color: 'var(--text-dim)' }}>{timeAgo(new Date(t.timestamp * 1000).toISOString())}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="search-dashboard-side">
-                    <HighlightsRow items={sortedLiveClosed.map(p => ({ title: p.title, outcome: p.outcome, profit: p.realizedPnl }))} />
-                    <div>
-                      <div className="sig-stat-cell-label" style={{ marginBottom: 8 }}>Similar top traders</div>
-                      <SimilarTradersTable
-                        similarTraders={similarTraders} linkFor={linkToTrader}
-                        trackedWallets={trackedWallets} busyWallet={busyWallet} onTrack={trackWallet} onUntrack={untrackWallet}
-                        loggedIn={true}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {!liveLoading && livePositions.length === 0 && liveClosed.length === 0 && liveTrades.length === 0 && (
-              <div className="sig-empty">Nothing found for this wallet on Polymarket either.</div>
-            )}
-          </>
+          <div className="sig-empty">No Polymarket history found for this wallet.</div>
         )}
       </div>
     </div>
