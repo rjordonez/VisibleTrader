@@ -40,7 +40,7 @@ interface Shown {
   record: string
 }
 type FollowProps = Pick<ReturnType<typeof useAlerts>, 'watchedWallets' | 'addWallet' | 'removeWallet'>
-type Ranking = 'insiders' | 'experts' | 'profit'
+type Ranking = 'experts' | 'insiders' | 'profit'
 const SCORE_COLUMNS = 'wallet,wallet_name,markets,wins,pnl,open_positions,open_usd'
 const EXPERT_COLUMNS = 'wallet,wallet_name,positions,wins,win_rate,pnl,roi,all_time_pnl,open_positions,open_usd'
 const INSIDER_COLUMNS = 'wallet,wallet_name,trades,open_positions,open_usd,all_time_pnl,event_title,initial_value,best_pnl,buy_hours_before,quick,few_bets,new_account,account_age_days'
@@ -86,13 +86,13 @@ function fromScore(r: ScoreRow): Shown {
 }
 
 const RANKING_COPY: Record<Ranking, { label: string; period: string; profit: string; side: string; empty: string }> = {
-  insiders: {
-    label: 'Insiders', period: 'Won big on bets almost nobody saw coming, right before the news, and still up overall.',
-    profit: 'Won on one bet', side: 'Up overall', empty: 'No insiders found yet. Check back soon.',
-  },
   experts: {
     label: 'Experts', period: 'Win most of their bets, again and again.',
     profit: 'Total profit', side: 'Win rate', empty: 'No experts found yet. Check back soon.',
+  },
+  insiders: {
+    label: 'Insiders', period: 'Won big on bets almost nobody saw coming, right before the news, and still up overall.',
+    profit: 'Won on one bet', side: 'Up overall', empty: 'No insiders found yet. Check back soon.',
   },
   profit: {
     label: 'Top earners', period: 'Most money made.',
@@ -131,7 +131,7 @@ function LeaderboardPage(follow: FollowProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [view, setView] = useState<'rankings' | 'wins'>('rankings')
-  const [ranking, setRanking] = useState<Ranking>('insiders')
+  const [ranking, setRanking] = useState<Ranking>('experts')
   useEffect(() => {
     let cancelled = false
     let pending = false
