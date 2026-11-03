@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowUpRight, ChevronDown, Plus, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
-import { onTabVisible, traderLabel, fmtSigned, avatarGradient } from './helpers'
+import { onTabVisible, traderLabel, fmtSigned, fmtFull, avatarGradient } from './helpers'
 import GogglesMark from './GogglesMark'
 import RecentWins from './RecentWins'
 import type { useAlerts } from './useAlerts'
@@ -16,15 +16,26 @@ interface LeaderboardRow {
   wallet: string; wallet_name: string | null
   markets: number; wins: number; expected_wins: number; pnl: number
   longshots: number; longshot_wins: number; longshot_expected: number; longshot_pnl: number
+  open_positions: number; open_usd: number
 }
 type FollowProps = Pick<ReturnType<typeof useAlerts>, 'watchedWallets' | 'addWallet' | 'removeWallet'>
 type Ranking = 'experts' | 'insiders' | 'profit'
-const COLUMNS = 'wallet,wallet_name,markets,wins,expected_wins,pnl,longshots,longshot_wins,longshot_expected,longshot_pnl'
+const COLUMNS = 'wallet,wallet_name,markets,wins,expected_wins,pnl,longshots,longshot_wins,longshot_expected,longshot_pnl,open_positions,open_usd'
 const pct = (n: number, d: number) => d > 0 ? Math.round(n / d * 100) : 0
 const winRate = (r: LeaderboardRow) => pct(r.wins, r.markets)
 // Average entry price = the win rate the market expected from them.
 const oddsPaid = (r: LeaderboardRow) => pct(r.expected_wins, r.markets)
 const longshotOdds = (r: LeaderboardRow) => pct(r.longshot_expected, r.longshots)
+// Small "● 3 open" marker: whether a trader has money in markets right now
+// (refreshed every few minutes server-side, see trader_open_positions migration).
+function OpenBadge({ row, long = false }: { row: LeaderboardRow; long?: boolean }) {
+  const n = row.open_positions
+  if (!n) return null
+  return <span className="leaders-open" title={`${fmtFull(row.open_usd)} in ${n} open position${n > 1 ? 's' : ''}`}>
+    {n} open{long ? ` position${n > 1 ? 's' : ''}` : ''}
+  </span>
+}
+
 const shownProfit = (r: LeaderboardRow, ranking: Ranking) => ranking === 'insiders' ? r.longshot_pnl : r.pnl
 
 const RANKING_COPY: Record<Ranking, { period: string; profit: string; rate: string; noun: string; empty: string }> = {
@@ -129,6 +140,7 @@ function LeaderboardPage(follow: FollowProps) {
             <article className={`leaders-card leaders-place-${index + 1}`} key={row.wallet}>
               <div className="leaders-card-top"><span className="leaders-place">#{index + 1}</span><Link to={dashboardPath(`/trader/${row.wallet}`)} aria-label={`View ${traderLabel(row.wallet, row.wallet_name)}`}><ArrowUpRight size={18} /></Link></div>
               <Link className="leaders-card-person" to={dashboardPath(`/trader/${row.wallet}`)}><span className="leaders-avatar" style={{ background: avatarGradient(row.wallet) }}><GogglesMark /></span><h2>{traderLabel(row.wallet, row.wallet_name)}</h2></Link>
+              <OpenBadge row={row} long />
               <strong className={`leaders-card-profit ${shownProfit(row, ranking) >= 0 ? 'is-positive' : 'is-negative'}`}>{fmtSigned(shownProfit(row, ranking))}</strong><span className="leaders-metric-label">{copy.profit}</span>
               <div className="leaders-card-record"><RecordLine row={row} ranking={ranking} /></div>
               <FollowButton row={row} {...follow} />
@@ -140,7 +152,7 @@ function LeaderboardPage(follow: FollowProps) {
           <div className="leaders-column-head" aria-hidden="true"><span>Trader</span><span>{copy.profit}</span><span>{copy.rate}</span><span /></div>
           {loading ? [0, 1, 2, 3, 4].map(i => <div key={i} className="leaders-row-skeleton sig-skel" aria-hidden="true" />) : <ol className="leaders-rows">{ranked.map((row, index) => (
             <li className="leaders-row" key={row.wallet}>
-              <div className="leaders-person"><span className="leaders-rank">{index + 1}</span><Link to={dashboardPath(`/trader/${row.wallet}`)}><span className="leaders-avatar" style={{ background: avatarGradient(row.wallet) }}><GogglesMark /></span><span className="leaders-name"><strong>{traderLabel(row.wallet, row.wallet_name)}</strong><small>{row.markets.toLocaleString()} markets</small></span></Link></div>
+              <div className="leaders-person"><span className="leaders-rank">{index + 1}</span><Link to={dashboardPath(`/trader/${row.wallet}`)}><span className="leaders-avatar" style={{ background: avatarGradient(row.wallet) }}><GogglesMark /></span><span className="leaders-name"><strong>{traderLabel(row.wallet, row.wallet_name)}</strong><small>{row.markets.toLocaleString()} markets <OpenBadge row={row} /></small></span></Link></div>
               <div className={`leaders-row-profit ${shownProfit(row, ranking) >= 0 ? 'is-positive' : 'is-negative'}`}><span className="leaders-mobile-label">{copy.profit}</span><strong>{fmtSigned(shownProfit(row, ranking))}</strong></div>
               <div className="leaders-row-rate"><span className="leaders-mobile-label">{copy.rate}</span>{ranking === 'insiders'
                 ? <><strong>{row.longshot_wins}/{row.longshots}</strong><small>avg {longshotOdds(row)}% odds</small></>

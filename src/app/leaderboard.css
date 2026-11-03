@@ -45,6 +45,10 @@
 .leaders-name { min-width: 0; }
 .leaders-name strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 650; }
 .leaders-name small { display: block; margin-top: 5px; color: var(--text-dim); font-size: 12px; }
+/* Trader currently has money in open markets. */
+.leaders-open { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; color: var(--green, #00d17a); font-weight: 650; white-space: nowrap; }
+.leaders-open::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.leaders-card .leaders-open { margin: -6px 0 14px; font-size: 12px; }
 .leaders-row-profit, .leaders-row-rate { text-align: right; font-variant-numeric: tabular-nums; }
 .leaders-row-profit strong { font-size: 20px; letter-spacing: -0.03em; overflow-wrap: anywhere; }
 .leaders-row-rate strong { font-size: 17px; font-weight: 700; }

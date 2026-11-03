@@ -49,6 +49,7 @@ LEADERBOARD_REFRESH_SECONDS = 15  # leaderboard_cache — see refresh_leaderboar
 WALLET_CATEGORY_REFRESH_SECONDS = 30  # wallet_category_breakdown_cache — see refresh_wallet_category_breakdown()
 WALLET_PNL_REFRESH_SECONDS = 30  # wallet_pnl_hourly — see refresh_wallet_pnl()
 TRADER_SCORES_REFRESH_SECONDS = 60  # trader_scores (Leaderboard experts/insiders) — see refresh_trader_scores()
+TRADER_OPEN_REFRESH_SECONDS = 10 * 60  # trader_scores.open_positions — see refresh_trader_open_positions()
 # PROFIT_BOT_REFRESH_SECONDS is NOT incremental yet (refresh_profit_bot still does a
 # full 5-pass recompute per call) — left untouched. Shrinking this one would make the
 # original I/O problem worse, not better; it needs the same incremental treatment
@@ -1292,6 +1293,16 @@ def refresh_trader_scores(db):
     supabase/migrations/20261103000000_trader_scores.sql."""
     n = db.fetchone('SELECT refresh_trader_scores()')[0]
     print(f'  [aggregates] refreshed trader_scores ({n} wallets rescored)')
+
+
+def refresh_trader_open_positions(db):
+    """Runs periodically (TRADER_OPEN_REFRESH_SECONDS, see main()) — the
+    Leaderboard's "N open" marker. Counts open positions for only the
+    wallets the Leaderboard can show (experts, insiders, top 100 by P&L) in
+    refresh_trader_open_positions(), rather than per page view. See
+    supabase/migrations/20261103010000_trader_open_positions.sql."""
+    n = db.fetchone('SELECT refresh_trader_open_positions()')[0]
+    print(f'  [aggregates] refreshed trader open positions ({n} wallets)')
 
 
 def reconcile_caches(db):
@@ -2636,6 +2647,7 @@ def main():
     last_profit_bot_refresh = 0.0  # fire once on startup, not just after the first interval
     last_wallet_pnl_refresh = 0.0  # fire once on startup, not just after the first interval
     last_trader_scores_refresh = 0.0
+    last_trader_open_refresh = 0.0
     last_reconcile = time.time()  # don't fire on startup — let the incremental passes run first
     last_warm_search = 0.0  # fire once on startup, not just after the first interval
     last_broadcast_flush = time.time()
@@ -2757,6 +2769,10 @@ def main():
                 if now - last_trader_scores_refresh > TRADER_SCORES_REFRESH_SECONDS:  # trader_scores
                     maintenance_jobs.submit('trader-scores', refresh_trader_scores, maintenance_db)
                     last_trader_scores_refresh = now
+
+                if now - last_trader_open_refresh > TRADER_OPEN_REFRESH_SECONDS:  # trader_scores.open_positions
+                    maintenance_jobs.submit('trader-open', refresh_trader_open_positions, maintenance_db)
+                    last_trader_open_refresh = now
 
                 if now - last_profit_bot_refresh > PROFIT_BOT_REFRESH_SECONDS:  # profit_bot_*_cache
                     maintenance_jobs.submit('profit-bot', refresh_profit_bot, maintenance_db)
