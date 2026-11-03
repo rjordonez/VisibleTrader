@@ -18,15 +18,40 @@ const text = (value: unknown) => typeof value === 'string' ? value.slice(0, 300)
 const activityPageSize = 100;
 const activityMaxPages = 5;
 
+// Polymarket Data API v2 (v1 was retired and answers 410): snake_case
+// rows in a { data, pagination } envelope, paged by cursor, not offset.
+const dataApi = 'https://data-api.polymarket.com/v2';
+
+function rows(body: unknown, what: string) {
+  const data = (body as { data?: unknown } | null)?.data;
+  if (data === null) return [];
+  if (!Array.isArray(data)) throw new RequestError(`Polymarket returned an unexpected ${what} response. Please retry.`, 502);
+  return data as Record<string, unknown>[];
+}
+
 async function fetchInternationalActivity(wallet: string) {
   const all: Record<string, unknown>[] = [];
+  let cursor: string | null = null;
   for (let page = 0; page < activityMaxPages; page++) {
-    const batch = await upstream(`https://data-api.polymarket.com/activity?user=${wallet}&limit=${activityPageSize}&offset=${page * activityPageSize}&sortBy=TIMESTAMP&sortDirection=DESC&type=TRADE`);
-    if (!Array.isArray(batch)) throw new RequestError('Polymarket returned an unexpected activity response. Please retry.', 502);
-    all.push(...batch);
-    if (batch.length < activityPageSize) break;
+    const query = cursor
+      ? `cursor=${encodeURIComponent(cursor)}`
+      : `limit=${activityPageSize}&sort_by=TIMESTAMP&sort_direction=DESC&type=TRADE`;
+    const body = await upstream(`${dataApi}/activity?user=${wallet}&${query}`);
+    all.push(...rows(body, 'activity'));
+    cursor = (body as { pagination?: { next_cursor?: string | null } }).pagination?.next_cursor ?? null;
+    if (!cursor) break;
   }
   return all;
+}
+
+// v1's positions (sizeThreshold=0) included resolved-but-unredeemed rows;
+// v2 splits those out by status.
+async function fetchPositions(wallet: string) {
+  const [open, redeemable] = await Promise.all(['OPEN', 'REDEEMABLE'].map(status =>
+    upstream(`${dataApi}/positions?user=${wallet}&status=${status}&limit=100&sort_by=CURRENT_VALUE&sort_direction=DESC`)));
+  return [...rows(open, 'positions'), ...rows(redeemable, 'positions')]
+    .sort((a, b) => (finiteNumber(b.current_value) ?? 0) - (finiteNumber(a.current_value) ?? 0))
+    .slice(0, 100);
 }
 
 async function upstream(url: string, allowMissing = false) {
@@ -129,26 +154,25 @@ export async function handleConnection(req: Request) {
       const { data: connection, error } = await db.from('polymarket_connections').select(fields).eq('user_id', user.id).maybeSingle();
       if (error) throw error;
       if (!connection) return reply({ connection: null });
-      // Match the existing app's public Data API integration. v2 requires a
-      // separate bearer token; do not confuse it with CLOB credentials.
+      // Public Data API v2; no credentials (not the CLOB API).
       const wallet = connection.wallet_address;
       const [positions, activity] = await Promise.all([
-        upstream(`https://data-api.polymarket.com/positions?user=${wallet}&limit=100&offset=0&sizeThreshold=0&sortBy=CURRENT&sortDirection=DESC`),
+        fetchPositions(wallet),
         fetchInternationalActivity(wallet),
       ]);
-      if (!Array.isArray(positions) || !Array.isArray(activity)) throw new RequestError('Polymarket returned an unexpected response. Please retry.', 502);
       return reply({
         connection, fetched_at: new Date().toISOString(), positions_limited: positions.length === 100,
         activity_limited: activity.length >= 500,
         positions: positions.map(p => ({
-          asset: text(p.asset), title: text(p.title), outcome: text(p.outcome), size: finiteNumber(p.size),
-          current_value: finiteNumber(p.currentValue), cash_pnl: finiteNumber(p.cashPnl), redeemable: p.redeemable === true,
+          asset: text(p.token_id), title: text(p.title), outcome: text(p.outcome), size: finiteNumber(p.current_size),
+          current_value: finiteNumber(p.current_value), cash_pnl: finiteNumber(p.unrealized_pnl), redeemable: p.redeemable === true,
         })),
+        // v2 activity rows carry no per-trade P&L (v1's usdcPnl); pnl stays null.
         activity: activity.map(a => ({
-          transaction_hash: text(a.transactionHash), asset: text(a.asset), timestamp: finiteNumber(a.timestamp),
+          transaction_hash: text(a.transaction_hash), asset: text(a.token_id), timestamp: finiteNumber(a.timestamp),
           title: text(a.title), outcome: text(a.outcome), side: a.side === 'BUY' ? 'Buy' : a.side === 'SELL' ? 'Sell' : 'Trade',
-          amount: finiteNumber(a.usdcSize), size: finiteNumber(a.size), price: finiteNumber(a.price),
-          pnl: finiteNumber(a.usdcPnl),
+          amount: finiteNumber(a.usdc_size), size: finiteNumber(a.size), price: finiteNumber(a.price),
+          pnl: null,
         })),
       });
     }

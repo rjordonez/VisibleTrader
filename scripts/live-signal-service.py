@@ -12,7 +12,7 @@ leave it going. Requires DATABASE_URL in the environment (Supabase Settings
 pattern validated live earlier this session; the only non-stdlib dependency
 is psycopg for the Postgres connection.
 """
-import argparse, bisect, json, os, random, socket, ssl, struct, base64, threading, time, urllib.error, urllib.request
+import argparse, bisect, json, os, random, socket, ssl, struct, base64, threading, time, urllib.error, urllib.parse, urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -1311,13 +1311,25 @@ def refresh_trader_open_positions(db):
     ''')
     wallets = [r[0] for r in rows]
 
+    # Data API v2 (v1 was retired and answers 410): status=OPEN is what the
+    # wallet holds in markets still trading; worth $1+ so leftover dust shares
+    # (thousands of them on some bots) don't count. Cursor-paged; a few pages covers
+    # even the busiest bots.
     def holdings(wallet):
         try:
-            req = urllib.request.Request(
-                f'https://data-api.polymarket.com/positions?user={wallet}&limit=500&redeemable=false', headers=UA)
-            with urllib.request.urlopen(req, timeout=10) as r:
-                positions = json.load(r) or []
-            return wallet, len(positions), sum(float(p.get('currentValue') or 0) for p in positions)
+            n, usd, cursor = 0, 0.0, None
+            for _ in range(5):
+                query = f'cursor={urllib.parse.quote(cursor)}' if cursor else 'status=OPEN&filter_type=CASH&filter_amount=1&limit=1000'
+                req = urllib.request.Request(f'https://data-api.polymarket.com/v2/positions?user={wallet}&{query}', headers=UA)
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    body = json.load(r)
+                rows = body.get('data') or []
+                n += len(rows)
+                usd += sum(float(p.get('current_value') or 0) for p in rows)
+                cursor = (body.get('pagination') or {}).get('next_cursor')
+                if not cursor:
+                    break
+            return wallet, n, usd
         except Exception:
             return None
 
