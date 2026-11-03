@@ -53,6 +53,14 @@ class TradeWorkers:
         with self._lock:
             return self._capacity - self._pending
 
+    def ready_to_resume(self, key):
+        # Hysteresis matters: resuming after just one completion puts the
+        # same hot prefix straight back into every SELECT LIMIT window.
+        lane = zlib.crc32(str(key).encode()) % len(self._lanes)
+        with self._lock:
+            return (self._pending < self._capacity
+                    and self._lane_pending[lane] <= self._max_per_lane // 2)
+
     def submit(self, key, fn, *args):
         lane = zlib.crc32(str(key).encode()) % len(self._lanes)
         with self._lock:
@@ -81,6 +89,31 @@ class TradeWorkers:
     def shutdown(self):
         for lane in self._lanes:
             lane.shutdown(wait=True)
+
+
+class PollingJob:
+    """One independent poller with explicit shutdown; failures retry its state."""
+    def __init__(self, fn, interval=0.1):
+        self._stop = threading.Event()
+        self._fn = fn
+        self._interval = interval
+        self._thread = threading.Thread(target=self._run, name='fill-dispatch', daemon=True)
+
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                self._fn()
+            except Exception as exc:
+                print(f'[dispatch-error] {exc!r}', flush=True)
+                self._stop.wait(1)
+            self._stop.wait(self._interval)
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join()
 
 
 class SingleFlightJobs:
