@@ -48,6 +48,7 @@ AGGREGATE_REFRESH_SECONDS = 15  # opportunities_live's best_win_rate/best_bet_ra
 LEADERBOARD_REFRESH_SECONDS = 15  # leaderboard_cache — see refresh_leaderboard()
 WALLET_CATEGORY_REFRESH_SECONDS = 30  # wallet_category_breakdown_cache — see refresh_wallet_category_breakdown()
 WALLET_PNL_REFRESH_SECONDS = 30  # wallet_pnl_hourly — see refresh_wallet_pnl()
+TRADER_SCORES_REFRESH_SECONDS = 60  # trader_scores (Leaderboard experts/insiders) — see refresh_trader_scores()
 # PROFIT_BOT_REFRESH_SECONDS is NOT incremental yet (refresh_profit_bot still does a
 # full 5-pass recompute per call) — left untouched. Shrinking this one would make the
 # original I/O problem worse, not better; it needs the same incremental treatment
@@ -1279,6 +1280,18 @@ def refresh_wallet_pnl(db):
     supabase/migrations/20261010040000_wallet_pnl_hourly.sql."""
     n = db.fetchone('SELECT refresh_wallet_pnl_hourly()')[0]
     print(f'  [aggregates] refreshed wallet_pnl_hourly ({n} hour rows updated)')
+
+
+def refresh_trader_scores(db):
+    """Runs periodically (TRADER_SCORES_REFRESH_SECONDS, see main()) — folds
+    fills resolved since the last pass into trader_market_results (one row
+    per wallet per market) and rescores just the wallets that changed in
+    trader_scores, which the Leaderboard's Experts/Insiders views read. Same
+    high-water mark pattern as refresh_wallet_pnl; the whole pass lives in
+    refresh_trader_scores(). See
+    supabase/migrations/20261103000000_trader_scores.sql."""
+    n = db.fetchone('SELECT refresh_trader_scores()')[0]
+    print(f'  [aggregates] refreshed trader_scores ({n} wallets rescored)')
 
 
 def reconcile_caches(db):
@@ -2622,6 +2635,7 @@ def main():
     last_wallet_category_refresh = 0.0  # fire once on startup, not just after the first interval
     last_profit_bot_refresh = 0.0  # fire once on startup, not just after the first interval
     last_wallet_pnl_refresh = 0.0  # fire once on startup, not just after the first interval
+    last_trader_scores_refresh = 0.0
     last_reconcile = time.time()  # don't fire on startup — let the incremental passes run first
     last_warm_search = 0.0  # fire once on startup, not just after the first interval
     last_broadcast_flush = time.time()
@@ -2739,6 +2753,10 @@ def main():
                 if now - last_wallet_pnl_refresh > WALLET_PNL_REFRESH_SECONDS:  # wallet_pnl_hourly
                     maintenance_jobs.submit('wallet-pnl', refresh_wallet_pnl, maintenance_db)
                     last_wallet_pnl_refresh = now
+
+                if now - last_trader_scores_refresh > TRADER_SCORES_REFRESH_SECONDS:  # trader_scores
+                    maintenance_jobs.submit('trader-scores', refresh_trader_scores, maintenance_db)
+                    last_trader_scores_refresh = now
 
                 if now - last_profit_bot_refresh > PROFIT_BOT_REFRESH_SECONDS:  # profit_bot_*_cache
                     maintenance_jobs.submit('profit-bot', refresh_profit_bot, maintenance_db)

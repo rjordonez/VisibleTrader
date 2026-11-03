@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabase'
 import type { Opportunity, WalletContribution, ChartPoint } from './types'
+import { dashboardPath } from '../lib/domains'
+
 
 // AlertsPage.tsx's per-browser (not tracked_wallets — that's a shared,
 // app-wide roster, see its own table comment) personal watchlist. Exported
@@ -74,6 +76,10 @@ export function avatarGradient(wallet: string | null) {
 export function avatarInitial(wallet: string | null, walletName: string | null) {
   return traderLabel(wallet, walletName)[0]?.toUpperCase() ?? '?'
 }
+
+// The in-app full market page (MarketPage), where the popup's "See more" goes.
+export const marketPagePath = (conditionId: string, outcome: string) =>
+  dashboardPath(`/market/${encodeURIComponent(conditionId)}/${encodeURIComponent(outcome)}`)
 
 export function marketUrl(slug: string | null) {
   return slug ? `https://polymarket.com/event/${slug}` : null

@@ -9,10 +9,44 @@ import RecentWins from './RecentWins'
 import type { useAlerts } from './useAlerts'
 import './leaderboard.css'
 
-interface LeaderboardRow { wallet: string; wallet_name: string | null; won: number; lost: number; net_profit: number }
+// One row of trader_scores: each wallet scored per market (not per fill)
+// against the odds it paid. See supabase/migrations/20261103000000_trader_scores.sql
+// for how experts and insiders are defined.
+interface LeaderboardRow {
+  wallet: string; wallet_name: string | null
+  markets: number; wins: number; expected_wins: number; pnl: number
+  longshots: number; longshot_wins: number; longshot_expected: number; longshot_pnl: number
+}
 type FollowProps = Pick<ReturnType<typeof useAlerts>, 'watchedWallets' | 'addWallet' | 'removeWallet'>
-const resolvedCount = (r: LeaderboardRow) => r.won + r.lost
-const winRate = (r: LeaderboardRow) => resolvedCount(r) > 0 ? r.won / resolvedCount(r) * 100 : null
+type Ranking = 'experts' | 'insiders' | 'profit'
+const COLUMNS = 'wallet,wallet_name,markets,wins,expected_wins,pnl,longshots,longshot_wins,longshot_expected,longshot_pnl'
+const pct = (n: number, d: number) => d > 0 ? Math.round(n / d * 100) : 0
+const winRate = (r: LeaderboardRow) => pct(r.wins, r.markets)
+// Average entry price = the win rate the market expected from them.
+const oddsPaid = (r: LeaderboardRow) => pct(r.expected_wins, r.markets)
+const longshotOdds = (r: LeaderboardRow) => pct(r.longshot_expected, r.longshots)
+const shownProfit = (r: LeaderboardRow, ranking: Ranking) => ranking === 'insiders' ? r.longshot_pnl : r.pnl
+
+const RANKING_COPY: Record<Ranking, { period: string; profit: string; rate: string; noun: string; empty: string }> = {
+  experts: {
+    period: 'Beat the market\'s odds across 25+ markets', profit: 'Resolved P&L', rate: 'Win rate', noun: 'experts',
+    empty: 'No traders have beaten the odds consistently enough yet.',
+  },
+  insiders: {
+    period: 'Cashed long-shot bets outside sports', profit: 'Long-shot profit', rate: 'Long shots hit', noun: 'insiders',
+    empty: 'No long-shot hits that look like inside information yet.',
+  },
+  profit: {
+    period: 'All tracked history', profit: 'Resolved P&L', rate: 'Win rate', noun: 'traders',
+    empty: 'Rankings will appear as tracked positions resolve.',
+  },
+}
+
+function RecordLine({ row, ranking }: { row: LeaderboardRow; ranking: Ranking }) {
+  if (ranking === 'insiders') return <><strong>{row.longshot_wins} of {row.longshots} <span>long shots</span></strong><span>avg {longshotOdds(row)}% odds</span></>
+  if (ranking === 'experts') return <><strong>{winRate(row)}% <span>win rate</span></strong><span>vs {oddsPaid(row)}% odds</span></>
+  return <><strong>{winRate(row)}% <span>win rate</span></strong><span>{row.markets.toLocaleString()} markets</span></>
+}
 
 function FollowButton({ row, watchedWallets, addWallet, removeWallet }: FollowProps & { row: LeaderboardRow }) {
   const followed = watchedWallets.find(w => w.wallet.toLowerCase() === row.wallet.toLowerCase())
@@ -28,8 +62,8 @@ function LeaderboardPage(follow: FollowProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [view, setView] = useState<'rankings' | 'wins'>('rankings')
-  const [ranking, setRanking] = useState<'profit' | 'winrate'>('profit')
-  const [minimumTrades, setMinimumTrades] = useState(10)
+  const [ranking, setRanking] = useState<Ranking>('experts')
+  const [total, setTotal] = useState(0)
   useEffect(() => {
     let cancelled = false
     let pending = false
@@ -37,20 +71,15 @@ function LeaderboardPage(follow: FollowProps) {
       if (pending) return
       pending = true
       try {
-        // Read the compact cache in pages, so win-rate ranking includes traders
-        // beyond the top 100 by P&L and isn't truncated by the API row limit.
-        const next: LeaderboardRow[] = []
-        let cursor: string | undefined
-        while (!cancelled) {
-          let query = supabase.from('leaderboard').select('wallet,wallet_name,won,lost,net_profit').order('wallet').limit(500)
-          if (cursor) query = query.gt('wallet', cursor)
-          const { data, error: queryError } = await query
-          if (queryError) throw queryError
-          const page = (data ?? []) as LeaderboardRow[]
-          next.push(...page)
-          if (page.length < 500) break
-          cursor = page[page.length - 1].wallet
-        }
+        // Filtered and sorted server-side; trader_scores is one row per wallet.
+        let query = supabase.from('trader_scores').select(COLUMNS, { count: 'exact' })
+        if (ranking === 'experts') query = query.eq('is_expert', true).order('edge_pts', { ascending: false })
+        else if (ranking === 'insiders') query = query.eq('is_insider', true).order('longshot_pnl', { ascending: false })
+        else query = query.order('pnl', { ascending: false })
+        const { data, count, error: queryError } = await query.order('wallet').limit(100)
+        if (queryError) throw queryError
+        const next = (data ?? []) as LeaderboardRow[]
+        if (!cancelled) setTotal(count ?? next.length)
         if (!cancelled) { setRows(next); setError(false); setLoading(false) }
       } catch {
         if (!cancelled) { setError(true); setLoading(false) }
@@ -60,34 +89,26 @@ function LeaderboardPage(follow: FollowProps) {
     const interval = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 60000)
     const unsubscribe = onTabVisible(() => { void load() })
     return () => { cancelled = true; clearInterval(interval); unsubscribe() }
-  }, [])
+  }, [ranking])
 
-  const eligible = rows.filter(row => resolvedCount(row) >= (ranking === 'winrate' ? minimumTrades : 1))
-  const ranked = [...eligible].sort((a, b) => (
-    ranking === 'winrate'
-      ? (winRate(b)! - winRate(a)!) || resolvedCount(b) - resolvedCount(a) || b.net_profit - a.net_profit
-      : b.net_profit - a.net_profit || resolvedCount(b) - resolvedCount(a)
-  ) || a.wallet.localeCompare(b.wallet)).slice(0, 100)
+  const ranked = rows
+  const copy = RANKING_COPY[ranking]
+  const changeRanking = (next: Ranking) => { setLoading(true); setRows([]); setRanking(next) }
 
   return (
     <div className="sig-page leaders-page">
       <header className="app-section-header leaders-header">
-        <div><h1 className="app-section-title">Leaderboard</h1><p className="leaders-period">All tracked history</p></div>
+        <div><h1 className="app-section-title">Leaderboard</h1><p className="leaders-period">{copy.period}</p></div>
         {view === 'rankings' && (
           <div className="leaders-header-controls">
             <label className="leaders-select">
-              <select aria-label="Rank traders by" value={ranking} onChange={e => setRanking(e.target.value as typeof ranking)}>
+              <select aria-label="Rank traders by" value={ranking} onChange={e => changeRanking(e.target.value as Ranking)}>
+                <option value="experts">Experts</option>
+                <option value="insiders">Insiders</option>
                 <option value="profit">Highest P&L</option>
-                <option value="winrate">Highest win rate</option>
               </select>
               <ChevronDown size={15} aria-hidden="true" />
             </label>
-            {ranking === 'winrate' && <label className="leaders-select leaders-minimum">
-              <select aria-label="Minimum resolved trades" value={minimumTrades} onChange={e => setMinimumTrades(Number(e.target.value))}>
-                {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}+ resolved trades</option>)}
-              </select>
-              <ChevronDown size={15} aria-hidden="true" />
-            </label>}
           </div>
         )}
       </header>
@@ -108,24 +129,26 @@ function LeaderboardPage(follow: FollowProps) {
             <article className={`leaders-card leaders-place-${index + 1}`} key={row.wallet}>
               <div className="leaders-card-top"><span className="leaders-place">#{index + 1}</span><Link to={dashboardPath(`/trader/${row.wallet}`)} aria-label={`View ${traderLabel(row.wallet, row.wallet_name)}`}><ArrowUpRight size={18} /></Link></div>
               <Link className="leaders-card-person" to={dashboardPath(`/trader/${row.wallet}`)}><span className="leaders-avatar" style={{ background: avatarGradient(row.wallet) }}><GogglesMark /></span><h2>{traderLabel(row.wallet, row.wallet_name)}</h2></Link>
-              <strong className={`leaders-card-profit ${row.net_profit >= 0 ? 'is-positive' : 'is-negative'}`}>{fmtSigned(row.net_profit)}</strong><span className="leaders-metric-label">Resolved P&L</span>
-              <div className="leaders-card-record"><strong>{winRate(row)?.toFixed(0)}% <span>win rate</span></strong><span>{resolvedCount(row).toLocaleString()} resolved</span></div>
+              <strong className={`leaders-card-profit ${shownProfit(row, ranking) >= 0 ? 'is-positive' : 'is-negative'}`}>{fmtSigned(shownProfit(row, ranking))}</strong><span className="leaders-metric-label">{copy.profit}</span>
+              <div className="leaders-card-record"><RecordLine row={row} ranking={ranking} /></div>
               <FollowButton row={row} {...follow} />
             </article>
           ))}
         </section>
         <section className="leaders-list" aria-labelledby="leaders-list-title" aria-busy={loading}>
-          <div className="leaders-list-heading"><h2 id="leaders-list-title">The rankings</h2>{!loading && <span>{ranked.length} of {eligible.length.toLocaleString()} eligible traders</span>}</div>
-          <div className="leaders-column-head" aria-hidden="true"><span>Trader</span><span>Resolved P&L</span><span>Win rate</span><span /></div>
+          <div className="leaders-list-heading"><h2 id="leaders-list-title">The rankings</h2>{!loading && <span>{ranked.length} of {total.toLocaleString()} {copy.noun}</span>}</div>
+          <div className="leaders-column-head" aria-hidden="true"><span>Trader</span><span>{copy.profit}</span><span>{copy.rate}</span><span /></div>
           {loading ? [0, 1, 2, 3, 4].map(i => <div key={i} className="leaders-row-skeleton sig-skel" aria-hidden="true" />) : <ol className="leaders-rows">{ranked.map((row, index) => (
             <li className="leaders-row" key={row.wallet}>
-              <div className="leaders-person"><span className="leaders-rank">{index + 1}</span><Link to={dashboardPath(`/trader/${row.wallet}`)}><span className="leaders-avatar" style={{ background: avatarGradient(row.wallet) }}><GogglesMark /></span><span className="leaders-name"><strong>{traderLabel(row.wallet, row.wallet_name)}</strong><small>{resolvedCount(row).toLocaleString()} resolved positions</small></span></Link></div>
-              <div className={`leaders-row-profit ${row.net_profit >= 0 ? 'is-positive' : 'is-negative'}`}><span className="leaders-mobile-label">Resolved P&L</span><strong>{fmtSigned(row.net_profit)}</strong></div>
-              <div className="leaders-row-rate"><span className="leaders-mobile-label">Win rate</span><strong>{winRate(row)?.toFixed(0)}%</strong><small>{row.won.toLocaleString()} wins</small></div>
+              <div className="leaders-person"><span className="leaders-rank">{index + 1}</span><Link to={dashboardPath(`/trader/${row.wallet}`)}><span className="leaders-avatar" style={{ background: avatarGradient(row.wallet) }}><GogglesMark /></span><span className="leaders-name"><strong>{traderLabel(row.wallet, row.wallet_name)}</strong><small>{row.markets.toLocaleString()} markets</small></span></Link></div>
+              <div className={`leaders-row-profit ${shownProfit(row, ranking) >= 0 ? 'is-positive' : 'is-negative'}`}><span className="leaders-mobile-label">{copy.profit}</span><strong>{fmtSigned(shownProfit(row, ranking))}</strong></div>
+              <div className="leaders-row-rate"><span className="leaders-mobile-label">{copy.rate}</span>{ranking === 'insiders'
+                ? <><strong>{row.longshot_wins}/{row.longshots}</strong><small>avg {longshotOdds(row)}% odds</small></>
+                : <><strong>{winRate(row)}%</strong><small>{ranking === 'experts' ? `vs ${oddsPaid(row)}% odds` : `${row.wins.toLocaleString()} wins`}</small></>}</div>
               <FollowButton row={row} {...follow} />
             </li>
           ))}</ol>}
-          {!loading && !error && ranked.length === 0 && <p className="leaders-notice">{ranking === 'winrate' ? 'No traders meet this minimum yet. Try a lower trade count or browse by P&L.' : 'Rankings will appear as tracked positions resolve.'}</p>}
+          {!loading && !error && ranked.length === 0 && <p className="leaders-notice">{copy.empty}</p>}
         </section>
       </>)}
 
