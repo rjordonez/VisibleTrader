@@ -7,7 +7,7 @@ It does not deploy or restart the production service.
 
 | Work | Workers | Reserved database connections |
 | --- | ---: | ---: |
-| Trades | 24 ordered token lanes | 24 |
+| Trades | 24 shared workers; FIFO per token | 24 |
 | Quote batches | 1 | 1 |
 | Opportunity broadcasts | 1 | 1 |
 | Chain ingestion and freshness reports | 1 | 2 (also used by the fill dispatcher) |
@@ -125,7 +125,7 @@ throughput or recovery guarantees. The exclusion SELECT used the existing
 partial index and took 1.525 ms in production EXPLAIN ANALYZE.
 
 This prevents a saturated lane from blocking all other lanes; it does not make
-an individual token infinitely fast. Hash-colliding tokens still share a lane.
+an individual token infinitely fast. The subsequent shared-worker scheduler removes hash collisions between tokens.
 Monitor both the oldest outstanding fill and the newest ticker age, plus
 `[dispatch]` deferred-token/rejection/acknowledgement counters. A fresh ticker
 alone does not mean all historical accounting has caught up.
@@ -137,3 +137,16 @@ existing recovery constraint above; do not blindly restart or reset processed
 rows. Abrupt process/VM failure still has the pre-existing dispatched-versus-
 committed gap. Exactly-once recovery requires a separate transactional identity
 for each fill and party, not a blanket replay.
+
+## November 3 recovery scheduler
+
+Trade workers now share a ready queue rather than assigning tokens permanently
+by CRC32 modulo worker count. A token can own only one worker at a time. After
+each fill, its remaining work returns to the end of the ready queue, so an
+unrelated token can use a free worker even if it collided under the old hash.
+Global capacity and the existing per-queue limit/hysteresis remain enforced;
+the per-queue limit now applies to each token. There is no increase to database
+connection counts and no bypass of buyer/seller accounting. This improves
+utilization; it cannot guarantee that a single token keeps up with arbitrary
+incoming volume. Tests cover old-hash collisions, 600 ordered tasks across 20
+tokens without overlap, failed/cancelled tasks, and interpreter-exit draining.
