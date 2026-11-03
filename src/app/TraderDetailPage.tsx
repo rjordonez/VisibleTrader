@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { ArrowUp, ArrowDown, Share2, Film, UserPlus, UserCheck } from 'lucide-react'
+import { fetchOpenPositions, fetchClosedPositions, fetchTrades } from '../lib/polymarketData'
 import { supabase } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { traderLabel, fmtSigned, fmtFull, timeAgo, addToWatchedWallets, removeFromWatchedWallets } from './helpers'
@@ -326,13 +327,12 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
         // concept of "still open"), so this is the only source of truth for
         // "what are they holding right now" regardless of whether we've
         // been tracking this wallet's past trades ourselves.
-        // redeemable=false: Polymarket keeps resolved positions nobody has
-        // redeemed (mostly worthless losers, "Now 0¢") in this feed, and for
-        // heavy traders they filled most of the 50 slots.
+        // status OPEN: resolved positions nobody has redeemed (mostly
+        // worthless losers, "Now 0¢") stay out, so heavy traders' 50 slots
+        // are actual live bets.
         setOpenPositionsLoading(true)
-        fetch(`https://data-api.polymarket.com/positions?user=${wallet}&limit=50&redeemable=false`)
-          .then(r => r.ok ? r.json() : [])
-          .then(pos => { if (!cancelled) setLivePositions((pos ?? []) as LivePosition[]) })
+        fetchOpenPositions(wallet, 50)
+          .then(pos => { if (!cancelled) setLivePositions(pos) })
           .catch(() => {})
           .finally(() => { if (!cancelled) setOpenPositionsLoading(false) })
 
@@ -343,14 +343,14 @@ function TraderDetailPage({ wallet, linkToTrader = w => dashboardPath(`/trader/$
           // history" doesn't mean "we can't show you anything real."
           setLiveLoading(true)
           Promise.all([
-            fetch(`https://data-api.polymarket.com/closed-positions?user=${wallet}&limit=200`).then(r => r.ok ? r.json() : []),
-            fetch(`https://data-api.polymarket.com/trades?user=${wallet}&limit=30`).then(r => r.ok ? r.json() : []),
+            fetchClosedPositions(wallet, 200),
+            fetchTrades(wallet, 30),
           ])
             .then(([closed, trades]) => {
               if (cancelled) return
-              const liveClosedPos = (closed ?? []) as LiveClosedPosition[]
+              const liveClosedPos: LiveClosedPosition[] = closed
               setLiveClosed(liveClosedPos)
-              setLiveTrades((trades ?? []) as LiveTrade[])
+              setLiveTrades(trades)
               const pairs = liveClosedPos
                 .filter(p => p.conditionId && p.outcome)
                 .map(p => ({ condition_id: p.conditionId, outcome: p.outcome }))
