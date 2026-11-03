@@ -15,6 +15,7 @@ is psycopg for the Postgres connection.
 import signal
 import argparse, bisect, json, os, random, socket, ssl, struct, base64, threading, time, urllib.error, urllib.parse, urllib.request
 from collections import defaultdict
+from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 import psycopg
@@ -343,6 +344,15 @@ def build_roster(all_users, whale_size=ROSTER_SIZE, active_size=0):
     return {u['wallet'].lower() for u in whales} | {u['wallet'].lower() for u in active}
 
 
+def cached_roster_selector(all_users):
+    # all_users is the immutable startup snapshot. A fresh snapshot gets a
+    # fresh selector; changing bucket sizes still computes the right roster.
+    @lru_cache(maxsize=8)
+    def select(whale_size, active_size):
+        return frozenset(build_roster(all_users, whale_size, active_size))
+    return select
+
+
 def load_config(db):
     """app_settings table — written by the Settings page (direct Supabase
     write from the browser now, not through a local proxy), read here on a
@@ -382,7 +392,7 @@ def load_config(db):
     return defaults
 
 
-def apply_config(cfg, roster_set, all_users):
+def apply_config(cfg, roster_set, all_users, roster_selector=None):
     """Reassigning these module globals is enough — every read site
     (process_trade, record_exit, etc.) looks the name up fresh each call
     rather than holding a stale local copy, so this takes effect on the
@@ -397,7 +407,10 @@ def apply_config(cfg, roster_set, all_users):
     TIERS = sorted(float(t) if not float(t).is_integer() else int(t) for t in cfg['tiers'])
     TICKER_MIN_USD = cfg['ticker_min_usd']
     SCALP_WINDOW_SECONDS = cfg['scalp_window_minutes'] * 60
-    new_roster = build_roster(all_users, cfg['whale_roster_size'], cfg['active_roster_size']) | cfg.get('tracked_wallets', set())
+    base_roster = (roster_selector(cfg['whale_roster_size'], cfg['active_roster_size'])
+                   if roster_selector is not None else
+                   build_roster(all_users, cfg['whale_roster_size'], cfg['active_roster_size']))
+    new_roster = base_roster | cfg.get('tracked_wallets', set())
     if new_roster != roster_set:
         with state_lock:
             roster_set.clear()
@@ -2756,7 +2769,8 @@ def main():
     config = load_config(db)  # app_settings wins over --roster-size if present — see Settings page
     print(f'Loading roster (top {config["whale_roster_size"]} by best_pnl + top {config["active_roster_size"]} by recent activity)...')
     roster = set()
-    apply_config(config, roster, all_users)  # populates roster + sets TIERS/TICKER_MIN_USD/SCALP_WINDOW_SECONDS
+    roster_selector = cached_roster_selector(all_users)
+    apply_config(config, roster, all_users, roster_selector)  # populates roster + sets TIERS/TICKER_MIN_USD/SCALP_WINDOW_SECONDS
     wallet_names = build_wallet_names(all_users)
     print(f'{len(roster)} roster wallets loaded, {len(wallet_names)} known wallet names available.')
 
@@ -3005,8 +3019,8 @@ def main():
                     last_warm_search = now
 
                 if now - last_config_reload > 10:  # picks up Settings-page changes without a restart
-                    apply_config(load_config(db), roster, all_users)
-                    last_config_reload = now
+                    apply_config(load_config(db), roster, all_users, roster_selector)
+                    last_config_reload = time.time()
 
                 if now - last_broadcast_flush > BROADCAST_INTERVAL_SECONDS:  # batched opportunities/ticker broadcast — see flush_dirty_broadcast()
                     delivery_jobs.submit('broadcast', flush_dirty_broadcast, delivery_db)

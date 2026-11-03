@@ -467,5 +467,39 @@ class TradeNoOpTests(unittest.TestCase):
         self.s.record_contribution.assert_called_once()
 
 
+class RosterCacheTests(unittest.TestCase):
+    def test_unchanged_poll_reuses_ranking_but_updates_tracked_wallets(self):
+        service = load_service()
+        source = [{'wallet': 'whale', 'best_pnl': 100, 'recent_rank_seen': False,
+                   'recent_pnl': None}]
+        original = service.build_roster
+        service.build_roster = Mock(wraps=original)
+        selector = service.cached_roster_selector(source)
+        roster = set()
+        cfg = {'whale_roster_size': 1, 'active_roster_size': 0, 'tiers': [1000],
+               'ticker_min_usd': 100, 'scalp_window_minutes': 30, 'tracked_wallets': {'tracked'}}
+        service.apply_config(cfg, roster, source, selector)
+        self.assertEqual(roster, {'whale', 'tracked'})
+        cfg['tracked_wallets'] = {'other'}
+        service.apply_config(cfg, roster, source, selector)
+        self.assertEqual(roster, {'whale', 'other'})
+        service.build_roster.assert_called_once()
+        cfg['whale_roster_size'] = 0
+        service.apply_config(cfg, roster, source, selector)
+        self.assertEqual(roster, {'other'})
+        self.assertEqual(service.build_roster.call_count, 2)
+
+    def test_fresh_snapshot_has_fresh_ranking(self):
+        service = load_service()
+        def user(wallet):
+            return {'wallet': wallet, 'best_pnl': 10, 'recent_rank_seen': True,
+                    'recent_pnl': 10}
+        first = service.cached_roster_selector([user('first')])
+        second = service.cached_roster_selector([user('second')])
+        self.assertEqual(first(1, 1), {'first'})
+        self.assertEqual(second(1, 1), {'second'})
+        self.assertIs(first(1, 1), first(1, 1))
+
+
 if __name__ == '__main__':
     unittest.main()
