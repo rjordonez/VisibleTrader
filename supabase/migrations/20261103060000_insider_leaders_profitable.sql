@@ -24,7 +24,8 @@ select b.wallet,
   b.trades, coalesce(w.open_positions, 0) as open_positions, coalesce(w.open_usd, 0) as open_usd,
   w.all_time_pnl, s.hits, s.total_pnl,
   b.event_title, b.event_slug, b.initial_value, b.final_value, b.pnl as best_pnl,
-  b.entry_odds, b.buy_hours_before, b.quick, b.few_bets, b.new_account, b.account_age_days
+  b.entry_odds, b.buy_hours_before, b.quick, b.few_bets, b.new_account, b.account_age_days,
+  b.multiplier
 from (
   select wallet, count(*)::int as hits, sum(pnl) as total_pnl from listed group by wallet
 ) s
