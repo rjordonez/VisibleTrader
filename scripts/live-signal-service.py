@@ -12,7 +12,7 @@ leave it going. Requires DATABASE_URL in the environment (Supabase Settings
 pattern validated live earlier this session; the only non-stdlib dependency
 is psycopg for the Postgres connection.
 """
-import argparse, bisect, json, os, random, socket, ssl, struct, base64, threading, time, urllib.error, urllib.request
+import argparse, bisect, json, os, random, socket, ssl, struct, base64, threading, time, urllib.error, urllib.parse, urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -1297,12 +1297,51 @@ def refresh_trader_scores(db):
 
 def refresh_trader_open_positions(db):
     """Runs periodically (TRADER_OPEN_REFRESH_SECONDS, see main()) — the
-    Leaderboard's "N open" marker. Counts open positions for only the
-    wallets the Leaderboard can show (experts, insiders, top 100 by P&L) in
-    refresh_trader_open_positions(), rather than per page view. See
-    supabase/migrations/20261103010000_trader_open_positions.sql."""
-    n = db.fetchone('SELECT refresh_trader_open_positions()')[0]
-    print(f'  [aggregates] refreshed trader open positions ({n} wallets)')
+    Leaderboard's "N open" marker. Reads each listed wallet's current
+    holdings from Polymarket's data API, the same call the trader profile's
+    Active tab makes, so the two always agree. opportunity_wallets can't
+    answer this: a sale or redemption we never saw leaves a fill looking
+    open forever. Only the wallets the Leaderboard can show (experts,
+    insiders, top 100 by P&L). A wallet whose fetch fails keeps its last
+    count rather than flashing to zero."""
+    rows = db.fetchall('''
+        SELECT wallet FROM trader_scores WHERE is_expert OR is_insider
+        UNION
+        (SELECT wallet FROM trader_scores ORDER BY pnl DESC LIMIT 100)
+    ''')
+    wallets = [r[0] for r in rows]
+
+    # Data API v2 (v1 was retired and answers 410): status=OPEN is what the
+    # wallet holds in markets still trading; worth $1+ so leftover dust shares
+    # (thousands of them on some bots) don't count. Cursor-paged; a few pages covers
+    # even the busiest bots.
+    def holdings(wallet):
+        try:
+            n, usd, cursor = 0, 0.0, None
+            for _ in range(5):
+                query = f'cursor={urllib.parse.quote(cursor)}' if cursor else 'status=OPEN&filter_type=CASH&filter_amount=1&limit=1000'
+                req = urllib.request.Request(f'https://data-api.polymarket.com/v2/positions?user={wallet}&{query}', headers=UA)
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    body = json.load(r)
+                rows = body.get('data') or []
+                n += len(rows)
+                usd += sum(float(p.get('current_value') or 0) for p in rows)
+                cursor = (body.get('pagination') or {}).get('next_cursor')
+                if not cursor:
+                    break
+            return wallet, n, usd
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = [r for r in pool.map(holdings, wallets) if r]
+    if results:
+        db.executemany('UPDATE trader_scores SET open_positions = %s, open_usd = %s WHERE wallet = %s',
+                       [(n, usd, w) for w, n, usd in results])
+    # A wallet that drops off every list would otherwise keep a stale count.
+    db.execute('UPDATE trader_scores SET open_positions = 0, open_usd = 0 WHERE open_positions > 0 AND NOT (wallet = ANY(%s))',
+               (wallets,))
+    print(f'  [aggregates] refreshed trader open positions ({len(results)}/{len(wallets)} wallets)')
 
 
 def reconcile_caches(db):

@@ -11,6 +11,7 @@
 // caller (not just hidden client-side), so there's nothing for devtools
 // to recover.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { fetchOpenPositions, fetchClosedPositions, fetchTrades } from './polymarket.ts'
 
 const corsHeaders = {
   'access-control-allow-origin': '*',
@@ -160,15 +161,10 @@ Deno.serve(async (req) => {
       // never gated — but which of *our* tracked wallets overlap with it
       // is our own proprietary signal, so that part still respects
       // `entitled` same as the tracked path below.
-      const [posRes, closedRes, tradesRes] = await Promise.all([
-        fetch(`https://data-api.polymarket.com/positions?user=${wallet}&limit=50`),
-        fetch(`https://data-api.polymarket.com/closed-positions?user=${wallet}&limit=200`),
-        fetch(`https://data-api.polymarket.com/trades?user=${wallet}&limit=30`),
-      ])
       const [livePositions, liveClosed, liveTrades] = await Promise.all([
-        posRes.ok ? posRes.json() : [],
-        closedRes.ok ? closedRes.json() : [],
-        tradesRes.ok ? tradesRes.json() : [],
+        fetchOpenPositions(wallet, 50).catch(() => []),
+        fetchClosedPositions(wallet, 200).catch(() => []),
+        fetchTrades(wallet, 30).catch(() => []),
       ])
 
       let similarTraders: SimilarTrader[] | null = null
