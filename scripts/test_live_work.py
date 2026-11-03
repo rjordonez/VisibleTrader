@@ -93,6 +93,83 @@ class SchedulingTests(unittest.TestCase):
         self.assertFalse(job._thread.is_alive())
         self.assertTrue(calls)
 
+    def test_old_hash_collision_does_not_block_unrelated_market(self):
+        import zlib
+        hot = 'hot'
+        cold = next(str(i) for i in range(100) if zlib.crc32(str(i).encode()) % 2 == zlib.crc32(hot.encode()) % 2)
+        workers = TradeWorkers(2, 8, max_per_lane=2)
+        release, entered, other = threading.Event(), threading.Event(), threading.Event()
+        def blocked():
+            entered.set()
+            release.wait(3)
+        try:
+            workers.submit(hot, blocked)
+            self.assertTrue(entered.wait(1))
+            workers.submit(hot, lambda: None)
+            with self.assertRaises(LaneFullError):
+                workers.submit(hot, lambda: None)
+            workers.submit(cold, other.set)
+            self.assertTrue(other.wait(1), 'hash-colliding token must use a free worker')
+        finally:
+            release.set()
+            workers.shutdown()
+
+    def test_many_tokens_preserve_order_and_never_overlap(self):
+        workers = TradeWorkers(8, 1000, max_per_lane=100)
+        lock = threading.Lock()
+        active, seen, overlap = set(), {}, []
+        def task(key, sequence):
+            import time
+            with lock:
+                if key in active:
+                    overlap.append(key)
+                active.add(key)
+            time.sleep(.001)
+            with lock:
+                seen.setdefault(key, []).append(sequence)
+                active.remove(key)
+        for sequence in range(30):
+            for key in range(20):
+                workers.submit(key, task, key, sequence)
+        workers.shutdown()
+        self.assertEqual(overlap, [])
+        self.assertEqual(len(seen), 20)
+        for sequence in seen.values():
+            self.assertEqual(sequence, list(range(30)))
+        self.assertEqual(workers.available, 1000)
+        with self.assertRaises(RuntimeError):
+            workers.submit('after-shutdown', lambda: None)
+
+    def test_failed_and_cancelled_work_does_not_strand_next_fill(self):
+        workers = TradeWorkers(1, 8)
+        release = threading.Event()
+        seen = []
+        try:
+            first = workers.submit('token', release.wait, 2)
+            cancelled = workers.submit('token', seen.append, 'cancelled')
+            self.assertTrue(cancelled.cancel())
+            failure = workers.submit('token', lambda: 1 / 0)
+            last = workers.submit('token', seen.append, 'last')
+            release.set()
+            first.result(2)
+            with self.assertRaises(ZeroDivisionError):
+                failure.result(2)
+            last.result(2)
+            self.assertEqual(seen, ['last'])
+        finally:
+            release.set()
+            workers.shutdown()
+
+    def test_interpreter_exit_drains_queued_fills(self):
+        import subprocess, sys
+        source = ("from live_work import TradeWorkers; import time; "
+                  "w=TradeWorkers(2, 20); "
+                  "[w.submit('token', lambda i=i: (time.sleep(.005), print(i))) for i in range(10)]")
+        result = subprocess.run([sys.executable, '-c', source],
+                                cwd=Path(__file__).parent, capture_output=True,
+                                text=True, timeout=5, check=True)
+        self.assertEqual(result.stdout.splitlines(), [str(i) for i in range(10)])
+
     def test_hot_lane_resume_waits_for_half_capacity(self):
         workers = TradeWorkers(1, 8, max_per_lane=4)
         releases = [threading.Event() for _ in range(4)]
@@ -268,8 +345,7 @@ class ServiceTests(unittest.TestCase):
             self.assertIn(2, pending)  # deferred fills were not discarded
             release.set()
             for _ in range(1000):
-                for lane in workers._lanes:
-                    lane.submit(lambda: None).result(1)
+                workers.wait_idle()
                 if not pending:
                     break
                 service.poll_onchain_fills(db, metadata, set(), {}, workers, admission=admission)

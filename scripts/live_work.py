@@ -1,94 +1,113 @@
 """Bounded scheduling primitives for the live service (no network or DB I/O)."""
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, Future
 from contextlib import contextmanager
 import threading
+import atexit
 import zlib
+from collections import deque
 
 
 class LaneFullError(RuntimeError):
-    """Raised when the specific lane a key hashes to is at its own cap.
-
-    Distinct from the plain RuntimeError raised when the *global* budget is
-    exhausted: callers can catch this one specifically and skip just this
-    key, since unrelated lanes may still have room.
-    """
+    """The ordered queue for this token has reached its capacity."""
 
 
 class TradeWorkers:
-    """FIFO per token, parallel across tokens, bounded across all lanes.
+    """Bounded FIFO per token, with free workers shared across all tokens.
 
-    The caller is the single fill dispatcher. It checks available before
-    reading the next batch, leaving excess fills in the database.
-
-    Capacity is enforced two ways: a global ceiling across all lanes (as
-    before), and a per-lane ceiling (max_per_lane, default ~2x each lane's
-    fair share: 2*capacity/workers). Without the per-lane cap, a single hot
-    token -- strictly serial by design, one lane, one worker -- can queue
-    enough backlog to consume a large fraction of the shared budget. Since
-    admission is gated on that one shared counter, a backed-up hot lane then
-    blocks admission for every other token's lane too, even ones sitting
-    completely idle. Confirmed live (2026-10-16): a handful of tokens
-    accounted for the majority of a sustained ~45-minute feed lag this way.
-    The original default here (1/4 of total capacity) turned out too loose
-    to matter in practice -- the hottest token measured live was holding
-    ~9-11% of the shared budget, well under a 25% cap -- so this caps each
-    lane much closer to its fair share instead of only stopping total
-    domination.
+    At most one worker owns a token at a time. After one fill, a token with
+    more queued work returns to the end of the ready queue. Unrelated tokens
+    never share a serial queue just because their hashes collide.
     """
     def __init__(self, workers, capacity, max_per_lane=None):
         if workers < 1 or capacity < 1:
             raise ValueError('workers and capacity must be positive')
-        self._lanes = [ThreadPoolExecutor(max_workers=1, thread_name_prefix=f'trades-{i}')
-                       for i in range(workers)]
         self._capacity = capacity
-        # Floor of 4 so small capacities (as in the unit tests) don't make
-        # the per-lane cap bind before the global one ever would.
         self._max_per_lane = max_per_lane if max_per_lane is not None else max(4, (2 * capacity) // workers)
         self._pending = 0
-        self._lane_pending = [0] * workers
-        self._lock = threading.Lock()
+        self._queues = {}
+        self._key_pending = {}
+        self._ready = deque()
+        self._closing = False
+        self._condition = threading.Condition()
+        self._threads = [threading.Thread(target=self._work, name=f'trades-{i}', daemon=True)
+                         for i in range(workers)]
+        for thread in self._threads:
+            thread.start()
+        atexit.register(self.shutdown)
 
     @property
     def available(self):
-        with self._lock:
+        with self._condition:
             return self._capacity - self._pending
 
     def ready_to_resume(self, key):
-        # Hysteresis matters: resuming after just one completion puts the
-        # same hot prefix straight back into every SELECT LIMIT window.
-        lane = zlib.crc32(str(key).encode()) % len(self._lanes)
-        with self._lock:
-            return (self._pending < self._capacity
-                    and self._lane_pending[lane] <= self._max_per_lane // 2)
+        with self._condition:
+            return (not self._closing and self._pending < self._capacity
+                    and self._key_pending.get(key, 0) <= self._max_per_lane // 2)
 
     def submit(self, key, fn, *args):
-        lane = zlib.crc32(str(key).encode()) % len(self._lanes)
-        with self._lock:
-            if self._lane_pending[lane] >= self._max_per_lane:
-                raise LaneFullError(f'lane {lane} is full ({self._max_per_lane} pending)')
+        with self._condition:
+            if self._closing:
+                raise RuntimeError('trade workers are shutting down')
+            count = self._key_pending.get(key, 0)
+            if count >= self._max_per_lane:
+                raise LaneFullError(f'token queue is full ({self._max_per_lane} pending)')
             if self._pending >= self._capacity:
                 raise RuntimeError('trade queue is full')
+            future = Future()
             self._pending += 1
-            self._lane_pending[lane] += 1
-        try:
-            future = self._lanes[lane].submit(fn, *args)
-        except BaseException:
-            with self._lock:
+            self._key_pending[key] = count + 1
+            if key not in self._queues:
+                self._queues[key] = deque()
+                self._ready.append(key)
+            self._queues[key].append((future, fn, args))
+            self._condition.notify()
+            return future
+
+    def _work(self):
+        while True:
+            with self._condition:
+                while not self._ready:
+                    if self._closing and self._pending == 0:
+                        return
+                    self._condition.wait()
+                key = self._ready.popleft()
+                future, fn, args = self._queues[key].popleft()
+            result, error = None, None
+            running = future.set_running_or_notify_cancel()
+            if running:
+                try:
+                    result = fn(*args)
+                except BaseException as exc:
+                    error = exc
+            with self._condition:
                 self._pending -= 1
-                self._lane_pending[lane] -= 1
-            raise
-        def finished(result):
-            with self._lock:
-                self._pending -= 1
-                self._lane_pending[lane] -= 1
-            if not result.cancelled() and result.exception() is not None:
-                print(f'[trade-error] {result.exception()!r}', flush=True)
-        future.add_done_callback(finished)
-        return future
+                self._key_pending[key] -= 1
+                if self._queues[key]:
+                    self._ready.append(key)
+                else:
+                    del self._queues[key]
+                    del self._key_pending[key]
+                self._condition.notify_all()
+            if running:
+                if error is not None:
+                    print(f'[trade-error] {error!r}', flush=True)
+                    future.set_exception(error)
+                else:
+                    future.set_result(result)
+
+    def wait_idle(self):
+        with self._condition:
+            while self._pending:
+                self._condition.wait()
 
     def shutdown(self):
-        for lane in self._lanes:
-            lane.shutdown(wait=True)
+        with self._condition:
+            self._closing = True
+            self._condition.notify_all()
+        for thread in self._threads:
+            thread.join()
+        atexit.unregister(self.shutdown)
 
 
 class PollingJob:
