@@ -11,7 +11,8 @@ supabase/migrations/20261103040000_expert_discovery.sql).
 
 Expert = consistently profitable per market, not one big score:
   * MIN_POSITIONS+ closed positions of MIN_POSITION_COST+ each,
-  * MIN_ROI+ return on everything staked and MIN_PNL+ profit,
+  * MIN_ROI+ return on everything staked and MIN_PNL+ profit, both on these
+    positions and all-time by Polymarket's own count,
   * t-statistic of per-position returns >= MIN_T (each position's return is
     capped at RETURN_CAP so a single 50x long shot can't carry it).
 Returns rather than "beat the odds": v2 closed rows don't say whether a
@@ -20,7 +21,7 @@ exact either way.
 """
 import math, time
 from concurrent.futures import ThreadPoolExecutor
-from insider_scan import pages
+from insider_scan import pages, wallet_stats
 
 BOARD_CATEGORIES = ['overall', 'politics', 'sports', 'esports', 'crypto', 'economics', 'tech', 'culture', 'finance']
 BOARD_DEPTH = 200          # wallets per board
@@ -75,11 +76,15 @@ def score_wallet(wallet, name=None):
     t = mean / (sd / math.sqrt(n)) if sd > 0 else 0
     wins = sum(1 for _, x, _ in pos if x > 0)
     roi = pnl / cost if cost else 0
+    # The positions above are the most recent MAX_POSITIONS per status;
+    # Polymarket's own all-time number decides whether they're really up.
+    _, _, all_time = wallet_stats(wallet)
     return {
         'wallet': wallet, 'wallet_name': name, 'positions': n, 'wins': wins, 'win_rate': wins / n,
         'cost': cost, 'pnl': pnl, 'roi': roi, 't_stat': t,
         'avg_odds': sum(c * p for c, _, p in pos) / cost if cost else 0,
-        'is_expert': pnl >= MIN_PNL and roi >= MIN_ROI and t >= MIN_T,
+        'all_time_pnl': all_time,
+        'is_expert': pnl >= MIN_PNL and all_time >= MIN_PNL and roi >= MIN_ROI and t >= MIN_T,
     }
 
 

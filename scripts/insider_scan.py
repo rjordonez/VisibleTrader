@@ -64,10 +64,13 @@ def pages(path, params, max_pages=10):
 
 
 def wallet_stats(wallet):
-    """(trades, join_date epoch or None) — distinct markets traded and when
-    the account first appeared."""
+    """(trades, join_date epoch or None, all-time realized P&L) — distinct
+    markets traded, when the account first appeared, and what it's actually
+    up overall (one big win can sit on top of bigger losses or a hedge)."""
     d = get(f'{DATA}/user-stats?user={wallet}').get('data') or {}
-    return int(d.get('trades') or 0), d.get('join_date')
+    pnl = d.get('all_time_pnl') or {}
+    realized = sum(float(pnl.get(k) or 0) for k in ('realized_market_pnl', 'realized_lp_pnl', 'realized_combo_pnl'))
+    return int(d.get('trades') or 0), d.get('join_date'), realized
 
 
 def buy_timing(wallet, condition_id):
@@ -144,9 +147,9 @@ def winner_candidates(windows):
 
 def enrich_hit(r, stats):
     """Adds timing and score to a biggest-winners row. `stats` is
-    {wallet: (trades, join_date)}."""
+    {wallet: (trades, join_date, all_time_pnl)}."""
     wallet = r['user_id']
-    trades, join_date = stats.get(wallet, (0, None))
+    trades, join_date, _ = stats.get(wallet, (0, None, None))
     first, wavg = buy_timing(wallet, r['condition_id'])
     entry_odds = float(r['initial_value']) / float(r['final_value'])
     hours_before = (r['resolved_at'] - wavg) / 3600 if wavg else None
@@ -220,7 +223,7 @@ def longshot_holders(market, longshots, limit=25):
 
 
 def stats_for(wallets, cached=None, workers=6):
-    """{wallet: (trades, join_date)}, fetching only wallets not in `cached`."""
+    """{wallet: (trades, join_date, all_time_pnl)}, fetching only wallets not in `cached`."""
     cached = dict(cached or {})
     missing = [w for w in wallets if w not in cached]
 
@@ -266,7 +269,7 @@ def scan_alerts(stats_cache=None, workers=6, max_markets=120):
     now = time.time()
     alerts = []
     for r in rows:
-        trades, join_date = stats.get(r['wallet'], (10**6, None))
+        trades, join_date, _ = stats.get(r['wallet'], (10**6, None, None))
         fresh = trades <= 50 or bool(join_date and now - join_date <= 30 * 86400)
         if not fresh:
             continue
@@ -285,7 +288,7 @@ if __name__ == '__main__':
         alerts, stats, n = scan_alerts()
         print(f'{len(alerts)} alerts from {n} markets in {time.time() - t:.0f}s')
         for a in sorted(alerts, key=lambda a: -a['score'])[:20]:
-            tr, jd = stats.get(a['wallet'], (None, None))
+            tr, jd, _ = stats.get(a['wallet'], (None, None, None))
             print(f"  {a['score']:3d}  ${a['entry_cost']/1e3:6.1f}k @ {a['avg_price']*100:4.1f}% (now {a['current_price']*100:4.1f}%)  "
                   f"trades={tr}  {(a['wallet_name'] or a['wallet'][:10])[:16]:16}  {a['outcome'][:14]:14} {a['question'][:55]}")
     else:
@@ -293,7 +296,7 @@ if __name__ == '__main__':
         pattern = [h for h in hits if h['is_pattern']]
         print(f'{len(hits)} hits, {len(pattern)} insider-pattern, {len(stats)} wallets in {time.time() - t:.0f}s')
         for h in sorted(pattern, key=lambda h: -h['score'])[:25]:
-            tr, jd = stats.get(h['wallet'], (None, None))
+            tr, jd, _ = stats.get(h['wallet'], (None, None, None))
             print(f"  {h['score']:3d}  {h['multiplier']:5.1f}x ${h['initial_value']/1e3:6.1f}k->${h['final_value']/1e3:7.1f}k  "
                   f"{h['buy_hours_before'] if h['buy_hours_before'] is not None else '?':>7}h  trades={tr}  "
                   f"{(h['wallet_name'] or h['wallet'][:10])[:16]:16} {h['event_title'][:50]}")
