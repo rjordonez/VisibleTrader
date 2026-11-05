@@ -25,6 +25,7 @@ const AffiliatePage = lazy(() => import('./landing/AffiliatePage'))
 const PrivacyPage = lazy(() => import('./landing/PrivacyPage'))
 const TermsPage = lazy(() => import('./landing/TermsPage'))
 const RefundPage = lazy(() => import('./landing/RefundPage'))
+const StatusPage = lazy(() => import('./landing/StatusPage'))
 const SignupPage = lazy(() => import('./landing/SignupPage'))
 const LoginPage = lazy(() => import('./landing/LoginPage'))
 const ForgotPasswordPage = lazy(() => import('./landing/ForgotPasswordPage'))
@@ -96,6 +97,7 @@ function MarketingRoutes() {
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/refund-policy" element={<RefundPage />} />
+        <Route path="/status" element={<StatusPage />} />
       </Route>
       <Route path="/estimate" element={<EstimatePage />} />
       {/* Public, no login — a plain link creators themselves can open to

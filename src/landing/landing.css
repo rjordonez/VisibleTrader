@@ -4001,3 +4001,94 @@
   font-size: 0.78rem;
   line-height: 1.5;
 }
+
+/* ── Public status page (/status) ── */
+.status-page {
+  --status-up: var(--green);
+  --status-slow: #f59e0b;
+  --status-down: #ef4444;
+  --status-none: rgba(255, 255, 255, 0.08);
+}
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  padding: 1.1rem 1.25rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  margin-bottom: 2rem;
+}
+.status-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--status-none);
+}
+.status-banner.status-operational .status-dot { background: var(--status-up); }
+.status-banner.status-degraded .status-dot { background: var(--status-slow); }
+.status-banner.status-outage .status-dot { background: var(--status-down); }
+.legal-content .status-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.legal-content .status-row {
+  line-height: normal;
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.legal-content .status-row:last-child { border-bottom: none; }
+.status-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+.status-name { font-weight: 600; color: var(--text-1); }
+.status-pill {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.status-pill.status-operational { color: var(--status-up); }
+.status-pill.status-degraded { color: var(--status-slow); }
+.status-pill.status-outage { color: var(--status-down); }
+.status-bars {
+  display: flex;
+  gap: 3px;
+  height: 2rem;
+}
+.status-bar {
+  flex: 1;
+  min-width: 0;
+  border-radius: 2px;
+  background: var(--status-none);
+}
+.status-bar.status-operational { background: var(--status-up); }
+.status-bar.status-degraded { background: var(--status-slow); }
+.status-bar.status-outage { background: var(--status-down); }
+.status-row-foot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-3);
+  margin-top: 0.5rem;
+}
+.status-note {
+  margin-top: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--text-3);
+}
+.status-note a { color: var(--text-2); }
+@media (max-width: 640px) {
+  .status-bars { gap: 2px; height: 1.5rem; }
+}
