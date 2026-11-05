@@ -643,6 +643,28 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(pairs, {'Website': 'operational', 'App': 'degraded', 'Live trade feed': 'outage'})
         self.assertEqual(db.execute.call_count, 4)  # current, daily, 30-min block, prune
 
+    def test_rate_limited_upstream_counts_as_up(self):
+        error = self.s.urllib.error.HTTPError('https://x', 429, 'slow down', {}, None)
+        with patch.object(self.s.urllib.request, 'urlopen', side_effect=error):
+            self.assertEqual(self.s._probe('GET', 'https://x', {}, 400)[0], 'OK')
+
+    def test_outside_check_needs_three_failures_in_a_row(self):
+        self.s._probe_fail_streak.clear()
+        db = Mock()
+        db.fetchone.return_value = (60.0,)
+        with patch.object(self.s, '_probe', return_value=('STALE', None)):
+            seen = [self.s.system_checks(db)['website'][0] for _ in range(3)]
+        self.assertEqual(seen, ['OK', 'OK', 'STALE'])
+        with patch.object(self.s, '_probe', return_value=('OK', 100)):
+            self.s.system_checks(db)
+        self.assertEqual(self.s._probe_fail_streak['website'], 0)
+
+    def test_internal_only_job_does_not_mark_public_row_down(self):
+        db = Mock()
+        self.s.write_public_status(db, {'core_jobs': 'OK', 'jobs': 'STALE'})
+        current = db.execute.call_args_list[0].args[1]
+        self.assertEqual(dict(zip(current[0::2], current[1::2])), {'Trader data & leaderboards': 'operational'})
+
     def test_probe_classifies_responses(self):
         response = Mock(status=200)
         response.__enter__ = Mock(return_value=response)
