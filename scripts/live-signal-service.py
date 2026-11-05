@@ -2785,6 +2785,73 @@ def health_status(age, warn=HEALTH_WARN_SECONDS, stale=HEALTH_STALE_SECONDS):
     return 'STALE' if age >= stale else 'WARN' if age >= warn else 'OK'
 
 
+def worst_status(statuses):
+    statuses = list(statuses)
+    return 'STALE' if 'STALE' in statuses else 'WARN' if 'WARN' in statuses else 'OK'
+
+
+# Everything else the product depends on, probed once a minute. Functions
+# get OPTIONS (handled before any real work); any reply below 500 means the
+# function is deployed and answering. Pages and APIs must return < 400.
+_FN_HEADERS = {'apikey': PROD_SUPABASE_ANON_KEY, **UA}
+SYSTEM_PROBES = [
+    ('website', 'GET', 'https://visibletrader.com', UA, 400),
+    ('app', 'GET', 'https://app.visibletrader.com', UA, 400),
+    ('fn_checkout', 'OPTIONS', f'{PROD_SUPABASE_URL}/functions/v1/create-checkout-session', _FN_HEADERS, 500),
+    ('fn_stripe_webhook', 'OPTIONS', f'{PROD_SUPABASE_URL}/functions/v1/stripe-webhook', _FN_HEADERS, 500),
+    ('fn_wallet_search', 'OPTIONS', f'{PROD_SUPABASE_URL}/functions/v1/wallet-search', _FN_HEADERS, 500),
+    ('polymarket_data', 'GET', 'https://data-api.polymarket.com/v2/leaderboard?limit=1', UA, 400),
+    ('polymarket_gamma', 'GET', 'https://gamma-api.polymarket.com/markets?limit=1', UA, 400),
+]
+PROBE_TIMEOUT_SECONDS = 8
+PROBE_WARN_MS = 3000
+PAYMENTS_WARN_SECONDS = 6 * 3600     # subscriptions normally change many times an hour
+PAYMENTS_STALE_SECONDS = 24 * 3600
+
+
+def _probe(method, url, headers, ok_below):
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, method=method, headers=headers),
+                                    timeout=PROBE_TIMEOUT_SECONDS) as r:
+            code = r.status
+    except urllib.error.HTTPError as exc:
+        code = exc.code
+    except Exception:
+        return 'STALE', None
+    ms = round((time.time() - t0) * 1000)
+    if code >= ok_below:
+        return 'STALE', ms
+    return ('WARN' if ms > PROBE_WARN_MS else 'OK'), ms
+
+
+def system_checks(db):
+    """{name: (status, latency_ms or, for payments, seconds since the last
+    subscription change)} for the database, payments, our pages and
+    functions, and the Polymarket APIs. Never raises."""
+    out = {}
+    with ThreadPoolExecutor(max_workers=len(SYSTEM_PROBES), thread_name_prefix='probe') as pool:
+        futures = {name: pool.submit(_probe, method, url, headers, ok_below)
+                   for name, method, url, headers, ok_below in SYSTEM_PROBES}
+        t0 = time.time()
+        try:
+            db.fetchone('SELECT 1')
+            ms = round((time.time() - t0) * 1000)
+            out['database'] = ('WARN' if ms > 1000 else 'OK', ms)
+        except Exception:
+            out['database'] = ('STALE', None)
+        try:
+            row = db.fetchone('SELECT EXTRACT(EPOCH FROM (now() - max(updated_at))) FROM subscriptions')
+            age = float(row[0]) if row and row[0] is not None else None
+            out['payments'] = (health_status(age, PAYMENTS_WARN_SECONDS, PAYMENTS_STALE_SECONDS),
+                               round(age) if age is not None else None)
+        except Exception:
+            out['payments'] = ('STALE', None)
+        for name, future in futures.items():
+            out[name] = future.result()
+    return out
+
+
 def report_health(db, pools):
     now = time.time()
     # Unprocessed rows are normally a few hundred; even a large backlog is
@@ -2807,10 +2874,13 @@ def report_health(db, pools):
             if name in HEALTH_JOB_INTERVALS and (since_ok > limit or running_for > limit):
                 stale_jobs.append(name)
 
-    checks = {'worst_market': health_status(worst_age), 'feed': health_status(ticker_age)}
-    if stale_jobs:
-        checks['jobs'] = 'STALE'
-    status = 'STALE' if 'STALE' in checks.values() else 'WARN' if 'WARN' in checks.values() else 'OK'
+    checks = {'worst_market': health_status(worst_age), 'feed': health_status(ticker_age),
+              'jobs': 'STALE' if stale_jobs else 'OK'}
+    # `status` (logs, dead-man ping) covers only what this service itself
+    # must keep advancing; an outside outage must not look like our crash.
+    status = worst_status(checks.values())
+    system = system_checks(db)
+    system_status = worst_status([status, *(s for s, _ in system.values())])
     with state_lock:
         avg_ms = stats['process_trade_ms'] / stats['process_trade_count'] if stats['process_trade_count'] else 0
     fields = {
@@ -2823,7 +2893,15 @@ def report_health(db, pools):
         'avg_process_trade_ms': round(avg_ms, 1), 'rss_mb': round(_rss_mb() or 0),
         'roster_bots_excluded': len(excluded_bot_wallets(now)),
         'uptime_seconds': round(now - _started_at), 'host': socket.gethostname(),
+        'system_status': system_status,
+        'down_checks': ','.join(sorted(n for n, (s, _) in system.items() if s == 'STALE')) or None,
     }
+    for name, (check_status, value) in system.items():
+        fields[f'check_{name}'] = check_status
+        if value is not None:  # payments reports seconds since the last change, the rest latency
+            fields[f'check_{name}_seconds' if name == 'payments' else f'check_{name}_ms'] = value
+    for name, check_status in checks.items():
+        fields[f'check_{name}'] = check_status
     line = '[health] ' + ' '.join(f'{k}={v}' for k, v in fields.items() if v is not None)
     print(line, flush=True)
 
