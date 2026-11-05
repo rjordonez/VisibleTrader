@@ -605,16 +605,47 @@ class HealthTests(unittest.TestCase):
         finally:
             jobs.shutdown()
 
-    def report(self, markets, ticker_age):
+    def report(self, markets, ticker_age, system=None, ping=None):
         db = Mock()
         db.fetchall.return_value = markets
         db.fetchone.return_value = (ticker_age,)
-        with patch.dict('os.environ', {}, clear=False), \
-             patch('builtins.print') as out:
-            for key in ('POSTHOG_PROJECT_TOKEN', 'VITE_POSTHOG_PROJECT_TOKEN', 'HEALTHCHECK_PING_URL'):
+        self.s.system_checks = Mock(return_value=system or {})
+        env = {'HEALTHCHECK_PING_URL': ping} if ping else {}
+        with patch.dict('os.environ', env, clear=False), \
+             patch('builtins.print') as out, \
+             patch.object(self.s.urllib.request, 'urlopen') as urlopen:
+            for key in ('POSTHOG_PROJECT_TOKEN', 'VITE_POSTHOG_PROJECT_TOKEN'):
                 __import__('os').environ.pop(key, None)
             self.s.report_health(db, ())
-        return out.call_args_list[-1].args[0]
+        self.pinged = urlopen.called
+        return [c.args[0] for c in out.call_args_list if c.args and str(c.args[0]).startswith('[health]')][-1]
+
+    def test_outside_outage_is_shown_but_does_not_silence_dead_man(self):
+        line = self.report([('tokenA', 2.0, 5)], 3.0,
+                           system={'polymarket_data': ('STALE', None), 'website': ('OK', 120)},
+                           ping='https://hc-ping.example/abc')
+        self.assertIn('status=OK', line)
+        self.assertIn('system_status=STALE', line)
+        self.assertIn('down_checks=polymarket_data', line)
+        self.assertIn('check_website_ms=120', line)
+        self.assertTrue(self.pinged)
+
+    def test_stuck_pipeline_withholds_dead_man_ping(self):
+        self.report([('tokenA', 58000.0, 113000)], 4.0, ping='https://hc-ping.example/abc')
+        self.assertFalse(self.pinged)
+
+    def test_probe_classifies_responses(self):
+        response = Mock(status=200)
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        with patch.object(self.s.urllib.request, 'urlopen', return_value=response):
+            self.assertEqual(self.s._probe('GET', 'https://x', {}, 400)[0], 'OK')
+        error = self.s.urllib.error.HTTPError('https://x', 400, 'bad', {}, None)
+        with patch.object(self.s.urllib.request, 'urlopen', side_effect=error):
+            self.assertEqual(self.s._probe('OPTIONS', 'https://x', {}, 500)[0], 'OK')
+            self.assertEqual(self.s._probe('GET', 'https://x', {}, 400)[0], 'STALE')
+        with patch.object(self.s.urllib.request, 'urlopen', side_effect=OSError('down')):
+            self.assertEqual(self.s._probe('GET', 'https://x', {}, 400), ('STALE', None))
 
     def test_one_stuck_market_is_stale_even_when_feed_is_fresh(self):
         line = self.report([('tokenA', 58000.0, 113000), ('tokenB', 3.0, 2)], 4.0)
