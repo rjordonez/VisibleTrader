@@ -630,6 +630,28 @@ class HealthTests(unittest.TestCase):
         self.assertIn('check_website_ms=120', line)
         self.assertTrue(self.pinged)
 
+    def test_feed_is_down_when_watching_no_markets(self):
+        self.s.stats['watched_tokens'] = 0
+        line = self.report([], 3.0)
+        self.assertIn('check_feed=STALE', line)
+        self.assertIn('watched_tokens=0', line)
+        self.s.stats['watched_tokens'] = 4200
+        self.assertIn('check_feed=OK', self.report([], 3.0))
+
+    def test_startup_retries_until_markets_load(self):
+        results = [([], {}), ([], {}), (['t1'], {'t1': {}})]
+        waits = []
+        with patch('builtins.print'):
+            tokens, info = self.s.load_markets_until_ready(fetch=lambda: results.pop(0), sleep=waits.append)
+        self.assertEqual(tokens, ['t1'])
+        self.assertEqual(waits, [2, 4])
+
+    def test_refresh_keeps_list_when_new_one_is_short(self):
+        self.assertFalse(self.s.accept_market_refresh(4200, 0))
+        self.assertFalse(self.s.accept_market_refresh(4200, 200))
+        self.assertTrue(self.s.accept_market_refresh(4200, 4000))
+        self.assertTrue(self.s.accept_market_refresh(0, 4200))
+
     def test_stuck_pipeline_withholds_dead_man_ping(self):
         self.report([('tokenA', 58000.0, 113000)], 4.0, ping='https://hc-ping.example/abc')
         self.assertFalse(self.pinged)
