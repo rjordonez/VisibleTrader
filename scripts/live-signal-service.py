@@ -2633,6 +2633,24 @@ def poll_onchain_fills(db, keyed_token_info, roster, wallet_names, executor, tra
         if info is None:
             ids.append(row_id)
             continue
+        # A sub-ticker fill between two untracked wallets has no database or
+        # HTTP effects (process_trade returns before its transaction, at most
+        # staging a quote), so it skips the lane round trip and runs here.
+        # Only while the token's lane is idle, so it can never overtake an
+        # earlier fill of the same market. Without this, a bot-heavy market
+        # drained at a few fills per poll (2026-11-05: 82k-fill backlog).
+        with state_lock:
+            tracked = buyer in roster or seller in roster
+        if not tracked and price * size < TICKER_MIN_USD and not executor.pending_for(token_id):
+            with state_lock:
+                stats['process_trade_submitted'] += 2
+            try:
+                process_fill(trade_db or db, {token_id: info}, token_id, price, size, tx_hash,
+                             buyer, seller, roster, wallet_names, block_ts)
+            except Exception as exc:
+                print(f'[trade-error] {exc!r}', flush=True)
+            ids.append(row_id)
+            continue
         try:
             executor.submit(token_id, process_fill, trade_db or db,
                             {token_id: info}, token_id, price, size, tx_hash,
