@@ -641,7 +641,7 @@ class HealthTests(unittest.TestCase):
         current = db.execute.call_args_list[0].args[1]
         pairs = dict(zip(current[0::2], current[1::2]))
         self.assertEqual(pairs, {'Website': 'operational', 'App': 'degraded', 'Live trade feed': 'outage'})
-        self.assertEqual(db.execute.call_count, 2)
+        self.assertEqual(db.execute.call_count, 4)  # current, daily, 30-min block, prune
 
     def test_probe_classifies_responses(self):
         response = Mock(status=200)

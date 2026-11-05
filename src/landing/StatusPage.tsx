@@ -16,14 +16,17 @@ const COMPONENTS = [
   'Wallet search',
   'Polymarket (upstream)',
 ]
-const DAYS = 30
+// Last 24 hours in 30-minute blocks (public_status_intervals.bucket starts
+// on :00/:30 UTC, matching date_bin in write_public_status).
+const BLOCK_MS = 30 * 60 * 1000
+const BLOCKS = 48
 const STALE_AFTER_MS = 10 * 60 * 1000
 const REFRESH_MS = 60 * 1000
 
 type State = 'operational' | 'degraded' | 'outage' | 'unknown'
 type Current = { component: string; status: Exclude<State, 'unknown'>; updated_at: string }
-type Daily = {
-  day: string
+type Block = {
+  bucket: string
   component: string
   operational_minutes: number
   degraded_minutes: number
@@ -37,24 +40,29 @@ const LABEL: Record<State, string> = {
   unknown: 'Unknown',
 }
 
-function dayKeys() {
-  const keys: string[] = []
-  const today = new Date()
-  for (let i = DAYS - 1; i >= 0; i--) {
-    const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - i))
-    keys.push(d.toISOString().slice(0, 10))
-  }
-  return keys
+function blockStarts(now: number) {
+  const latest = Math.floor(now / BLOCK_MS) * BLOCK_MS
+  return Array.from({ length: BLOCKS }, (_, i) => latest - (BLOCKS - 1 - i) * BLOCK_MS)
 }
 
-function dayState(d?: Daily): State {
-  if (!d) return 'unknown'
-  if (d.outage_minutes >= 5) return 'outage'
-  if (d.outage_minutes > 0 || d.degraded_minutes >= 15) return 'degraded'
+function blockState(b?: Block): State {
+  if (!b) return 'unknown'
+  if (b.outage_minutes >= 2) return 'outage'
+  if (b.outage_minutes > 0 || b.degraded_minutes >= 5) return 'degraded'
   return 'operational'
 }
 
-function uptime(days: Daily[]) {
+const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+
+function blockTitle(start: number, b: Block | undefined, s: State) {
+  const span = `${clock(start)} to ${clock(start + BLOCK_MS)}`
+  if (!b) return `${span}: no data`
+  const down = b.outage_minutes ? `, ${b.outage_minutes} min down` : ''
+  const slow = b.degraded_minutes ? `, ${b.degraded_minutes} min slow` : ''
+  return `${span}: ${LABEL[s]}${down}${slow}`
+}
+
+function uptime(days: Block[]) {
   const total = days.reduce((n, d) => n + d.operational_minutes + d.degraded_minutes + d.outage_minutes, 0)
   if (!total) return null
   const up = days.reduce((n, d) => n + d.operational_minutes + d.degraded_minutes, 0)
@@ -70,23 +78,23 @@ function ago(iso: string, now: number) {
 
 export default function StatusPage() {
   const [current, setCurrent] = useState<Current[] | null>(null)
-  const [daily, setDaily] = useState<Daily[]>([])
+  const [blocks, setBlocks] = useState<Block[]>([])
   const [failed, setFailed] = useState(false)
   const [loadedAt, setLoadedAt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      const since = dayKeys()[0]
+      const since = new Date(blockStarts(Date.now())[0]).toISOString()
       const [now, history] = await Promise.all([
         supabase.from('public_status').select('component, status, updated_at'),
-        supabase.from('public_status_daily').select('*').gte('day', since),
+        supabase.from('public_status_intervals').select('*').gte('bucket', since),
       ])
       if (cancelled) return
       setLoadedAt(Date.now())
       setFailed(!!now.error)
       if (!now.error) setCurrent((now.data ?? []) as Current[])
-      if (!history.error) setDaily((history.data ?? []) as Daily[])
+      if (!history.error) setBlocks((history.data ?? []) as Block[])
     }
     load()
     const id = setInterval(load, REFRESH_MS)
@@ -110,7 +118,7 @@ export default function StatusPage() {
     outage: 'Some systems are down',
     unknown: current === null && !failed ? 'Checking status…' : 'Status is temporarily unavailable',
   }
-  const keys = dayKeys()
+  const starts = blockStarts(loadedAt)
 
   return (
     <>
@@ -128,7 +136,8 @@ export default function StatusPage() {
 
         <ul className="status-list">
           {COMPONENTS.map((component, i) => {
-            const rows = daily.filter(d => d.component === component)
+            const rows = blocks.filter(b => b.component === component)
+            const byStart = new Map(rows.map(b => [new Date(b.bucket).getTime(), b]))
             const pct = uptime(rows)
             return (
               <li key={component} className="status-row">
@@ -136,17 +145,17 @@ export default function StatusPage() {
                   <span className="status-name">{component}</span>
                   <span className={`status-pill status-${states[i]}`}>{LABEL[states[i]]}</span>
                 </div>
-                <div className="status-bars" aria-label={`${component}, last ${DAYS} days`}>
-                  {keys.map(day => {
-                    const d = rows.find(r => r.day === day)
-                    const s = dayState(d)
-                    return <span key={day} className={`status-bar status-${s}`} title={`${day}: ${LABEL[s]}`} />
+                <div className="status-bars" aria-label={`${component}, last 24 hours`}>
+                  {starts.map(start => {
+                    const b = byStart.get(start)
+                    const s = blockState(b)
+                    return <span key={start} className={`status-bar status-${s}`} title={blockTitle(start, b, s)} />
                   })}
                 </div>
                 <div className="status-row-foot">
-                  <span>{DAYS} days ago</span>
-                  <span>{pct === null ? 'No data yet' : `${pct.toFixed(2)}% uptime`}</span>
-                  <span>Today</span>
+                  <span>24 h ago</span>
+                  <span>{pct === null ? 'No data yet' : `${pct.toFixed(2)}% uptime, last 24 h`}</span>
+                  <span>Now</span>
                 </div>
               </li>
             )

@@ -4064,7 +4064,7 @@
 .status-pill.status-outage { color: var(--status-down); }
 .status-bars {
   display: flex;
-  gap: 3px;
+  gap: 2px;
   height: 2rem;
 }
 .status-bar {
