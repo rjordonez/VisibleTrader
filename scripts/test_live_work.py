@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import threading
+import time
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import Mock, patch
@@ -507,6 +508,40 @@ class TradeNoOpTests(unittest.TestCase):
         self.s.touch_tracked_wallet = Mock()
         self.trade(tracked=True, ticker=True, side='BUY')
         self.s.record_contribution.assert_called_once()
+
+
+class BotWalletTests(unittest.TestCase):
+    def setUp(self):
+        self.s = load_service()
+        self.cfg = {'whale_roster_size': 2, 'active_roster_size': 0, 'tiers': [1000],
+                    'ticker_min_usd': 100, 'scalp_window_minutes': 30, 'tracked_wallets': set()}
+        self.users = [{'wallet': w, 'best_pnl': p, 'recent_rank_seen': False, 'recent_pnl': None}
+                      for w, p in (('bot', 200), ('human', 100))]
+
+    def scan(self, rows):
+        db = Mock()
+        db.fetchall.return_value = rows
+        with patch('builtins.print'):
+            self.s.refresh_bot_wallets(db)
+
+    def test_bot_rate_wallet_leaves_roster(self):
+        self.scan([('BOT', 6892), (self.s.ONCHAIN_EXCHANGES[0], 48729)])
+        roster = set()
+        self.s.apply_config(self.cfg, roster, self.users)
+        self.assertEqual(roster, {'human'})
+        self.assertNotIn(self.s.ONCHAIN_EXCHANGES[0], self.s.excluded_bot_wallets())
+
+    def test_hand_tracked_bot_stays(self):
+        self.scan([('bot', 6892)])
+        self.cfg['tracked_wallets'] = {'bot'}
+        roster = set()
+        self.s.apply_config(self.cfg, roster, self.users)
+        self.assertEqual(roster, {'bot', 'human'})
+
+    def test_exclusion_expires(self):
+        self.scan([('bot', 6892)])
+        later = time.time() + self.s.BOT_EXCLUSION_SECONDS + 1
+        self.assertEqual(self.s.excluded_bot_wallets(later), set())
 
 
 class RosterCacheTests(unittest.TestCase):
