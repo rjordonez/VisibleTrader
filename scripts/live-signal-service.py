@@ -2852,6 +2852,46 @@ def system_checks(db):
     return out
 
 
+# Public status page rows (public_status / public_status_daily, read by
+# visibletrader.com/status): plain-language components, each the worst of
+# the internal checks behind it.
+PUBLIC_COMPONENTS = [
+    ('Website', ('website',)),
+    ('App', ('app', 'database')),
+    ('Live trade feed', ('feed', 'worst_market')),
+    ('Trader data & leaderboards', ('jobs',)),
+    ('Payments & checkout', ('fn_checkout', 'fn_stripe_webhook')),
+    ('Wallet search', ('fn_wallet_search',)),
+    ('Polymarket (upstream)', ('polymarket_data', 'polymarket_gamma')),
+]
+PUBLIC_STATE = {'OK': 'operational', 'WARN': 'degraded', 'STALE': 'outage'}
+
+
+def write_public_status(db, statuses):
+    """statuses: {internal check name: OK/WARN/STALE}. One upsert for the
+    current state and one for today's per-minute tally."""
+    rows = []
+    for component, names in PUBLIC_COMPONENTS:
+        known = [statuses[n] for n in names if n in statuses]
+        if known:
+            rows.append((component, PUBLIC_STATE[worst_status(known)]))
+    if not rows:
+        return
+    db.execute(f'''INSERT INTO public_status (component, status, updated_at)
+        VALUES {','.join(['(%s, %s, now())'] * len(rows))}
+        ON CONFLICT (component) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at''',
+        [v for row in rows for v in row])
+    db.execute(f'''INSERT INTO public_status_daily AS d (day, component, operational_minutes, degraded_minutes, outage_minutes)
+        SELECT (now() AT TIME ZONE 'utc')::date, v.component,
+               (v.status = 'operational')::int, (v.status = 'degraded')::int, (v.status = 'outage')::int
+        FROM (VALUES {','.join(['(%s, %s)'] * len(rows))}) AS v(component, status)
+        ON CONFLICT (day, component) DO UPDATE SET
+            operational_minutes = d.operational_minutes + excluded.operational_minutes,
+            degraded_minutes = d.degraded_minutes + excluded.degraded_minutes,
+            outage_minutes = d.outage_minutes + excluded.outage_minutes''',
+        [v for row in rows for v in row])
+
+
 def report_health(db, pools):
     now = time.time()
     # Unprocessed rows are normally a few hundred; even a large backlog is
@@ -2904,6 +2944,10 @@ def report_health(db, pools):
         fields[f'check_{name}'] = check_status
     line = '[health] ' + ' '.join(f'{k}={v}' for k, v in fields.items() if v is not None)
     print(line, flush=True)
+    try:
+        write_public_status(db, {**checks, **{name: s for name, (s, _) in system.items()}})
+    except Exception as exc:
+        print(f'[health] public status write failed: {exc!r}', flush=True)
 
     token = os.environ.get('POSTHOG_PROJECT_TOKEN') or os.environ.get('VITE_POSTHOG_PROJECT_TOKEN')
     if token:
