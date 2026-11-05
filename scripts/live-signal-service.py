@@ -2890,6 +2890,17 @@ def write_public_status(db, statuses):
             degraded_minutes = d.degraded_minutes + excluded.degraded_minutes,
             outage_minutes = d.outage_minutes + excluded.outage_minutes''',
         [v for row in rows for v in row])
+    # Same tally in 30-minute blocks: the page's last-24-hours bars.
+    db.execute(f'''INSERT INTO public_status_intervals AS d (bucket, component, operational_minutes, degraded_minutes, outage_minutes)
+        SELECT date_bin('30 minutes', now(), timestamptz '2000-01-01'), v.component,
+               (v.status = 'operational')::int, (v.status = 'degraded')::int, (v.status = 'outage')::int
+        FROM (VALUES {','.join(['(%s, %s)'] * len(rows))}) AS v(component, status)
+        ON CONFLICT (bucket, component) DO UPDATE SET
+            operational_minutes = d.operational_minutes + excluded.operational_minutes,
+            degraded_minutes = d.degraded_minutes + excluded.degraded_minutes,
+            outage_minutes = d.outage_minutes + excluded.outage_minutes''',
+        [v for row in rows for v in row])
+    db.execute("DELETE FROM public_status_intervals WHERE bucket < now() - interval '3 days'")
 
 
 def report_health(db, pools):
