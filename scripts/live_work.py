@@ -41,6 +41,11 @@ class TradeWorkers:
         with self._condition:
             return self._capacity - self._pending
 
+    def pending_for(self, key):
+        """Queued or running fills for this key; 0 means its lane is idle."""
+        with self._condition:
+            return self._key_pending.get(key, 0)
+
     def ready_to_resume(self, key):
         with self._condition:
             return (not self._closing and self._pending < self._capacity

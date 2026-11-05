@@ -338,8 +338,10 @@ class ServiceTests(unittest.TestCase):
         admission = service.FillAdmission()
         try:
             metadata = {'hot': {}, 'cold': {}}
-            service.poll_onchain_fills(db, metadata, set(), {}, workers, admission=admission)
-            service.poll_onchain_fills(db, metadata, set(), {}, workers, admission=admission)
+            # Tracked buyer: these fills take the lane path this test is about.
+            roster = {'buyer'}
+            service.poll_onchain_fills(db, metadata, roster, {}, workers, admission=admission)
+            service.poll_onchain_fills(db, metadata, roster, {}, workers, admission=admission)
             self.assertTrue(cold.wait(1), 'cold market remains behind the hot SQL prefix')
             self.assertEqual(len(pending), 998)
             self.assertIn(2, pending)  # deferred fills were not discarded
@@ -348,7 +350,7 @@ class ServiceTests(unittest.TestCase):
                 workers.wait_idle()
                 if not pending:
                     break
-                service.poll_onchain_fills(db, metadata, set(), {}, workers, admission=admission)
+                service.poll_onchain_fills(db, metadata, roster, {}, workers, admission=admission)
             self.assertEqual(pending, {})
         finally:
             release.set()
@@ -368,6 +370,38 @@ class ServiceTests(unittest.TestCase):
         service.poll_onchain_fills(db, {'token': {}}, set(), {}, workers, admission=admission)
         self.assertEqual(workers.submit.call_count, 1)
         self.assertEqual(admission.pending_ack, [])
+
+    def fast_path_poll(self, roster, pending, amount=50_000_000):
+        service = self.service
+        row = (1, 'tx', 'buyer', 'seller', 0, 'token', amount, 100_000_000, datetime.now(timezone.utc))
+        db, workers = Mock(), Mock(available=5)
+        workers.pending_for.return_value = pending
+        db.fetchall.side_effect = [[row], []]
+        service.process_fill = Mock()
+        admission = service.FillAdmission()
+        service.poll_onchain_fills(db, {'token': {}}, roster, {}, workers, admission=admission)
+        return service.process_fill, workers, db
+
+    def test_small_untracked_fill_skips_idle_lane(self):
+        fill, workers, db = self.fast_path_poll(set(), pending=0)
+        fill.assert_called_once()
+        workers.submit.assert_not_called()
+        db.execute.assert_called_once()  # acknowledged in the same poll
+
+    def test_tracked_fill_still_uses_lane(self):
+        fill, workers, _ = self.fast_path_poll({'buyer'}, pending=0)
+        fill.assert_not_called()
+        workers.submit.assert_called_once()
+
+    def test_small_fill_waits_behind_busy_lane(self):
+        fill, workers, _ = self.fast_path_poll(set(), pending=3)
+        fill.assert_not_called()
+        workers.submit.assert_called_once()
+
+    def test_ticker_sized_fill_still_uses_lane(self):
+        fill, workers, _ = self.fast_path_poll(set(), pending=0, amount=500_000_000)
+        fill.assert_not_called()
+        workers.submit.assert_called_once()
 
     def test_rejected_token_cannot_overtake_within_same_batch(self):
         service = self.service
