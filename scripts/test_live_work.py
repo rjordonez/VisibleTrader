@@ -634,6 +634,15 @@ class HealthTests(unittest.TestCase):
         self.report([('tokenA', 58000.0, 113000)], 4.0, ping='https://hc-ping.example/abc')
         self.assertFalse(self.pinged)
 
+    def test_public_status_takes_worst_internal_check(self):
+        db = Mock()
+        self.s.write_public_status(db, {'website': 'OK', 'app': 'OK', 'database': 'WARN',
+                                        'feed': 'OK', 'worst_market': 'STALE'})
+        current = db.execute.call_args_list[0].args[1]
+        pairs = dict(zip(current[0::2], current[1::2]))
+        self.assertEqual(pairs, {'Website': 'operational', 'App': 'degraded', 'Live trade feed': 'outage'})
+        self.assertEqual(db.execute.call_count, 2)
+
     def test_probe_classifies_responses(self):
         response = Mock(status=200)
         response.__enter__ = Mock(return_value=response)
