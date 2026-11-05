@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor, Future
 from contextlib import contextmanager
 import threading
+import time
 import atexit
 import zlib
 from collections import deque
@@ -136,11 +137,22 @@ class PollingJob:
 
 
 class SingleFlightJobs:
-    """At most one queued/running instance of each periodic job."""
+    """At most one queued/running instance of each periodic job.
+
+    Also keeps per-job timestamps (last start, last success, last error) so
+    the health report can tell a job that quietly stopped succeeding, or
+    one stuck mid-run, from a healthy one.
+    """
     def __init__(self, workers, name):
         self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=name)
         self._active = set()
         self._lock = threading.Lock()
+        self._status = {}
+
+    def status(self):
+        """{job: {'started', 'ok', 'error', 'error_msg', 'running'}} snapshot."""
+        with self._lock:
+            return {name: {**s, 'running': name in self._active} for name, s in self._status.items()}
 
     def submit(self, name, fn, *args):
         with self._lock:
@@ -148,9 +160,15 @@ class SingleFlightJobs:
                 return False
             self._active.add(name)
         def run():
+            with self._lock:
+                self._status.setdefault(name, {'ok': None, 'error': None, 'error_msg': None})['started'] = time.time()
             try:
                 fn(*args)
+                with self._lock:
+                    self._status[name]['ok'] = time.time()
             except Exception as exc:
+                with self._lock:
+                    self._status[name].update(error=time.time(), error_msg=repr(exc)[:300])
                 print(f'[job-error] {name}: {exc!r}', flush=True)
             finally:
                 with self._lock:
