@@ -93,6 +93,7 @@ state_lock = threading.Lock()  # guards in-memory state only (stats/conviction/t
 # resolved_markets/roster_set) — DB writes go through Database's connection pool, which
 # lets Postgres's own MVCC handle write concurrency instead of serializing through Python.
 stats = {'trades_seen': 0, 'roster_matches': 0, 'rpc_failures': 0, 'ticker_trades': 0,
+         'watched_tokens': None,  # size of the market list in use; None until startup loads it
          # Diagnostic-only counters (2026-08-26) — trades_seen only counts
          # last_trade_price, so a connection silently getting price_change
          # but not last_trade_price looked identical to "no messages at
@@ -528,6 +529,32 @@ def fetch_active_tokens():
         if offset % 1000 == 0:
             print(f'  ...fetched offset {offset}, {len(tokens)} tokens so far')
     return tokens, token_info
+
+
+MARKET_LOAD_MAX_WAIT_SECONDS = 60
+MARKET_REFRESH_MIN_FRACTION = 0.5
+
+
+def load_markets_until_ready(fetch=None, sleep=time.sleep):
+    """Startup must never listen with an empty market list: every fill would
+    count as an unknown market and be marked processed with no ticker row,
+    until the next refresh 15 minutes later (2026-11-05, 5:01-5:16 PM ET,
+    after one failed Gamma request at boot). Retry with backoff instead."""
+    fetch = fetch or fetch_active_tokens
+    wait = 2
+    while True:
+        tokens, token_info = fetch()
+        if tokens:
+            return tokens, token_info
+        print(f'  0 tokens loaded, retrying market fetch in {wait}s', flush=True)
+        sleep(wait)
+        wait = min(wait * 2, MARKET_LOAD_MAX_WAIT_SECONDS)
+
+
+def accept_market_refresh(current, new):
+    """A refresh whose paging failed partway returns a short list. Keep the
+    current list rather than drop most markets until the next refresh."""
+    return new > 0 and new >= current * MARKET_REFRESH_MIN_FRACTION
 
 
 WATCHED_MARKETS_DUMP_PATH = '/tmp/watched_markets.json'
@@ -2936,7 +2963,10 @@ def report_health(db, pools):
             if name in HEALTH_JOB_INTERVALS and (since_ok > limit or running_for > limit):
                 stale_jobs.append(name)
 
-    checks = {'worst_market': health_status(worst_age), 'feed': health_status(ticker_age),
+    with state_lock:
+        watched = stats.get('watched_tokens')
+    feed = 'STALE' if watched == 0 else health_status(ticker_age)  # listening to no markets = feed down
+    checks = {'worst_market': health_status(worst_age), 'feed': feed,
               'jobs': 'STALE' if stale_jobs else 'OK'}
     # The public "Trader data & leaderboards" row: only jobs whose output
     # users see. A stale correction pass (reconcile) stays internal.
@@ -2954,6 +2984,7 @@ def report_health(db, pools):
         'worst_market_waiting_fills': int(worst[2]) if worst else 0,
         'stuck_markets': len(stuck), 'waiting_fills': sum(int(m[2]) for m in markets),
         'newest_ticker_age_seconds': round(ticker_age) if ticker_age is not None else None,
+        'watched_tokens': watched,
         'stale_jobs': ','.join(sorted(stale_jobs)) or None,
         'avg_process_trade_ms': round(avg_ms, 1), 'rss_mb': round(_rss_mb() or 0),
         'roster_bots_excluded': len(excluded_bot_wallets(now)),
@@ -3154,8 +3185,10 @@ def main():
           f'database_connections={args.db_pool_size}')
 
     print('Fetching active market/token universe...')
-    tokens, token_info = fetch_active_tokens()
+    tokens, token_info = load_markets_until_ready()
     print(f'{len(tokens)} tokens across active markets.')
+    with state_lock:
+        stats['watched_tokens'] = len(tokens)
     keyed_token_info = {tid: info for tid, info in token_info.items()}
     dump_watched_markets(token_info)
 
@@ -3229,8 +3262,13 @@ def main():
                     # elapsed time as still over threshold, triggering another refresh immediately — a tight reconnect
                     # loop that never spent enough time actually listening to catch any trades.
                     new_tokens, new_info = fetch_active_tokens()
-                    if new_tokens:
+                    if not accept_market_refresh(len(tokens), len(new_tokens)):
+                        print(f'  market refresh returned {len(new_tokens)} tokens vs {len(tokens)} in use; '
+                              'keeping the current list', flush=True)
+                    else:
                         tokens[:] = new_tokens
+                        with state_lock:
+                            stats['watched_tokens'] = len(new_tokens)
                         with token_info_lock:
                             keyed_token_info.clear()
                             keyed_token_info.update(new_info)
