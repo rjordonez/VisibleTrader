@@ -2055,6 +2055,7 @@ MTM_THROTTLE_SECONDS = 15  # price_change fires far more often than trades — m
 # tracked set (after rehydrating tiers_hit at startup, that's every already-tracked market,
 # not just ones with fresh activity since the last restart — a much bigger multiplier than
 # when this was first tuned against a single token).
+MTM_MAX_TRADE_AGE_SECONDS = 60  # a fill older than this (backlog replay) never moves latest_price
 
 
 def filter_price_changes(keyed_token_info, item):
@@ -2271,8 +2272,18 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
         is_roster_wallet = bool(usd > 0 and wallet and wallet in roster)
         needs_price = bool(record_ticker and price and float(price) > 0
                            and key_probe in tiers_hit and key_probe not in resolved_markets)
+    # Mark-to-market goes through the batched price flush, not this trade's
+    # transaction. A tracked market with heavy bot churn used to open one
+    # transaction per tiny fill just to rewrite the same latest_price row,
+    # which capped that market's lane below its arrival rate (2026-11-05: a
+    # 16h, 119k-fill backlog on one market). Fills replayed from a backlog
+    # are skipped here: their price is hours stale and the live quote feed
+    # already keeps latest_price current.
+    if needs_price and time.time() - trade_ts.timestamp() <= MTM_MAX_TRADE_AGE_SECONDS:
+        last_mtm_update[key_probe] = time.time()
+        pending_prices.stage([(key_probe[0], key_probe[1], float(price))])
     needs_ticker = bool(record_ticker and usd >= TICKER_MIN_USD)
-    if not (is_roster_wallet or needs_ticker or needs_price):
+    if not (is_roster_wallet or needs_ticker):
         return  # No persistent effects: avoid HTTP lookups and an empty transaction.
     is_first_ever = False
     newly_crossed = []
@@ -2323,22 +2334,8 @@ def process_trade(db, keyed_token_info, tid, price, size, side, tx_hash, wallet,
             with state_lock:
                 stats['ticker_trades'] += 1
 
-        # Mark-to-market: keep latest_price tracking the real market, not just
-        # the price at the last top-trader tier crossing. Previously latest_price
-        # only got written inside record_tier_crossed, so a market's displayed
-        # price/unrealized-profit went stale the moment top traders stopped
-        # entering — even while the real price kept moving (e.g. a live sports
-        # game swinging to 99% on ordinary market activity). Every trade tick on
-        # a market we already track is a free, sub-second price update — no
-        # extra network call, since we already receive it over the WS.
-        if record_ticker and price and float(price) > 0 and key_probe in tiers_hit:
-            with price_write_locks.hold([key_probe]):
-                if key_probe not in resolved_markets:
-                    pending_prices.discard(key_probe)
-                    last_mtm_update[key_probe] = time.time()
-                    conn.execute('UPDATE opportunities SET latest_price=%s WHERE condition_id=%s AND outcome=%s',
-                               (float(price), key_probe[0], key_probe[1]))
-                    mark_opportunity_dirty(*key_probe)
+        # Mark-to-market (latest_price) is staged above for the batched
+        # flush_pending_prices write instead of being written here.
 
         if usd <= 0:
             return
