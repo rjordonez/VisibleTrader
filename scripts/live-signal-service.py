@@ -2805,6 +2805,8 @@ SYSTEM_PROBES = [
 ]
 PROBE_TIMEOUT_SECONDS = 8
 PROBE_WARN_MS = 3000
+PROBE_FAILS_FOR_OUTAGE = 3
+_probe_fail_streak = {}
 PAYMENTS_WARN_SECONDS = 6 * 3600     # subscriptions normally change many times an hour
 PAYMENTS_STALE_SECONDS = 24 * 3600
 
@@ -2820,7 +2822,9 @@ def _probe(method, url, headers, ok_below):
     except Exception:
         return 'STALE', None
     ms = round((time.time() - t0) * 1000)
-    if code >= ok_below:
+    # 429 means the service is up and throttling us (this VM also calls
+    # Polymarket heavily), not an outage.
+    if code >= ok_below and code != 429:
         return 'STALE', ms
     return ('WARN' if ms > PROBE_WARN_MS else 'OK'), ms
 
@@ -2848,7 +2852,13 @@ def system_checks(db):
         except Exception:
             out['payments'] = ('STALE', None)
         for name, future in futures.items():
-            out[name] = future.result()
+            check_status, ms = future.result()
+            # One failed request is a blip; only PROBE_FAILS_FOR_OUTAGE in a
+            # row (one per minute) counts as down.
+            fails = _probe_fail_streak[name] = _probe_fail_streak.get(name, 0) + 1 if check_status == 'STALE' else 0
+            if check_status == 'STALE' and fails < PROBE_FAILS_FOR_OUTAGE:
+                check_status = 'OK'
+            out[name] = (check_status, ms)
     return out
 
 
@@ -2859,12 +2869,13 @@ PUBLIC_COMPONENTS = [
     ('Website', ('website',)),
     ('App', ('app', 'database')),
     ('Live trade feed', ('feed', 'worst_market')),
-    ('Trader data & leaderboards', ('jobs',)),
+    ('Trader data & leaderboards', ('core_jobs',)),
     ('Payments & checkout', ('fn_checkout', 'fn_stripe_webhook')),
     ('Wallet search', ('fn_wallet_search',)),
     ('Polymarket (upstream)', ('polymarket_data', 'polymarket_gamma')),
 ]
 PUBLIC_STATE = {'OK': 'operational', 'WARN': 'degraded', 'STALE': 'outage'}
+CUSTOMER_FACING_JOBS = {'leaderboard', 'trader-scores', 'trader-open', 'experts', 'insider-hits', 'opportunity-stats'}
 
 
 def write_public_status(db, statuses):
@@ -2927,6 +2938,9 @@ def report_health(db, pools):
 
     checks = {'worst_market': health_status(worst_age), 'feed': health_status(ticker_age),
               'jobs': 'STALE' if stale_jobs else 'OK'}
+    # The public "Trader data & leaderboards" row: only jobs whose output
+    # users see. A stale correction pass (reconcile) stays internal.
+    core_jobs = 'STALE' if set(stale_jobs) & CUSTOMER_FACING_JOBS else 'OK'
     # `status` (logs, dead-man ping) covers only what this service itself
     # must keep advancing; an outside outage must not look like our crash.
     status = worst_status(checks.values())
@@ -2956,7 +2970,7 @@ def report_health(db, pools):
     line = '[health] ' + ' '.join(f'{k}={v}' for k, v in fields.items() if v is not None)
     print(line, flush=True)
     try:
-        write_public_status(db, {**checks, **{name: s for name, (s, _) in system.items()}})
+        write_public_status(db, {**checks, 'core_jobs': core_jobs, **{name: s for name, (s, _) in system.items()}})
     except Exception as exc:
         print(f'[health] public status write failed: {exc!r}', flush=True)
 
