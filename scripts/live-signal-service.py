@@ -392,6 +392,45 @@ def load_config(db):
     return defaults
 
 
+# ---------------- bot-rate wallets ----------------
+# A wallet trading on one side of thousands of fills an hour is a bot, not a
+# trader worth following, and as a roster member every one of its fills is a
+# serialized DB transaction. vtcchampion52 (~7k fills/h, one long-shot UCL
+# market) alone built a 16h backlog on 2026-11-04. Wallets over the rate are
+# dropped from the automatic roster buckets for BOT_EXCLUSION_SECONDS.
+BOT_FILLS_PER_HOUR = 1000
+BOT_SCAN_SECONDS = 10 * 60
+BOT_EXCLUSION_SECONDS = 24 * 3600
+_bot_wallets = {}  # wallet -> unix time last seen over the rate
+
+
+def excluded_bot_wallets(now=None):
+    now = now or time.time()
+    with state_lock:
+        return {w for w, seen in _bot_wallets.items() if now - seen < BOT_EXCLUSION_SECONDS}
+
+
+def refresh_bot_wallets(db):
+    rows = db.fetchall('''SELECT wallet, count(*) FROM (
+            SELECT maker AS wallet FROM onchain_fills WHERE received_at > now() - interval '1 hour'
+            UNION ALL
+            SELECT taker FROM onchain_fills WHERE received_at > now() - interval '1 hour') w
+        GROUP BY wallet HAVING count(*) > %s''', (BOT_FILLS_PER_HOUR,))
+    now = time.time()
+    exchanges = set(ONCHAIN_EXCHANGES)
+    with state_lock:
+        before = {w for w, seen in _bot_wallets.items() if now - seen < BOT_EXCLUSION_SECONDS}
+        for wallet, _ in rows:
+            if wallet and wallet.lower() not in exchanges:
+                _bot_wallets[wallet.lower()] = now
+        for wallet in [w for w, seen in _bot_wallets.items() if now - seen >= BOT_EXCLUSION_SECONDS]:
+            del _bot_wallets[wallet]
+        after = set(_bot_wallets)
+    if after != before:
+        print(f'[bots] {len(after)} wallets over {BOT_FILLS_PER_HOUR} fills/h excluded from the roster '
+              f'(+{len(after - before)} -{len(before - after)})', flush=True)
+
+
 def apply_config(cfg, roster_set, all_users, roster_selector=None):
     """Reassigning these module globals is enough — every read site
     (process_trade, record_exit, etc.) looks the name up fresh each call
@@ -410,7 +449,9 @@ def apply_config(cfg, roster_set, all_users, roster_selector=None):
     base_roster = (roster_selector(cfg['whale_roster_size'], cfg['active_roster_size'])
                    if roster_selector is not None else
                    build_roster(all_users, cfg['whale_roster_size'], cfg['active_roster_size']))
-    new_roster = base_roster | cfg.get('tracked_wallets', set())
+    # Bot-rate wallets leave the automatic buckets; a wallet someone tracked
+    # by hand on the Lookup page always stays.
+    new_roster = (base_roster - excluded_bot_wallets()) | cfg.get('tracked_wallets', set())
     if new_roster != roster_set:
         with state_lock:
             roster_set.clear()
@@ -2714,7 +2755,7 @@ HEALTH_JOB_INTERVALS = {
     'opportunity-stats': AGGREGATE_REFRESH_SECONDS, 'trader-scores': TRADER_SCORES_REFRESH_SECONDS,
     'trader-open': TRADER_OPEN_REFRESH_SECONDS, 'insider-hits': INSIDER_HITS_REFRESH_SECONDS,
     'insider-alerts': INSIDER_ALERTS_REFRESH_SECONDS, 'experts': EXPERT_REFRESH_SECONDS,
-    'resolve': 300, 'reconcile': RECONCILE_INTERVAL_SECONDS,
+    'resolve': 300, 'reconcile': RECONCILE_INTERVAL_SECONDS, 'bot-scan': BOT_SCAN_SECONDS,
 }
 POSTHOG_INGEST = 'https://us.i.posthog.com'
 _started_at = time.time()
@@ -2780,6 +2821,7 @@ def report_health(db, pools):
         'newest_ticker_age_seconds': round(ticker_age) if ticker_age is not None else None,
         'stale_jobs': ','.join(sorted(stale_jobs)) or None,
         'avg_process_trade_ms': round(avg_ms, 1), 'rss_mb': round(_rss_mb() or 0),
+        'roster_bots_excluded': len(excluded_bot_wallets(now)),
         'uptime_seconds': round(now - _started_at), 'host': socket.gethostname(),
     }
     line = '[health] ' + ' '.join(f'{k}={v}' for k, v in fields.items() if v is not None)
@@ -2901,6 +2943,10 @@ def main():
     print(f'Loading roster (top {config["whale_roster_size"]} by best_pnl + top {config["active_roster_size"]} by recent activity)...')
     roster = set()
     roster_selector = cached_roster_selector(all_users)
+    try:
+        refresh_bot_wallets(db)  # before the first roster build, so bots never enter it
+    except Exception as exc:
+        print(f'[bots] startup scan failed, roster unfiltered until the next scan: {exc!r}', flush=True)
     apply_config(config, roster, all_users, roster_selector)  # populates roster + sets TIERS/TICKER_MIN_USD/SCALP_WINDOW_SECONDS
     wallet_names = build_wallet_names(all_users)
     print(f'{len(roster)} roster wallets loaded, {len(wallet_names)} known wallet names available.')
@@ -2969,6 +3015,7 @@ def main():
     last_market_refresh = time.time()
     last_heartbeat = time.time()
     last_health = time.time()
+    last_bot_scan = time.time()
     last_prune = time.time()
     last_onchain_prune = time.time()
     last_onchain_rpc_fetch = 0.0  # fire once on startup, not just after the first interval
@@ -3082,6 +3129,10 @@ def main():
                           f'lane_rejections={admission.rejections} pending_ack={len(admission.pending_ack)}')
                     last_heartbeat = now
                     ingestion_jobs.submit('freshness', report_pipeline_freshness, ingestion_db)
+
+                if now - last_bot_scan > BOT_SCAN_SECONDS:  # roster picks it up on the next config reload
+                    maintenance_jobs.submit('bot-scan', refresh_bot_wallets, maintenance_db)
+                    last_bot_scan = now
 
                 if now - last_health > HEALTH_REPORT_SECONDS:
                     health_jobs.submit('health', report_health, ingestion_db,
