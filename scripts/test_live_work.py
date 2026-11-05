@@ -451,13 +451,21 @@ class TradeNoOpTests(unittest.TestCase):
         self.s.record_ticker_trade.assert_called_once()
         self.s.update_ticker_wallet.assert_called_once()
 
-    def test_small_untracked_buyer_keeps_price_without_profile_lookup(self):
+    def test_small_untracked_buyer_stages_price_without_transaction(self):
         self.s.tiers_hit[('condition', 'Yes')].add(1000)
+        self.s.pending_prices.take(200)
         self.trade(ticker=True, side='BUY')
-        self.db.run_transaction.assert_called_once()
-        self.assertTrue(any('UPDATE opportunities SET latest_price' in c.args[0]
-                            for c in self.conn.execute.call_args_list))
+        self.db.run_transaction.assert_not_called()
         self.s.fetch_live_profile_name.assert_not_called()
+        self.assertEqual(self.s.pending_prices.take(200), [('condition', 'Yes', .5)])
+
+    def test_backlog_fill_does_not_move_latest_price(self):
+        self.s.tiers_hit[('condition', 'Yes')].add(1000)
+        self.s.pending_prices.take(200)
+        self.ts = datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() - 3600, timezone.utc)
+        self.trade(ticker=True, side='BUY')
+        self.db.run_transaction.assert_not_called()
+        self.assertEqual(self.s.pending_prices.take(200), [])
 
     def test_tracked_buy_keeps_contribution(self):
         self.s.record_contribution = Mock()
