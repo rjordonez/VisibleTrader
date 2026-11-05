@@ -509,5 +509,54 @@ class RosterCacheTests(unittest.TestCase):
         self.assertIs(first(1, 1), first(1, 1))
 
 
+class HealthTests(unittest.TestCase):
+    def setUp(self):
+        self.s = load_service()
+
+    def test_job_status_records_success_and_error(self):
+        jobs = SingleFlightJobs(1, 'test')
+        try:
+            done = threading.Event()
+            jobs.submit('good', done.set)
+            self.assertTrue(done.wait(1))
+            failed = threading.Event()
+            def bad():
+                failed.set()
+                raise ValueError('boom')
+            jobs.submit('bad', bad)
+            self.assertTrue(failed.wait(1))
+            for _ in range(50):
+                st = jobs.status()
+                if st.get('bad', {}).get('error') and not st['good']['running']:
+                    break
+                threading.Event().wait(.02)
+            self.assertIsNotNone(st['good']['ok'])
+            self.assertIn('boom', st['bad']['error_msg'])
+            self.assertIsNone(st['bad']['ok'])
+        finally:
+            jobs.shutdown()
+
+    def report(self, markets, ticker_age):
+        db = Mock()
+        db.fetchall.return_value = markets
+        db.fetchone.return_value = (ticker_age,)
+        with patch.dict('os.environ', {}, clear=False), \
+             patch('builtins.print') as out:
+            for key in ('POSTHOG_PROJECT_TOKEN', 'VITE_POSTHOG_PROJECT_TOKEN', 'HEALTHCHECK_PING_URL'):
+                __import__('os').environ.pop(key, None)
+            self.s.report_health(db, ())
+        return out.call_args_list[-1].args[0]
+
+    def test_one_stuck_market_is_stale_even_when_feed_is_fresh(self):
+        line = self.report([('tokenA', 58000.0, 113000), ('tokenB', 3.0, 2)], 4.0)
+        self.assertIn('status=STALE', line)
+        self.assertIn('stuck_markets=1', line)
+        self.assertIn('worst_market_waiting_fills=113000', line)
+
+    def test_healthy_pipeline_is_ok(self):
+        line = self.report([('tokenA', 2.0, 5)], 3.0)
+        self.assertIn('status=OK', line)
+
+
 if __name__ == '__main__':
     unittest.main()

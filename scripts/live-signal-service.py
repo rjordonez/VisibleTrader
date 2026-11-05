@@ -2679,6 +2679,122 @@ def report_pipeline_freshness(db):
           f'newest_ticker_age_seconds={float(ticker[0]) if ticker else "unknown"}', flush=True)
 
 
+# ---------------- health report (PostHog logs/events + dead-man ping) ----------------
+# One line per minute that says whether the pipeline is actually advancing,
+# judged on the WORST single market, not the overall feed: on 2026-11-04 one
+# market sat 16h behind while the feed looked fresh. PostHog log alerts fire
+# on `status=STALE`; HEALTHCHECK_PING_URL (healthchecks.io) is pinged only
+# when nothing is stale, so a dead or frozen process alerts by going silent.
+HEALTH_REPORT_SECONDS = 60
+HEALTH_WARN_SECONDS = 5 * 60
+HEALTH_STALE_SECONDS = 15 * 60
+# Expected cadence per job; a job is stale when it hasn't succeeded (or has
+# been running) for max(HEALTH_STALE_SECONDS, 3 intervals).
+HEALTH_JOB_INTERVALS = {
+    'fetch-fills': ONCHAIN_RPC_POLL_SECONDS, 'broadcast': BROADCAST_INTERVAL_SECONDS,
+    'flush-prices': PRICE_FLUSH_SECONDS, 'leaderboard': LEADERBOARD_REFRESH_SECONDS,
+    'opportunity-stats': AGGREGATE_REFRESH_SECONDS, 'trader-scores': TRADER_SCORES_REFRESH_SECONDS,
+    'trader-open': TRADER_OPEN_REFRESH_SECONDS, 'insider-hits': INSIDER_HITS_REFRESH_SECONDS,
+    'insider-alerts': INSIDER_ALERTS_REFRESH_SECONDS, 'experts': EXPERT_REFRESH_SECONDS,
+    'resolve': 300, 'reconcile': RECONCILE_INTERVAL_SECONDS,
+}
+POSTHOG_INGEST = 'https://us.i.posthog.com'
+_started_at = time.time()
+
+
+def _rss_mb():
+    try:
+        with open('/proc/self/status') as f:
+            for line in f:
+                if line.startswith('VmRSS:'):
+                    return int(line.split()[1]) / 1024
+    except OSError:
+        pass
+    return None
+
+
+def _post_json(url, body, headers=None):
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), method='POST',
+                                 headers={'Content-Type': 'application/json', **(headers or {})})
+    with urllib.request.urlopen(req, timeout=5) as r:
+        r.read()
+
+
+def health_status(age, warn=HEALTH_WARN_SECONDS, stale=HEALTH_STALE_SECONDS):
+    if age is None:
+        return 'OK'
+    return 'STALE' if age >= stale else 'WARN' if age >= warn else 'OK'
+
+
+def report_health(db, pools):
+    now = time.time()
+    # Unprocessed rows are normally a few hundred; even a large backlog is
+    # read through the partial index on processed = false.
+    markets = db.fetchall('''SELECT token_id, EXTRACT(EPOCH FROM (now() - min(block_timestamp))), count(*)
+        FROM onchain_fills WHERE processed = false GROUP BY token_id''')
+    ticker = db.fetchone('SELECT EXTRACT(EPOCH FROM (now() - ts)) FROM ticker ORDER BY epoch DESC LIMIT 1')
+    worst = max(markets, key=lambda m: m[1]) if markets else None
+    worst_age = float(worst[1]) if worst else 0.0
+    ticker_age = float(ticker[0]) if ticker else None
+    stuck = [m for m in markets if float(m[1]) >= HEALTH_STALE_SECONDS]
+
+    jobs, stale_jobs = {}, []
+    for pool in pools:
+        for name, s in pool.status().items():
+            limit = max(HEALTH_STALE_SECONDS, 3 * HEALTH_JOB_INTERVALS.get(name, HEALTH_REPORT_SECONDS))
+            since_ok = now - (s['ok'] or _started_at)
+            running_for = now - s['started'] if s['running'] and s.get('started') else 0
+            jobs[name] = round(since_ok)
+            if name in HEALTH_JOB_INTERVALS and (since_ok > limit or running_for > limit):
+                stale_jobs.append(name)
+
+    checks = {'worst_market': health_status(worst_age), 'feed': health_status(ticker_age)}
+    if stale_jobs:
+        checks['jobs'] = 'STALE'
+    status = 'STALE' if 'STALE' in checks.values() else 'WARN' if 'WARN' in checks.values() else 'OK'
+    with state_lock:
+        avg_ms = stats['process_trade_ms'] / stats['process_trade_count'] if stats['process_trade_count'] else 0
+    fields = {
+        'status': status, 'worst_market_backlog_seconds': round(worst_age),
+        'worst_market_token': worst[0][:12] if worst else None,
+        'worst_market_waiting_fills': int(worst[2]) if worst else 0,
+        'stuck_markets': len(stuck), 'waiting_fills': sum(int(m[2]) for m in markets),
+        'newest_ticker_age_seconds': round(ticker_age) if ticker_age is not None else None,
+        'stale_jobs': ','.join(sorted(stale_jobs)) or None,
+        'avg_process_trade_ms': round(avg_ms, 1), 'rss_mb': round(_rss_mb() or 0),
+        'uptime_seconds': round(now - _started_at), 'host': socket.gethostname(),
+    }
+    line = '[health] ' + ' '.join(f'{k}={v}' for k, v in fields.items() if v is not None)
+    print(line, flush=True)
+
+    token = os.environ.get('POSTHOG_PROJECT_TOKEN') or os.environ.get('VITE_POSTHOG_PROJECT_TOKEN')
+    if token:
+        attrs = [{'key': k, 'value': {'intValue': v} if isinstance(v, int) and not isinstance(v, bool)
+                  else {'doubleValue': v} if isinstance(v, float) else {'stringValue': str(v)}}
+                 for k, v in fields.items() if v is not None]
+        try:
+            _post_json(f'{POSTHOG_INGEST}/i/v1/logs', {'resourceLogs': [{
+                'resource': {'attributes': [{'key': 'service.name', 'value': {'stringValue': 'live-signal-service'}}]},
+                'scopeLogs': [{'scope': {'name': 'health'}, 'logRecords': [{
+                    'timeUnixNano': str(int(now * 1e9)),
+                    'severityText': 'ERROR' if status == 'STALE' else 'WARN' if status == 'WARN' else 'INFO',
+                    'severityNumber': 17 if status == 'STALE' else 13 if status == 'WARN' else 9,
+                    'body': {'stringValue': line}, 'attributes': attrs}]}]}]},
+                headers={'Authorization': f'Bearer {token}'})
+            _post_json(f'{POSTHOG_INGEST}/i/v0/e/', {
+                'api_key': token, 'event': 'pipeline_health', 'distinct_id': 'live-signal-service',
+                'properties': {**fields, 'job_seconds_since_ok': jobs, '$process_person_profile': False}})
+        except Exception as exc:
+            print(f'[health] posthog send failed: {exc!r}', flush=True)
+
+    ping = os.environ.get('HEALTHCHECK_PING_URL')
+    if ping and status != 'STALE':
+        try:
+            urllib.request.urlopen(ping, timeout=5).read()
+        except Exception as exc:
+            print(f'[health] dead-man ping failed: {exc!r}', flush=True)
+
+
 # ---------------- main loop ----------------
 
 def startup_read_with_retry(label, fn, attempts=6, essential=True):
@@ -2822,6 +2938,7 @@ def main():
     # Insider scans are tens of seconds of outbound HTTP; their own lane so
     # they never hold up the maintenance jobs above.
     insider_jobs = SingleFlightJobs(2, 'insiders')
+    health_jobs = SingleFlightJobs(1, 'health')  # own worker: its HTTP sends must never delay fetch-fills
     print(f'Work pools: trade_lanes={args.workers} fill_capacity={args.trade_queue_size} '
           f'database_connections={args.db_pool_size}')
 
@@ -2833,6 +2950,7 @@ def main():
 
     last_market_refresh = time.time()
     last_heartbeat = time.time()
+    last_health = time.time()
     last_prune = time.time()
     last_onchain_prune = time.time()
     last_onchain_rpc_fetch = 0.0  # fire once on startup, not just after the first interval
@@ -2946,6 +3064,11 @@ def main():
                           f'lane_rejections={admission.rejections} pending_ack={len(admission.pending_ack)}')
                     last_heartbeat = now
                     ingestion_jobs.submit('freshness', report_pipeline_freshness, ingestion_db)
+
+                if now - last_health > HEALTH_REPORT_SECONDS:
+                    health_jobs.submit('health', report_health, ingestion_db,
+                                       (price_jobs, delivery_jobs, ingestion_jobs, maintenance_jobs, insider_jobs))
+                    last_health = now
 
                 if now - last_prune > 600:  # every 10 min, keep the high-volume ticker table bounded
                     maintenance_jobs.submit('prune-ticker', prune_ticker, maintenance_db)
@@ -3074,7 +3197,7 @@ def main():
             print(f"[shutdown] waiting for fill acknowledgement: {exc!r}", flush=True)
             time.sleep(1)
     executor.shutdown()
-    for jobs in (price_jobs, delivery_jobs, ingestion_jobs, maintenance_jobs, insider_jobs):
+    for jobs in (price_jobs, delivery_jobs, ingestion_jobs, maintenance_jobs, insider_jobs, health_jobs):
         jobs.shutdown()
     print('[shutdown] dispatcher stopped; all admitted trade tasks drained', flush=True)
 
