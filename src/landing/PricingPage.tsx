@@ -157,6 +157,13 @@ export default function PricingPage() {
                   {plan.cta}
                 </a>
               )}
+              {plan.offer && (
+                <p className="pricing-consent">
+                  Renews automatically until you cancel. By subscribing you agree to our{' '}
+                  <a href={marketingUrl('/terms')}>Terms of Service</a> and{' '}
+                  <a href={marketingUrl('/refund-policy')}>Refund Policy</a>.
+                </p>
+              )}
               {plan.highlighted && checkoutError && (
                 <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>{checkoutError}</p>
               )}

@@ -1118,6 +1118,19 @@
   padding: 1.5rem 1.75rem;
 }
 
+.pricing-consent {
+  margin: 0.6rem 0 0.9rem;
+  text-align: center;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+.pricing-consent a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 .pricing-fine {
   text-align: center;
   font-size: 0.8rem;
