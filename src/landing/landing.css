@@ -1119,10 +1119,11 @@
 }
 
 .pricing-consent {
-  margin: 0.6rem 0 0.9rem;
+  max-width: 560px;
+  margin: 0.75rem auto 0;
   text-align: center;
   font-size: 0.75rem;
-  line-height: 1.4;
+  line-height: 1.5;
   color: var(--text-3);
 }
 
