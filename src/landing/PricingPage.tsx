@@ -201,6 +201,19 @@ export default function PricingPage() {
       {signedIn && <RedeemCode />}
 
       <p className="pricing-fine">No contracts. Cancel anytime. Cancel during your first week to stop future billing; access ends immediately. Applicable tax is additional.</p>
+      {/* Recurring-charge authorization, kept off the plan card. Dispute
+          evidence relies on it being on the page where checkout starts. */}
+      <p className="pricing-consent">
+        By subscribing, you allow VisibleTrader to charge your card ${plans[0].introPrice} today for your first week, then
+        ${plans[0].recurringPrice} per month plus applicable tax starting 7 days later, until you cancel, in accordance
+        with our <a href={marketingUrl('/terms')}>Terms of Service</a>. You can cancel anytime in Settings.
+      </p>
+      <p className="pricing-consent">
+        You can review important information about VisibleTrader in our{' '}
+        <a href={marketingUrl('/terms')}>Terms of Service</a>,{' '}
+        <a href={marketingUrl('/refund-policy')}>Refund Policy</a> and{' '}
+        <a href={marketingUrl('/privacy')}>Privacy Policy</a>.
+      </p>
     </div>
   )
 }
