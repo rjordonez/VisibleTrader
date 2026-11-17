@@ -16,6 +16,25 @@ Supabase secrets:
 - `STRIPE_PRICE_PRO_INTRO_WEEK`: one-time price above
 - `STRIPE_LEGACY_CHECKOUT_ENABLED`: `true` only during deployment overlap;
   `false` after the new frontend is live.
+- `RESEND_API_KEY`: Resend key used by `stripe-webhook` to send the
+  trial-ending reminder email.
+- `RESEND_FROM`: verified Resend sender, e.g.
+  `Visible Trader <billing@visibletrader.com>`.
+
+## Trial-ending reminder email
+
+`stripe-webhook` handles `customer.subscription.trial_will_end` (fires ~3 days
+before a trial converts) and sends a reminder via Resend showing the amount,
+charge date, and a cancel link — it cuts the "unrecognized charge" / "I
+cancelled" disputes that cluster on the first real charge. Requires:
+
+- `RESEND_API_KEY` and `RESEND_FROM` set as Supabase secrets (above), sending
+  domain verified in Resend.
+- `customer.subscription.trial_will_end` enabled on the Stripe webhook endpoint
+  (live, and test mode if used).
+
+The send is best-effort: a Resend failure is logged and the webhook still
+returns 2xx so Stripe does not retry and re-run the subscription-sync handlers.
 
 The frontend selects a server-owned offer, so it needs no new Vercel price
 variable. Existing weekly subscriptions, gift links and access-code redemption
