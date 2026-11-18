@@ -78,6 +78,14 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Attribution is frozen in the database, never trusted from request data or
+    // editable user metadata. Refuse checkout if signup capture has not finished.
+    const { data: attribution, error: attributionError } = await serviceClient
+      .from('signup_attributions').select('referral_code, finalized_at')
+      .eq('user_id', user.id).single()
+    if (attributionError) throw attributionError
+    if (!attribution.finalized_at) throw new Error('Signup setup is not complete. Please reload and try again.')
+
     // success_url must land on the app subdomain regardless of where
     // checkout was initiated (the pricing page lives on the marketing
     // domain) — APP_URL is set explicitly for that. cancel_url stays
@@ -96,6 +104,10 @@ Deno.serve(async (req) => {
       success_url: `${appOrigin}/?checkout=success`,
       cancel_url: `${origin}/pricing?checkout=cancelled`,
     })
+    if (attribution.referral_code) {
+      params.set('metadata[referral_code]', attribution.referral_code)
+      params.set('subscription_data[metadata][referral_code]', attribution.referral_code)
+    }
     for (const [key, value] of lineItems) params.set(key, value)
 
     const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
