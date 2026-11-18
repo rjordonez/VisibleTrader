@@ -1298,7 +1298,7 @@ def refresh_leaderboard(db):
     last_ts = row[0] if row else datetime.min.replace(tzinfo=timezone.utc)
 
     def txn(conn):
-        max_ts, wallets = conn.execute('''
+        max_ts, wallets, flip_wallets = conn.execute('''
             WITH deltas AS (
               SELECT wallet, MAX(wallet_name) AS wallet_name,
                 COUNT(*) AS n,
@@ -1312,6 +1312,13 @@ def refresh_leaderboard(db):
               WHERE market_closed = true AND wallet IS NOT NULL AND resolved_ts > %s
               GROUP BY wallet
             ),
+            -- Proven status BEFORE this pass (data-modifying CTEs don't see
+            -- each other's writes, so this reads pre-upsert leaderboard_cache).
+            old AS (
+              SELECT lc.wallet, lc.won, lc.lost, lc.net_profit
+              FROM leaderboard_cache lc
+              WHERE lc.wallet IN (SELECT wallet FROM deltas)
+            ),
             upserted AS (
               INSERT INTO leaderboard_cache (wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit, updated_at)
               SELECT wallet, wallet_name, n, won, lost, deployed, won_usd, net_profit, %s FROM deltas
@@ -1324,11 +1331,27 @@ def refresh_leaderboard(db):
                 won_usd = leaderboard_cache.won_usd + EXCLUDED.won_usd,
                 net_profit = leaderboard_cache.net_profit + EXCLUDED.net_profit,
                 updated_at = EXCLUDED.updated_at
-              RETURNING wallet
+              RETURNING wallet, won, lost, net_profit
             )
-            SELECT (SELECT MAX(max_resolved_ts) FROM deltas), (SELECT array_agg(wallet) FROM upserted)
+            SELECT
+              (SELECT MAX(max_resolved_ts) FROM deltas),
+              (SELECT array_agg(wallet) FROM upserted),
+              -- Only wallets whose proven status (won+lost>=20, net_profit>0,
+              -- win_rate>=0.52) actually flipped this pass. A missing old row
+              -- counts as not-proven, so a new wallet that lands proven flips.
+              (SELECT array_agg(u.wallet)
+                 FROM upserted u
+                 LEFT JOIN old o ON o.wallet = u.wallet
+                 WHERE (
+                     (u.won + u.lost) >= 20 AND u.net_profit > 0
+                     AND (u.won::numeric / NULLIF(u.won + u.lost, 0)) >= 0.52
+                   ) IS DISTINCT FROM COALESCE((
+                     (o.won + o.lost) >= 20 AND o.net_profit > 0
+                     AND (o.won::numeric / NULLIF(o.won + o.lost, 0)) >= 0.52
+                   ), false))
         ''', (last_ts, now)).fetchone()
         wallets = wallets or []
+        flip_wallets = flip_wallets or []
         if wallets:
             # best_win_rate is keyed off each wallet's overall win rate
             # (leaderboard_cache), so any wallet this pass touched can move
@@ -1343,11 +1366,15 @@ def refresh_leaderboard(db):
                 ORDER BY oc.condition_id, oc.outcome
                 ON CONFLICT DO NOTHING
             ''', (wallets,))
-            # proven_wallets (leaderboard-derived: won+lost>=20, net_profit>0,
-            # win_rate>=0.52) can gain or lose a wallet whenever its
-            # leaderboard_cache row changes, which moves profit bot's own
-            # 5+-proven-wallet eligibility for every pair that wallet
-            # contributes to — see profit_bot_dirty / refresh_profit_bot.
+        if flip_wallets:
+            # profit-bot's 5+-proven-wallet eligibility only moves when a
+            # wallet CROSSES the proven threshold — a routine leaderboard tick
+            # that leaves proven status unchanged can't change any pair's
+            # proven count. So mark only the pairs of wallets whose proven
+            # status actually flipped, not every touched wallet's pairs.
+            # (The old "every touched wallet" form marked ~6k pairs per call
+            # and flooded profit_bot_dirty far faster than it could drain; the
+            # hourly reconcile_caches full pass still backstops any edge case.)
             conn.execute('''
                 INSERT INTO profit_bot_dirty (condition_id, outcome)
                 SELECT DISTINCT oc.condition_id, oc.outcome
@@ -1355,7 +1382,7 @@ def refresh_leaderboard(db):
                 WHERE oc.wallet = ANY(%s)
                 ORDER BY oc.condition_id, oc.outcome
                 ON CONFLICT DO NOTHING
-            ''', (wallets,))
+            ''', (flip_wallets,))
         return max_ts, len(wallets)
 
     max_ts, n_updated = db.run_transaction(txn)
