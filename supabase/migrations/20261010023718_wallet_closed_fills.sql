@@ -1,19 +1,3 @@
--- Trader profile paged closed fills out of wallet_positions with
--- offset/limit. Every page re-read, joined and disk-sorted the wallet's
--- whole history, so a heavy wallet (72,901 fills) took ~14s per page past
--- offset ~17k and hit the 8s authenticated statement_timeout (500).
---
--- Keyset page instead: the next 1000 fills older than (p_before_ts,
--- p_before_id), newest first, straight off
--- opportunity_wallets_wallet_resolved_idx (~10ms at any depth). The limit is
--- applied before the title join on purpose; joining first let the planner
--- pick a bitmap scan + sort over everything older than the cursor (~5s).
--- Left join so the page always advances 1000 raw fills: the client drops
--- rows with no current opportunity (title null), matching wallet_positions'
--- inner join, and still uses the last raw row as the next cursor.
---
--- Same columns/profit expression and paid-subscriber gate as
--- wallet_positions (20260901020000_wallet_positions_drop_security_invoker).
 create or replace function public.wallet_closed_fills(
   p_wallet text, p_before_ts timestamptz default null, p_before_id bigint default null)
 returns table(condition_id text, outcome text, title text, category text, usd numeric, price numeric,
