@@ -1,3 +1,5 @@
+import { REFERRAL_CODES } from './referralCodes'
+
 // Helpers for navigating between the marketing site (visibletrader.com) and
 // the app (app.visibletrader.com) — two real origins in prod, so crossing
 // between them always needs a plain <a href>/window.location navigation,
@@ -39,13 +41,16 @@ export const oauthRedirectUrl = () =>
 const REFERRAL_COOKIE = 'vt_referral_code'
 
 export function setReferralCode(code: string) {
+  // First referral within the 30-day window wins.
+  const existing = getReferralCode()
+  if (existing && REFERRAL_CODES[existing]) return
   const domainAttr = import.meta.env.DEV ? '' : '; domain=.visibletrader.com'
   document.cookie = `${REFERRAL_COOKIE}=${encodeURIComponent(code)}; path=/; max-age=2592000; SameSite=Lax${domainAttr}`
 }
 
 export function getReferralCode(): string | null {
   const match = document.cookie.match(new RegExp(`(?:^|; )${REFERRAL_COOKIE}=([^;]*)`))
-  return match ? decodeURIComponent(match[1]) : null
+  try { return match ? decodeURIComponent(match[1]) : null } catch { return null }
 }
 
 // Same cross-subdomain cookie approach as the referral code above, but a
@@ -60,5 +65,5 @@ export function setPromoSource(source: string) {
 
 export function getPromoSource(): string | null {
   const match = document.cookie.match(new RegExp(`(?:^|; )${PROMO_COOKIE}=([^;]*)`))
-  return match ? decodeURIComponent(match[1]) : null
+  try { return match ? decodeURIComponent(match[1]) : null } catch { return null }
 }
