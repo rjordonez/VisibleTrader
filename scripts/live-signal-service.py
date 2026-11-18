@@ -1754,8 +1754,16 @@ def refresh_profit_bot(db):
     index-only scan (~2.4s for 1500, measured), so the batch can safely be
     much larger to drain the backlog and keep up. The job's pool is still
     capped at a 120s statement_timeout. See the index migration for details.
+
+    Batch tuned 10000 -> 5000 (2026-11-18): 10000 put the resolved/pick_keys
+    inserts right at the 120s statement_timeout (max ~117s observed) — light
+    batches completed (~88s, drained 10k) but heavy ones timed out and rolled
+    back the DELETE, draining nothing while still burning ~120s of CPU/IO. 5000
+    keeps every pass comfortably under the timeout (~55-60s worst case) while
+    still draining ~41/s, far above the ~12.5/s insert rate, so the backlog
+    clears quickly and stays empty without wasted timed-out passes.
     """
-    PROFIT_BOT_DIRTY_BATCH_LIMIT = 10000
+    PROFIT_BOT_DIRTY_BATCH_LIMIT = 5000
     now = datetime.now(timezone.utc)
     rows = db.fetchall('''
         DELETE FROM profit_bot_dirty
