@@ -1,11 +1,3 @@
--- Profit Bot track record at the price a follower could actually get, from
--- launch. Every resolved pick's entry (avg_entry) and pnl now use the 5th
--- proven wallet's first entry price instead of the average across all of
--- them (which includes cheaper earlier entries nobody following the bot can
--- get), and only picks opened since the Sept 9 launch count. Flows through
--- the resolved list, the perf stats, the daily P&L and the compounding chart.
--- The incremental path in live-signal-service.py mirrors this.
-
 create or replace function public.refresh_profit_bot_cache()
 returns void
 language plpgsql

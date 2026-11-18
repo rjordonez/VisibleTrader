@@ -1,23 +1,3 @@
--- Insider-pattern discovery across all of Polymarket, not just the wallets
--- we track. The Leaderboard's Insiders view used to come from
--- trader_scores, i.e. only the ~2,300 wallets already on our roster (picked
--- for big P&L), which can't see the typical insider: a new wallet with one
--- big long-shot bet right before the news. live-signal-service.py fills
--- these from Polymarket's Data API v2 (scripts/insider_scan.py):
---
---   insider_hits    resolved long-shot wins (5x+, $10k+ profit) outside
---                   sports/esports/weather/crypto and price/count markets,
---                   scored on entry odds, how close to the result they
---                   bought, wallet history and size. is_pattern = score 50+
---                   and under 2,000 lifetime markets.
---   insider_alerts  open long-shot bets ($5k+ at 20% or less) by wallets
---                   with little history, in markets resolving within 3
---                   weeks. Dropped once a market resolves or stops showing.
---   insider_wallets per-wallet history (markets traded, join date) and the
---                   open-position count the Leaderboard marker shows.
---
--- A pattern, not proof; the UI says so.
-
 create table if not exists insider_wallets (
   wallet         text primary key,
   wallet_name    text,
@@ -72,7 +52,6 @@ create table if not exists insider_alerts (
   primary key (wallet, token_id)
 );
 
--- Same subscriber-only read as trader_scores.
 do $$
 declare t text;
 begin
@@ -86,7 +65,6 @@ begin
   end loop;
 end $$;
 
--- One row per insider-pattern wallet: its totals plus its single biggest hit.
 create or replace view insider_leaders with (security_invoker = true) as
 select s.wallet,
   coalesce(w.wallet_name, b.wallet_name) as wallet_name,

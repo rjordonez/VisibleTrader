@@ -1,34 +1,3 @@
--- Leaderboard ranks people, not bankrolls. leaderboard_cache counts every
--- fill as its own "trade" (one wallet scaling into 4 markets showed up as
--- 153 resolved trades) and ranks by raw P&L or raw win rate, so the top of
--- the board was volume bots and market makers moving $50M+ for a 1-2%
--- return, and buying 95c favorites looked like a 95% win rate.
---
--- trader_scores scores each wallet per MARKET (all fills of one outcome
--- folded into one position, at its average entry price) against the odds
--- it actually paid:
---
---   expert  = beats the market's odds, consistently. Over 25+ resolved
---             markets, wins at least 5 points more often than its average
---             entry price implied, with a z-score of 2+ (wins vs the
---             expected wins those prices imply, so a lucky 30-market run
---             doesn't qualify but a 900-market +10pt record does), and is
---             net profitable.
---   insider = hits long shots where inside information exists. Outside
---             sports/esports/weather/crypto (markets a leak can't move), a
---             $1k+ position bought at 40c or less that won, $5k+ profit on
---             those long shots, and a long-shot record that beats its own
---             odds by z 1.5+ (one 15c hit qualifies, 1 for 10 at 30c
---             doesn't), and net profitable overall (a copy-trading cluster
---             that hit the same few long shots but loses money elsewhere
---             isn't trading on information).
---
--- Same incremental pattern as wallet_pnl_hourly: refresh_trader_scores()
--- folds in fills resolved since the high-water mark (live-signal-service.py,
--- every TRADER_SCORES_REFRESH_SECONDS) and rescores only the wallets it
--- touched; rebuild_trader_scores() is the full recompute used as the
--- backfill below. Both share one advisory lock so they never interleave.
-
 create table if not exists trader_market_results (
   wallet       text not null,
   condition_id text not null,
@@ -66,7 +35,6 @@ create index if not exists trader_scores_expert_idx on trader_scores (edge_pts d
 create index if not exists trader_scores_insider_idx on trader_scores (insider_z desc) where is_insider;
 create index if not exists trader_scores_pnl_idx on trader_scores (pnl desc);
 
--- Same subscriber-only read as leaderboard_cache.
 alter table trader_scores enable row level security;
 drop policy if exists "public read" on trader_scores;
 create policy "public read" on trader_scores for select using (
@@ -80,8 +48,6 @@ create table if not exists trader_scores_refresh_state (
 );
 alter table trader_scores_refresh_state enable row level security;
 
--- The scoring itself, in one place for both the incremental and full paths.
--- Not exposed to clients (they read trader_scores).
 create or replace view trader_scores_compute as
 with pos as (
   select r.*, r.usd / r.shares as p,
@@ -116,7 +82,7 @@ scored as (
 select s.wallet, l.wallet_name, s.markets, s.wins, s.expected_wins, s.deployed, s.pnl,
   s.edge_pts, s.z, s.longshots, s.longshot_wins, s.longshot_expected, s.longshot_pnl, s.insider_z,
   (s.markets >= 25 and s.edge_pts >= 5 and coalesce(s.z, 0) >= 2 and s.pnl > 0) as is_expert,
-  (s.longshot_wins >= 1 and s.longshot_pnl >= 5000 and coalesce(s.insider_z, 0) >= 1.5 and s.pnl > 0) as is_insider
+  (s.longshot_wins >= 1 and s.longshot_pnl >= 5000 and coalesce(s.insider_z, 0) >= 1.5) as is_insider
 from scored s
 left join leaderboard_cache l on l.wallet = s.wallet;
 revoke all on trader_scores_compute from anon, authenticated;
@@ -133,7 +99,7 @@ begin
   perform pg_advisory_xact_lock(hashtext('trader_scores'));
   select last_resolved_ts into v_last from trader_scores_refresh_state where id;
   if v_last is null then
-    return 0;  -- never built; rebuild_trader_scores() seeds it
+    return 0;
   end if;
 
   create temp table _ts_delta on commit drop as
@@ -148,8 +114,6 @@ begin
     and ow.price > 0 and ow.price < 1 and ow.resolved_ts > v_last
   group by 1, 2, 3;
 
-  -- Additive, so a late fill on an already-folded market adds onto it.
-  -- Sorted: a deterministic key order can't deadlock against another writer.
   insert into trader_market_results as t
   select * from _ts_delta order by wallet, condition_id, outcome
   on conflict (wallet, condition_id, outcome) do update set
@@ -183,10 +147,6 @@ begin
 end;
 $function$;
 
--- Full recompute from opportunity_wallets; returns the number of wallets scored.
--- Forced to one sequential pass over the table: left to itself the planner
--- walks ~4M closed fills through the (condition_id, outcome) index with a
--- random heap read each, which ran past 15 minutes on the first backfill.
 create or replace function public.rebuild_trader_scores()
 returns integer
 language plpgsql
@@ -197,30 +157,19 @@ declare
 begin
   perform pg_advisory_xact_lock(hashtext('trader_scores'));
   select max(resolved_ts) into v_max from opportunity_wallets where market_closed;
-  perform set_config('enable_indexscan', 'off', true);
-  perform set_config('enable_bitmapscan', 'off', true);
-  perform set_config('work_mem', '256MB', true);
 
-  -- Aggregate fills to positions first, then attach categories to the
-  -- ~1M positions instead of joining every fill.
   delete from trader_market_results;
   insert into trader_market_results
-  select p.wallet, p.condition_id, p.outcome, coalesce(o.category, 'other'),
-    p.usd, p.shares, p.won, p.first_ts, p.resolved_ts
-  from (
-    select wallet, condition_id, outcome,
-      sum(usd) as usd, sum(usd / price) as shares, bool_or(resolved_win) as won,
-      min(ts) as first_ts, max(resolved_ts) as resolved_ts
-    from opportunity_wallets
-    where market_closed and wallet is not null and resolved_win is not null
-      and price > 0 and price < 1 and resolved_ts <= v_max
-    group by 1, 2, 3
-  ) p
-  left join (
-    select condition_id, outcome, max(category) as category
-    from opportunities where is_current
-    group by 1, 2
-  ) o on o.condition_id = p.condition_id and o.outcome = p.outcome;
+  select ow.wallet, ow.condition_id, ow.outcome,
+    coalesce(max(o.category), 'other'),
+    sum(ow.usd), sum(ow.usd / ow.price),
+    bool_or(ow.resolved_win),
+    min(ow.ts), max(ow.resolved_ts)
+  from opportunity_wallets ow
+  left join opportunities o on o.condition_id = ow.condition_id and o.outcome = ow.outcome and o.is_current
+  where ow.market_closed and ow.wallet is not null and ow.resolved_win is not null
+    and ow.price > 0 and ow.price < 1 and ow.resolved_ts <= v_max
+  group by 1, 2, 3;
 
   delete from trader_scores;
   insert into trader_scores (wallet, wallet_name, markets, wins, expected_wins, deployed, pnl,
@@ -236,6 +185,3 @@ begin
   return v_rows;
 end;
 $function$;
-
--- Backfill.
-select rebuild_trader_scores();
