@@ -20,6 +20,8 @@ let existing: Record<string, unknown> | null = null
 let currentStatus = 'trialing'
 let invoiceStatus = 'paid'
 let dbFailure = false
+let paymentDbFailure = false
+const payments = new Map<string, Record<string, unknown>>()
 const writes: Record<string, unknown>[] = []
 const stripeCalls: { path: string; method: string; body: string }[] = []
 const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } })
@@ -28,6 +30,14 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   const method = init?.method || 'GET'
   if (url.hostname === 'billing-qa.supabase.co') {
     if (url.pathname === '/auth/v1/user') return reply({ id: 'qa-user', email: 'qa@example.invalid' })
+    if (url.pathname === '/rest/v1/subscription_payments') {
+      if (paymentDbFailure) return reply({ message: 'payment database unavailable' }, 500)
+      assert.match(new Headers(init?.headers).get('Prefer') || '', /resolution=ignore-duplicates/)
+      const payment = JSON.parse(String(init?.body))
+      if (!payments.has(payment.stripe_invoice_id)) payments.set(payment.stripe_invoice_id, payment)
+      return new Response(null, { status: 204 })
+    }
+    if (url.pathname === '/rest/v1/signup_attributions') return reply({ referral_code: 'anthony', finalized_at: '2026-11-18T00:00:00Z' })
     if (url.pathname === '/rest/v1/subscriptions') {
       if (dbFailure) return reply({ message: 'database unavailable', code: 'QA_FAILURE' }, 500)
       if (method === 'GET') return reply(existing ? [existing] : [])
@@ -42,10 +52,10 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   }
   throw Error(`Unexpected test request: ${method} ${url.origin}${url.pathname}`)
 }) as typeof fetch
-function reset() { existing = null; currentStatus = 'trialing'; invoiceStatus = 'paid'; dbFailure = false; writes.length = 0; stripeCalls.length = 0 }
+function reset() { existing = null; currentStatus = 'trialing'; invoiceStatus = 'paid'; dbFailure = false; paymentDbFailure = false; payments.clear(); writes.length = 0; stripeCalls.length = 0 }
 function request(body: unknown, authenticated = true) { return new Request('https://billing-qa.supabase.co/test', { method: 'POST', headers: { ...(authenticated ? { Authorization: 'Bearer qa-session' } : {}), origin: 'https://visibletrader.com', 'content-type': 'application/json' }, body: JSON.stringify(body) }) }
-async function event(type: string) {
-  const payload = JSON.stringify({ type, data: { object: { id: 'sub_qa' } } })
+async function event(type: string, object: Record<string, unknown> = { id: 'sub_qa' }) {
+  const payload = JSON.stringify({ type, data: { object } })
   const timestamp = Math.floor(Date.now() / 1000)
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode('qa-webhook-secret'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${timestamp}.${payload}`))
@@ -66,6 +76,8 @@ Deno.test('checkout handler authenticates, blocks existing subscribers and sends
   assert.equal(params.get('line_items[1][price]'), 'price_intro')
   assert.equal(params.get('subscription_data[trial_period_days]'), '7')
   assert.equal(params.get('subscription_data[metadata][supabase_user_id]'), 'qa-user')
+  assert.equal(params.get('metadata[referral_code]'), 'anthony')
+  assert.equal(params.get('subscription_data[metadata][referral_code]'), 'anthony')
   assert.equal(params.get('success_url'), 'https://app.visibletrader.com/?checkout=success')
 })
 Deno.test('checkout fails closed when subscription lookup fails', async () => {
@@ -99,5 +111,20 @@ Deno.test('cancellation checks current Stripe state, preserves paid periods, imm
   assert.equal((await cancel(request({}))).status, 200)
   assert.equal(writes.at(-1)?.status, 'canceled')
   assert.equal(stripeCalls.some(x => x.method === 'DELETE'), true)
+})
+Deno.test('signed paid invoices survive canceled status, duplicate deliveries, old subscriptions and ledger failure retries', async () => {
+  reset(); currentStatus = 'canceled'
+  const invoice = { id: 'in_qa', subscription: 'sub_qa', customer: 'cus_qa', status: 'paid', amount_paid: 100, currency: 'usd', livemode: true, billing_reason: 'subscription_create', status_transitions: { paid_at: 1800000000 } }
+  // No matching current subscription row: historical payment must still save.
+  assert.equal((await webhook(await event('invoice.paid', invoice))).status, 200)
+  assert.equal((await webhook(await event('invoice.payment_succeeded', invoice))).status, 200)
+  assert.equal(payments.size, 1)
+  assert.equal(payments.get('in_qa')?.payment_kind, 'introductory')
+  paymentDbFailure = true
+  assert.equal((await webhook(await event('invoice.paid', { ...invoice, id: 'in_retry' }))).status, 500)
+  assert.equal(payments.has('in_retry'), false)
+  paymentDbFailure = false
+  assert.equal((await webhook(await event('invoice.paid', { ...invoice, id: 'in_retry' }))).status, 200)
+  assert.equal(payments.size, 2)
 })
 Deno.test('restore fetch after handler tests', () => { globalThis.fetch = originalFetch })

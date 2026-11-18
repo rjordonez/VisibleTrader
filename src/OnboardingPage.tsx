@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from './lib/supabase'
 import posthog from './lib/posthog'
 import { useLiveTradeCounter, RollingNumber } from './lib/RollingCounter'
-import { getReferralCode, getPromoSource } from './lib/domains'
+import { getPromoSource } from './lib/domains'
 import { fmtAbbrev } from './app/helpers'
 import './app/app.css'
 
@@ -222,6 +222,7 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
   // click instead of already being lit before you get there.
   const [completedSteps, setCompletedSteps] = useState(0)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(false)
   // Same live, real, ever-growing counter as the landing page's Hero (see
   // lib/RollingCounter.tsx) — reused rather than reinvented, and doubly
   // relevant here since onboarding, like the landing page, runs before a
@@ -265,24 +266,16 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
 
   const finish = async (finalAnswers: Record<string, string>) => {
     setSaving(true)
-    // Onboarding runs exactly once per real account regardless of signup
-    // method (see the OAuth signup_completed note above), so it's the one
-    // place that reliably covers both paths for writing whatever referral
-    // code ReferralRedirect.tsx left in a cookie onto the actual account —
-    // the click alone (PostHog) never confirmed a signup happened. A cookie,
-    // not localStorage, since the click happened on the separate
-    // visibletrader.com origin — see lib/domains.ts.
-    const referralCode = getReferralCode()
-    // Separate from the creator referral code: set by the /promo link
-    // (PromoRedirect.tsx) and stored in its own field.
+    // Creator attribution was already finalized on the first authenticated session.
     const promoSource = getPromoSource()
     const attribution = {
-      ...(referralCode ? { referral_code: referralCode } : {}),
       ...(promoSource ? { promo_source: promoSource } : {}),
     }
-    await supabase.auth.updateUser({
+    const { error } = await supabase.auth.updateUser({
       data: { ...finalAnswers, onboarding_completed: true, ...attribution },
     })
+    if (error) { setSaveError(true); setSaving(false); return }
+    setSaveError(false)
     posthog.capture('onboarding_completed', { ...finalAnswers, ...attribution })
     setSaving(false)
     onComplete()
@@ -316,6 +309,7 @@ export default function OnboardingPage({ onComplete }: { onComplete: () => void 
   return (
     <div className="onboarding-root sig-page">
       <div className="onboarding-card">
+        {saveError && <p role="alert">We couldn’t save your answers. Please try again.</p>}
         <div className="onboarding-progress">
           <div className="onboarding-progress-segments">
             {Array.from({ length: totalSteps }, (_, i) => (

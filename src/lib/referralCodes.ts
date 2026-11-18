@@ -1,0 +1,20 @@
+export const REFERRAL_CODES: Record<string, string> = {
+  'c8b21c': 'jcwann',
+  guukq8: 'toby.bets',
+  qx3ezk: 'paxx.prints',
+  gb6k9u: 'vladdi.trades',
+  cvxysr: 'lincolnpredicts',
+  qjyzmf: 'rextracks',
+  qycjpu: 'rex_predicts',
+  '2js266': 'nate.predicts',
+  eztm6e: 'rudrapredicts',
+  '2p348p': 'dretrdzzz',
+  '6dek9j': 'cha0spredicts',
+  n2u7n5: 'rykertracks',
+  '3jpkjm': 'anthony',
+  // Creator-approved readable aliases.
+  anthony: 'anthony',
+  jc: 'jcwann',
+  jayden: 'jayden',
+  vlad: 'vladdi.trades',
+}

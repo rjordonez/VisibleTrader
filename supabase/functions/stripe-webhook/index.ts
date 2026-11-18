@@ -5,6 +5,7 @@
 // so they bypass RLS; users can never reach this table directly (see the
 // subscriptions migration — no insert/update policy for `authenticated`).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { recordInvoicePayment } from './payments.ts'
 import { subscriptionForAccess } from './subscription.ts'
 import { sendTrialEndingEmail } from './email.ts'
 
@@ -104,10 +105,20 @@ Deno.serve(async (req) => {
       }
       // Covers a delayed initial $1 payment and renewal payment recovery.
       case 'invoice.paid':
+      case 'invoice.payment_succeeded':
       case 'invoice.payment_failed': {
         const invoice = event.data.object
         const id = invoice.parent?.subscription_details?.subscription ?? invoice.subscription
-        if (id) await syncSubscription(id, true)
+        if (id) {
+          if (event.type !== 'invoice.payment_failed') {
+            await recordInvoicePayment(invoice, stripe, async (payment) => {
+              const { error } = await supabase.from('subscription_payments')
+                .upsert(payment, { onConflict: 'stripe_invoice_id', ignoreDuplicates: true })
+              if (error) throw error
+            })
+          }
+          await syncSubscription(id, true)
+        }
         break
       }
       // Fires ~3 days before a trial converts to its first real charge. That's

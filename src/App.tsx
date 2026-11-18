@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import LandingLayout from './landing/LandingLayout'
+import SignupAttribution from './SignupAttribution'
 
 // Route-level code splitting — every one of these used to be a static
 // top-level import, which meant the single JS bundle (1.2MB / 368KB gzipped,
@@ -169,7 +170,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <Suspense fallback={<PageLoading />}>
-      {isAppHost ? <AppRoutes /> : <MarketingRoutes />}
+      {isAppHost ? <SignupAttribution><AppRoutes /></SignupAttribution> : <MarketingRoutes />}
     </Suspense>
   )
 }
