@@ -1,21 +1,3 @@
--- Trader profile P&L chart, precomputed. The chart used to page every
--- resolved fill for the wallet into the browser and cumulate client-side:
--- 73 sequential requests (~20s+) on the heaviest wallet (72,901 fills) before
--- it could draw. It only needs P&L per hour, so keep that here: ~92k rows
--- across all wallets (~10-15 MB), at most ~1,400 for one wallet.
---
--- Same incremental pattern as leaderboard_cache / leaderboard_refresh_state:
--- refresh_wallet_pnl_hourly() folds in fills resolved since the high-water
--- mark (live-signal-service.py, every WALLET_PNL_REFRESH_SECONDS), and
--- rebuild_wallet_pnl_hourly() is the full recompute the hourly
--- reconcile_caches() pass runs as the correction. Both take the same
--- advisory lock and do everything in one transaction, so a rebuild can never
--- interleave with an incremental pass and double-count a delta.
---
--- profit matches wallet_positions.profit for closed fills (closed_profit,
--- falling back to the resolved payout), so the chart's last point keeps
--- matching what it showed before.
-
 create table if not exists wallet_pnl_hourly (
   wallet text not null,
   h      timestamptz not null,
@@ -47,7 +29,7 @@ begin
   perform pg_advisory_xact_lock(hashtext('wallet_pnl_hourly'));
   select last_resolved_ts into v_last from wallet_pnl_hourly_refresh_state where id;
   if v_last is null then
-    return 0;  -- never built; rebuild_wallet_pnl_hourly() seeds it
+    return 0;
   end if;
 
   create temp table _pnl_delta on commit drop as
@@ -59,7 +41,6 @@ begin
   where market_closed and wallet is not null and resolved_ts > v_last
   group by 1, 2;
 
-  -- Sorted: a deterministic key order can't deadlock against another writer.
   insert into wallet_pnl_hourly as t (wallet, h, profit, n)
   select wallet, h, coalesce(profit, 0), n from _pnl_delta order by wallet, h
   on conflict (wallet, h) do update set
@@ -75,8 +56,6 @@ begin
 end;
 $function$;
 
--- Full recompute; returns how many (wallet, hour) rows disagreed with what
--- the incremental pass had built (0 = no drift).
 create or replace function public.rebuild_wallet_pnl_hourly()
 returns integer
 language plpgsql
@@ -111,5 +90,4 @@ begin
 end;
 $function$;
 
--- Backfill.
 select rebuild_wallet_pnl_hourly();
