@@ -57,10 +57,13 @@ TRADER_OPEN_REFRESH_SECONDS = 10 * 60  # trader_scores.open_positions — see re
 INSIDER_HITS_REFRESH_SECONDS = 30 * 60  # insider_hits — see discover_insider_hits()
 INSIDER_ALERTS_REFRESH_SECONDS = 10 * 60  # insider_alerts — see scan_insider_alerts()
 EXPERT_REFRESH_SECONDS = 6 * 60 * 60  # expert_traders — see discover_experts()
-# PROFIT_BOT_REFRESH_SECONDS is NOT incremental yet (refresh_profit_bot still does a
-# full 5-pass recompute per call) — left untouched. Shrinking this one would make the
-# original I/O problem worse, not better; it needs the same incremental treatment
-# before its interval can safely come down.
+# refresh_profit_bot() is incremental (dirty-pair batch). Its per-pass cost was
+# dominated by ~460MB of cold random reads on opportunity_wallets because the
+# supporting partial indexes were keyed on `wallet` and unusable for the
+# (condition_id, outcome) dirty-pair lookup; the (condition_id, outcome)-keyed
+# pbot_resolved_co_idx / pbot_open_idx (2026-11-18) fixed that. The interval
+# could safely come down now, but the batch-limit bump (see refresh_profit_bot)
+# is what drains the backlog; interval left at 120s.
 PROFIT_BOT_REFRESH_SECONDS = 120  # profit_bot_*_cache — see refresh_profit_bot()
 RECONCILE_INTERVAL_SECONDS = 60 * 60  # correction pass for the incremental leaderboard/aggregate refreshes — see reconcile_caches()
 WARM_SEARCH_SECONDS = 4 * 60  # keeps the wallet-search Edge Function's isolate warm — see ping_wallet_search()
@@ -1738,11 +1741,21 @@ def refresh_profit_bot(db):
 
     Batch raised 300 -> 1500 (2026-10-17): this runs only every 120s, so the
     old 300/120s (2.5 pairs/s) drain was far below insert rate and
-    profit_bot_dirty accumulated to ~86k rows. The resolved/open recomputes
-    below are bounded to the claimed batch via the opportunity_wallets
-    partial indexes (pbot_resolved/pbot_open), and the job's pool is capped
-    at a 120s statement_timeout, so the larger batch is safe."""
-    PROFIT_BOT_DIRTY_BATCH_LIMIT = 1500
+    profit_bot_dirty accumulated to ~86k rows.
+
+    Batch raised 1500 -> 10000 (2026-11-18): the resolved/open recomputes
+    were supposed to be bounded via partial indexes, but the pre-existing
+    pbot_resolved/pbot_open indexes lead with `wallet`, so the (condition_id,
+    outcome) dirty-pair lookup couldn't use them — it fell back to
+    co_wallet_idx + heap visits, ~460MB of cold random reads and ~43s per
+    pass (measured). With that, 1500/120s still couldn't keep up and the
+    queue sat at ~185k. New partial indexes keyed on (condition_id, outcome)
+    — pbot_resolved_co_idx / pbot_open_idx — make the dirty-pair lookup an
+    index-only scan (~2.4s for 1500, measured), so the batch can safely be
+    much larger to drain the backlog and keep up. The job's pool is still
+    capped at a 120s statement_timeout. See the index migration for details.
+    """
+    PROFIT_BOT_DIRTY_BATCH_LIMIT = 10000
     now = datetime.now(timezone.utc)
     rows = db.fetchall('''
         DELETE FROM profit_bot_dirty
