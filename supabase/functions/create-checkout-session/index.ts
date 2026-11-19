@@ -4,7 +4,7 @@
 // pulling in the stripe SDK — one less dependency to worry about in Deno,
 // and the request shape here is simple enough not to need it.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { checkoutLineItems, MONTHLY_INTRO_OFFER, threeDSTestParams } from './checkout.ts'
+import { blockedBrandParams, checkoutLineItems, MONTHLY_INTRO_OFFER, threeDSTestParams } from './checkout.ts'
 import { chooseProvider, splitPercent, whopConfig, whopFetch } from '../_shared/whop.ts'
 
 const corsHeaders = {
@@ -153,6 +153,7 @@ Deno.serve(async (req) => {
       params.set('subscription_data[metadata][referral_code]', attribution.referral_code)
     }
     for (const [key, value] of lineItems) params.set(key, value)
+    for (const [key, value] of blockedBrandParams()) params.set(key, value)
     // Off unless CHECKOUT_3DS_TEST=on, so deploying this changes nothing by itself.
     for (const [key, value] of threeDSTestParams(user.id, Deno.env.get('CHECKOUT_3DS_TEST') === 'on')) {
       params.set(key, value)

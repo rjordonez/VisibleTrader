@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert'
-import { checkoutLineItems, MONTHLY_INTRO_OFFER, threeDSTestArm, threeDSTestParams, type CheckoutConfig } from './checkout.ts'
+import { blockedBrandParams, checkoutLineItems, MONTHLY_INTRO_OFFER, threeDSTestArm, threeDSTestParams, type CheckoutConfig } from './checkout.ts'
 
 const config: CheckoutConfig = {
   monthlyPrice: 'price_monthly', introPrice: 'price_intro', weeklyPrice: 'price_weekly',
@@ -37,4 +37,9 @@ Deno.test('3DS test assigns a stable group and only B requests 3DS', () => {
     if (arm === 'B') b++
   }
   assert.ok(b > 150 && b < 250, `split should be near even, got ${b}/400`)
+})
+
+Deno.test('new checkouts block Discover cards', () => {
+  assert.equal(blockedBrandParams().get('payment_method_options[card][restrictions][brands_blocked][0]'), 'discover_global_network')
+  assert.equal([...blockedBrandParams([])].length, 0)
 })
