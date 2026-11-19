@@ -24,6 +24,11 @@ verify_jwt = false
 # the platform-level JWT gate.
 verify_jwt = false
 
+[functions.whop-webhook]
+# Whop can't send a Supabase auth header either; the Standard Webhooks
+# signature check in index.ts is the security boundary.
+verify_jwt = false
+
 [functions.analyze-market]
 # Validates the caller with auth.getUser and checks their subscription.
 verify_jwt = false

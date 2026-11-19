@@ -9,6 +9,9 @@ interface Subscription {
   plan: string | null
   status: string | null
   current_period_end: string | null
+  provider?: string | null
+  whop_manage_url?: string | null
+  cancel_at_period_end?: boolean | null
 }
 
 const PLAN_LABEL: Record<string, string> = { pro: 'Pro', elite: 'Elite' }
@@ -45,16 +48,29 @@ function SettingsPage() {
     if (leaveUrl) window.location.href = leaveUrl
   }, [leaveUrl])
 
-  useEffect(() => {
+  const loadSubscription = () =>
     Promise.resolve(
-      supabase.from('subscriptions').select('plan, status, current_period_end').maybeSingle()
+      supabase.from('subscriptions')
+        .select('plan, status, current_period_end, provider, whop_manage_url, cancel_at_period_end')
+        .maybeSingle()
     )
       .then(({ data }) => setSubscription(data as Subscription | null))
       .catch(() => setSubscription(null))
       .finally(() => setSubLoading(false))
-  }, [])
+
+  useEffect(() => { loadSubscription() }, [])
+
+  const isWhop = subscription?.provider === 'whop'
+  const periodEndLabel = subscription?.current_period_end
+    ? new Date(subscription.current_period_end).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+    : null
 
   const openPortal = () => {
+    // Whop customers manage billing (card, receipts) on Whop's own page.
+    if (isWhop && subscription?.whop_manage_url) {
+      window.open(subscription.whop_manage_url, '_blank', 'noopener')
+      return
+    }
     setPortalLoading(true)
     setPortalError(null)
     supabase.functions.invoke('create-portal-session', { body: {} })
@@ -85,6 +101,23 @@ function SettingsPage() {
         // re-runs that check and shows the in-app paywall.
         posthog.capture('trial_canceled')
         setLeaveUrl('/')
+      })
+  }
+
+  // Whop: cancel at period end (keeps access, no further charges) or undo it.
+  const whopCancel = (undo: boolean) => {
+    setCancelLoading(true)
+    setCancelError(null)
+    supabase.functions.invoke('cancel-trial', { body: { undo } })
+      .then(({ data, error }) => {
+        setCancelLoading(false)
+        if (error || data?.provider !== 'whop') {
+          setCancelError('Could not update your subscription. Please try again in a moment.')
+          return
+        }
+        posthog.capture(undo ? 'whop_cancel_undone' : 'whop_canceled')
+        setConfirmingCancel(false)
+        loadSubscription()
       })
   }
 
@@ -180,7 +213,40 @@ function SettingsPage() {
                   )}
                 </div>
               )}
-              {subscription.status === 'trialing' && (
+              {isWhop && subscription.cancel_at_period_end && (
+                <div className="settings-cancel-confirm">
+                  <p style={{ fontSize: '0.85rem', marginBottom: 8 }}>
+                    Your subscription is canceled{periodEndLabel ? ` and ends on ${periodEndLabel}` : ''}. You won't be charged again.
+                  </p>
+                  <button className="sig-btn secondary" onClick={() => whopCancel(true)} disabled={cancelLoading}>
+                    {cancelLoading ? 'Saving…' : 'Keep my subscription'}
+                  </button>
+                  {cancelError && <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: 8 }}>{cancelError}</p>}
+                </div>
+              )}
+              {isWhop && !subscription.cancel_at_period_end && ['trialing', 'active', 'past_due'].includes(subscription.status ?? '') && (
+                confirmingCancel ? (
+                  <div className="settings-cancel-confirm">
+                    <p style={{ fontSize: '0.8rem', marginBottom: 8 }}>
+                      Cancel your subscription? You'll keep access{periodEndLabel ? ` until ${periodEndLabel}` : ' until the end of your current period'} and won't be charged again.
+                    </p>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="sig-btn secondary" onClick={() => whopCancel(false)} disabled={cancelLoading} style={{ borderColor: '#f87171', color: '#f87171' }}>
+                        {cancelLoading ? 'Canceling…' : 'Yes, cancel subscription'}
+                      </button>
+                      <button className="sig-btn secondary" onClick={() => setConfirmingCancel(false)} disabled={cancelLoading}>
+                        Never mind
+                      </button>
+                    </div>
+                    {cancelError && <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: 8 }}>{cancelError}</p>}
+                  </div>
+                ) : (
+                  <button className="sig-btn secondary" onClick={() => setConfirmingCancel(true)} style={{ marginTop: 8, marginLeft: 8, borderColor: '#f87171', color: '#f87171' }}>
+                    {subscription.status === 'trialing' ? 'Cancel introductory period' : 'Cancel subscription'}
+                  </button>
+                )
+              )}
+              {!isWhop && subscription.status === 'trialing' && (
                 confirmingCancel ? (
                   <div className="settings-cancel-confirm">
                     <p style={{ fontSize: '0.8rem', marginBottom: 8 }}>

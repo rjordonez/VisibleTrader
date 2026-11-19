@@ -5,6 +5,7 @@
 // isn't currently trialing, specifically to prevent it being used as a
 // backdoor immediate-cancel for paid periods.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { membershipRow, whopConfig, whopFetch } from '../_shared/whop.ts'
 
 const corsHeaders = {
   'access-control-allow-origin': '*',
@@ -44,9 +45,34 @@ Deno.serve(async (req) => {
     )
     const { data: sub } = await supabase
       .from('subscriptions')
-      .select('stripe_subscription_id, status')
+      .select('stripe_subscription_id, status, provider, whop_membership_id')
       .eq('user_id', user.id)
       .maybeSingle()
+
+    // Whop customers: cancel at period end (they keep access until the date
+    // they already paid through, and no $160 is charged). Whop's default
+    // cancel is immediate and revokes access, so cancel_at_period_end must be
+    // sent explicitly. { undo: true } reverses a pending cancel.
+    if (sub?.provider === 'whop' && sub.whop_membership_id) {
+      const whop = whopConfig((name) => Deno.env.get(name))
+      if (!whop) throw new Error('whop not configured')
+      const body = await req.json().catch(() => ({})) as { undo?: boolean }
+      if (body.undo) {
+        await whopFetch(whop, `/memberships/${sub.whop_membership_id}`, { method: 'PATCH', body: { cancel_at_period_end: false } })
+      } else {
+        await whopFetch(whop, `/memberships/${sub.whop_membership_id}/cancel`, {
+          method: 'POST',
+          body: { cancel_at_period_end: true, reason: 'Canceled from Visible Trader settings' },
+        })
+      }
+      const m = await whopFetch(whop, `/memberships/${sub.whop_membership_id}`)
+      const { error: rowError } = await supabase.from('subscriptions')
+        .update(membershipRow(m)).eq('user_id', user.id).eq('whop_membership_id', sub.whop_membership_id)
+      if (rowError) throw rowError
+      return new Response(JSON.stringify({ canceled: !body.undo, cancel_at_period_end: !!m.cancel_at_period_end, provider: 'whop' }), {
+        headers: { ...corsHeaders, 'content-type': 'application/json' },
+      })
+    }
 
     if (!sub?.stripe_subscription_id) {
       return new Response(JSON.stringify({ error: 'no subscription on file' }), {

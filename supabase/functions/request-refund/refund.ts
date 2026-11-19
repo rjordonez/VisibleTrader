@@ -21,6 +21,9 @@ export type RefundRequest = {
   subscriptionStatus: string
   charge: RefundCharge
   reason: string
+  // Whop customers: stripeCustomerId holds the Whop membership id and
+  // charge.invoiceId the Whop payment id.
+  provider?: 'stripe' | 'whop'
 }
 
 type PaidInvoiceLike = {
@@ -83,7 +86,9 @@ export function refundRequestEmail(req: RefundRequest): { subject: string; html:
       <tr><td style="padding:4px 12px 4px 0;color:#6b7684;">Customer</td><td>${escapeHtml(req.customerEmail)}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#6b7684;">Charge</td><td>${amount} on ${date}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#6b7684;">Subscription</td><td>${escapeHtml(req.subscriptionStatus)}</td></tr>
-      <tr><td style="padding:4px 12px 4px 0;color:#6b7684;">Stripe</td><td><a href="${customerUrl}">Customer</a> · <a href="${invoiceUrl}">Invoice</a></td></tr>
+      ${req.provider === 'whop'
+        ? `<tr><td style="padding:4px 12px 4px 0;color:#6b7684;">Whop</td><td>Payment ${escapeHtml(req.charge.invoiceId)} · Membership ${escapeHtml(req.stripeCustomerId)} (refund in the <a href="https://whop.com/dashboard">Whop dashboard</a>)</td></tr>`
+        : `<tr><td style="padding:4px 12px 4px 0;color:#6b7684;">Stripe</td><td><a href="${customerUrl}">Customer</a> · <a href="${invoiceUrl}">Invoice</a></td></tr>`}
       <tr><td style="padding:4px 12px 4px 0;color:#6b7684;">User ID</td><td>${escapeHtml(req.userId)}</td></tr>
     </table>
     <h3 style="margin:16px 0 4px;">Reason</h3>

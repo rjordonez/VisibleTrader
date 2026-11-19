@@ -4,7 +4,8 @@
 // pulling in the stripe SDK — one less dependency to worry about in Deno,
 // and the request shape here is simple enough not to need it.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { checkoutLineItems, threeDSTestParams } from './checkout.ts'
+import { checkoutLineItems, MONTHLY_INTRO_OFFER, threeDSTestParams } from './checkout.ts'
+import { chooseProvider, splitPercent, whopConfig, whopFetch } from '../_shared/whop.ts'
 
 const corsHeaders = {
   'access-control-allow-origin': '*',
@@ -18,8 +19,10 @@ Deno.serve(async (req) => {
 
   try {
     let lineItems: URLSearchParams
+    let input: { offer?: string; price_id?: string } = {}
     try {
-      lineItems = checkoutLineItems(await req.json(), {
+      input = await req.json()
+      lineItems = checkoutLineItems(input, {
         monthlyPrice: Deno.env.get('STRIPE_PRICE_PRO_MONTHLY'),
         introPrice: Deno.env.get('STRIPE_PRICE_PRO_INTRO_WEEK'),
         weeklyPrice: Deno.env.get('STRIPE_PRICE_PRO_WEEKLY'),
@@ -92,6 +95,47 @@ Deno.serve(async (req) => {
     // origin-based since it correctly returns to wherever checkout started.
     const origin = req.headers.get('origin') || 'https://visibletrader.com'
     const appOrigin = Deno.env.get('APP_URL') || origin
+
+    // Whop split: only brand-new customers (no subscriptions row of any kind,
+    // so nobody can hit Whop's "trial already used" $161 charge) buying the
+    // monthly intro offer. WHOP_SPLIT_PERCENT=0 (or unset) is the kill switch:
+    // everyone goes to Stripe. The first assignment is stored so a user who
+    // reopens checkout lands on the same provider.
+    const whop = whopConfig((name) => Deno.env.get(name))
+    const percent = splitPercent(Deno.env.get('WHOP_SPLIT_PERCENT'))
+    // Test accounts listed here always get Whop, even at 0%, so the flow can
+    // be tested end to end without routing any real customer.
+    const forcedWhop = (Deno.env.get('WHOP_FORCE_USER_IDS') ?? '').split(',').map((s) => s.trim()).includes(user.id)
+    if (whop && (percent > 0 || forcedWhop) && input.offer === MONTHLY_INTRO_OFFER && !existing) {
+      const { data: assigned, error: assignedError } = await serviceClient
+        .from('checkout_assignments').select('provider').eq('user_id', user.id).maybeSingle()
+      if (assignedError) throw assignedError
+      let provider = (forcedWhop ? 'whop' : assigned?.provider) as 'stripe' | 'whop' | undefined
+      if (!provider) {
+        provider = chooseProvider(user.id, percent)
+        const { error: insertError } = await serviceClient.from('checkout_assignments')
+          .upsert({ user_id: user.id, provider, split_percent: percent }, { onConflict: 'user_id', ignoreDuplicates: true })
+        if (insertError) throw insertError
+      }
+      if (provider === 'whop') {
+        const checkout = await whopFetch(whop, '/checkout_configurations', {
+          method: 'POST',
+          // One checkout per user per 10 minutes, so double-clicks reuse it.
+          idempotencyKey: `vt-checkout-${user.id}-${Math.floor(Date.now() / 600_000)}`,
+          body: {
+            account_id: whop.accountId,
+            variant_id: whop.planId,
+            metadata: { supabase_user_id: user.id, referral_code: attribution.referral_code ?? '' },
+            redirect_url: `${appOrigin}/?checkout=success`,
+          },
+        })
+        if (!checkout?.purchase_url) throw new Error('Whop checkout did not return a URL')
+        return new Response(JSON.stringify({ url: checkout.purchase_url, provider: 'whop' }), {
+          headers: { ...corsHeaders, 'content-type': 'application/json' },
+        })
+      }
+    }
+
     const params = new URLSearchParams({
       mode: 'subscription',
       // client_reference_id + metadata both carry the Supabase user id through
