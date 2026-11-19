@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { chooseProvider, mapWhopStatus, membershipRow, splitPercent, verifyWhopSignature, whopBucket } from './whop.ts'
+import { chooseProvider, mapWhopStatus, membershipRow, membershipStatus, splitPercent, verifyWhopSignature, whopBucket } from './whop.ts'
 
 test('split is stable per user and roughly matches the percentage', () => {
   const ids = Array.from({ length: 2000 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`)
@@ -64,4 +64,14 @@ test('signature also verifies Standard Webhooks style (base64 key after prefix)'
   const now = 1795000000
   const sig = await sign(raw, `msg_2.${now}.${body}`)
   assert.equal(await verifyWhopSignature(secret, { id: 'msg_2', timestamp: String(now), signature: `v1,${sig}` }, body, now), true)
+})
+
+test('paid trial: active with a 7-day first period on a 30-day plan reads as trialing', () => {
+  const trial = { status: 'active', billing_period_days: 30, current_period_start: '2026-11-19T05:55:26Z', current_period_end: '2026-11-26T05:55:26Z' }
+  assert.equal(membershipStatus(trial), 'trialing')
+  const renewed = { status: 'active', billing_period_days: 30, current_period_start: '2026-11-26T05:55:26Z', current_period_end: '2026-12-26T05:55:26Z' }
+  assert.equal(membershipStatus(renewed), 'active')
+  assert.equal(membershipStatus({ ...trial, status: 'past_due' }), 'past_due')
+  assert.equal(membershipStatus({ ...trial, status: 'canceled' }), 'canceled')
+  assert.equal(membershipRow(trial).status, 'trialing')
 })

@@ -110,9 +110,9 @@ Deno.serve(async (req) => {
       const { data: assigned, error: assignedError } = await serviceClient
         .from('checkout_assignments').select('provider').eq('user_id', user.id).maybeSingle()
       if (assignedError) throw assignedError
-      let provider = (forcedWhop ? 'whop' : assigned?.provider) as 'stripe' | 'whop' | undefined
-      if (!provider) {
-        provider = chooseProvider(user.id, percent)
+      let provider = assigned?.provider as 'stripe' | 'whop' | undefined
+      if (!provider || forcedWhop) {
+        provider = forcedWhop ? 'whop' : chooseProvider(user.id, percent)
         const { error: insertError } = await serviceClient.from('checkout_assignments')
           .upsert({ user_id: user.id, provider, split_percent: percent }, { onConflict: 'user_id', ignoreDuplicates: true })
         if (insertError) throw insertError

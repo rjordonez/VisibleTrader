@@ -84,6 +84,22 @@ export function mapWhopStatus(status: string | null | undefined): string {
   }
 }
 
+// Whop reports a paid trial ($1 first week) as `active` with a short first
+// period (7 days) on a 30-day plan, not as `trialing`. Treat a first period
+// well under the billing period as the trial so the app shows trial UI and
+// sends the sign-up email; after the first full renewal it reads `active`.
+// deno-lint-ignore no-explicit-any
+export function membershipStatus(m: any): string {
+  const mapped = mapWhopStatus(m?.status)
+  if (mapped !== 'active' || m?.status === 'completed') return mapped
+  const start = Date.parse(m?.current_period_start ?? '')
+  const end = Date.parse(m?.current_period_end ?? '')
+  const billingDays = Number(m?.billing_period_days ?? 0)
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !(billingDays >= 28)) return mapped
+  const periodDays = (end - start) / 86_400_000
+  return periodDays <= 10 ? 'trialing' : mapped
+}
+
 // deno-lint-ignore no-explicit-any
 export function membershipRow(m: any) {
   return {
@@ -94,7 +110,7 @@ export function membershipRow(m: any) {
     whop_manage_url: m.manage_url ?? null,
     price_id: m.variant_id ?? m.plan?.id ?? null,
     plan: 'pro',
-    status: mapWhopStatus(m.status),
+    status: membershipStatus(m),
     cancel_at_period_end: !!m.cancel_at_period_end,
     current_period_end: m.current_period_end ?? m.expires_at ?? null,
     whop_updated_at: m.updated_at ?? null,
