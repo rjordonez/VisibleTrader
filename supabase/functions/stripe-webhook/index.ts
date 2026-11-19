@@ -83,6 +83,9 @@ Deno.serve(async (req) => {
       price_id: item?.price?.id,
       plan: planFromPriceId(item?.price?.id),
       status: sub.status,
+      stripe_livemode: sub.livemode ?? null,
+      stripe_trial_started_at: sub.trial_start ? new Date(sub.trial_start * 1000).toISOString() : null,
+      stripe_trial_ends_at: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
       current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id' })

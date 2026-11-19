@@ -31,3 +31,14 @@ Deno.test('missing account metadata, missing timestamp and database errors propa
   await assert.rejects(() => recordInvoicePayment({ ...invoice, status_transitions: {} }, stripe, async () => {}), /Incomplete paid invoice/)
   await assert.rejects(() => recordInvoicePayment(invoice, stripe, async () => { throw Error('database offline') }), /database offline/)
 })
+
+Deno.test('trial end is preserved so $1 introductions cannot masquerade as converted subscriptions', async () => {
+ const saved: Payment[]=[]
+ const trial=async()=>({metadata:{supabase_user_id:'user_test',offer:'pro_monthly_intro_v1'},trial_end:1800000000})
+ await recordInvoicePayment(invoice,trial,async p=>{saved.push(p)})
+ await recordInvoicePayment({...invoice,id:'in_cycle',billing_reason:'subscription_cycle',amount_paid:16000,status_transitions:{paid_at:1800000001}},trial,async p=>{saved.push(p)})
+ assert.equal(saved[0].payment_kind,'introductory')
+ assert.equal(saved[1].payment_kind,'renewal')
+ assert.equal(saved[0].trial_ended_at,'2027-01-15T08:00:00.000Z')
+ assert.ok(saved.every(p=>p.trial_classification_checked))
+})

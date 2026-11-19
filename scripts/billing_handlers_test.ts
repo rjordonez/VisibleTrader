@@ -48,7 +48,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   if (url.hostname === 'api.stripe.com') {
     stripeCalls.push({ path: url.pathname, method, body: String(init?.body || '') })
     if (url.pathname === '/v1/checkout/sessions') return reply({ url: 'https://checkout.stripe.com/qa-session' })
-    if (url.pathname === '/v1/subscriptions/sub_qa') return reply({ id: 'sub_qa', customer: 'cus_qa', status: method === 'DELETE' ? 'canceled' : currentStatus, metadata: { supabase_user_id: 'qa-user', offer: 'pro_monthly_intro_v1' }, latest_invoice: { status: invoiceStatus }, items: { data: [{ price: { id: 'price_monthly' }, current_period_end: 1800000000 }] } })
+    if (url.pathname === '/v1/subscriptions/sub_qa') return reply({ id: 'sub_qa', customer: 'cus_qa', livemode: true, trial_start: 1799395200, trial_end: 1800000000, status: method === 'DELETE' ? 'canceled' : currentStatus, metadata: { supabase_user_id: 'qa-user', offer: 'pro_monthly_intro_v1' }, latest_invoice: { status: invoiceStatus }, items: { data: [{ price: { id: 'price_monthly' }, current_period_end: 1800000000 }] } })
   }
   throw Error(`Unexpected test request: ${method} ${url.origin}${url.pathname}`)
 }) as typeof fetch
@@ -90,6 +90,8 @@ Deno.test('signed webhook writes paid introductory access, rejects unpaid access
   assert.equal((await webhook(await event('customer.subscription.created'))).status, 200)
   assert.equal(writes.at(-1)?.status, 'trialing')
   assert.equal(writes.at(-1)?.plan, 'pro')
+  assert.equal(writes.at(-1)?.stripe_livemode, true)
+  assert.equal(writes.at(-1)?.stripe_trial_ends_at, '2027-01-15T08:00:00.000Z')
   invoiceStatus = 'open'
   await webhook(await event('customer.subscription.updated'))
   assert.equal(writes.at(-1)?.status, 'incomplete')
