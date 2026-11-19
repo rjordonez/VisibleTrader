@@ -117,6 +117,12 @@ function SettingsPage() {
         }
         posthog.capture(undo ? 'whop_cancel_undone' : 'whop_canceled')
         setConfirmingCancel(false)
+        // A trial cancel ends access immediately: remount so ProtectedRoute
+        // re-checks and shows the paywall, same as the Stripe trial cancel.
+        if (data?.immediate) {
+          setLeaveUrl('/')
+          return
+        }
         loadSubscription()
       })
   }
@@ -228,7 +234,9 @@ function SettingsPage() {
                 confirmingCancel ? (
                   <div className="settings-cancel-confirm">
                     <p style={{ fontSize: '0.8rem', marginBottom: 8 }}>
-                      Cancel your subscription? You'll keep access{periodEndLabel ? ` until ${periodEndLabel}` : ' until the end of your current period'} and won't be charged again.
+                      {subscription.status === 'trialing'
+                        ? "Cancel your introductory period now? You'll lose access immediately and won't be billed for renewal. This can't be undone."
+                        : `Cancel your subscription? You'll keep access${periodEndLabel ? ` until ${periodEndLabel}` : ' until the end of your current period'} and won't be charged again.`}
                     </p>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button className="sig-btn secondary" onClick={() => whopCancel(false)} disabled={cancelLoading} style={{ borderColor: '#f87171', color: '#f87171' }}>
