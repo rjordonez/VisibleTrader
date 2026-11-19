@@ -23,6 +23,7 @@ const LeaderboardPage = lazy(() => import('./LeaderboardPage'))
 const TraderDetailPage = lazy(() => import('./TraderDetailPage'))
 const MarketPage = lazy(() => import('./MarketPage'))
 const SettingsPage = lazy(() => import('./SettingsPage'))
+const RefundRequestPage = lazy(() => import('./RefundRequestPage'))
 const JournalPage = lazy(() => import('./JournalPage'))
 const ConnectionsPage = lazy(() => import('./connections/ConnectionsPage'))
 const AnalyzerPage = lazy(() => import('./analyzer/AnalyzerPage'))
@@ -355,7 +356,7 @@ export default function AppShell() {
         // can still manage billing or request a refund instead of disputing.
         const pageBlurred = locked
           && location.pathname !== dashboardPath('/')
-          && location.pathname !== dashboardPath('/settings')
+          && !location.pathname.startsWith(dashboardPath('/settings'))
         return (
           <main className={`app-main ${pageBlurred ? 'app-main-locked' : ''}`}>
             <div className={pageBlurred ? 'search-locked-bg' : undefined}>
@@ -373,6 +374,7 @@ export default function AppShell() {
                   <Route path="leaderboard" element={<LeaderboardPage {...alerts} />} />
                   <Route path="alerts" element={<Navigate to={dashboardPath('/')} replace />} />
                   <Route path="settings" element={<SettingsPage />} />
+                  <Route path="settings/refund" element={<RefundRequestPage />} />
                   <Route path="journal" element={<JournalPage />} />
                   <Route path="connections" element={<Navigate to={dashboardPath('/settings/connections')} replace />} />
                   <Route path="settings/connections" element={<ConnectionsPage />} />

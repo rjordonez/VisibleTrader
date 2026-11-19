@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import posthog from '../lib/posthog'
 import { SkelBlock } from './Skeleton'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { dashboardPath } from '../lib/domains'
 
 interface Subscription {
@@ -29,13 +29,8 @@ function SettingsPage() {
 
   const [leaveUrl, setLeaveUrl] = useState<string | null>(null)
 
-  // ?refund=1 comes from the charge receipt email's "Request a refund" link.
+  // ?refund=1 comes from older charge receipt emails; the form has its own page now.
   const [searchParams] = useSearchParams()
-  const [refundOpen, setRefundOpen] = useState(searchParams.get('refund') === '1')
-  const [refundReason, setRefundReason] = useState('')
-  const [refundLoading, setRefundLoading] = useState(false)
-  const [refundError, setRefundError] = useState<string | null>(null)
-  const [refundSent, setRefundSent] = useState(false)
 
   useEffect(() => {
     // Redirecting the whole page to Stripe's portal is an effect, not
@@ -127,23 +122,10 @@ function SettingsPage() {
       })
   }
 
-  const requestRefund = () => {
-    setRefundLoading(true)
-    setRefundError(null)
-    supabase.functions.invoke('request-refund', { body: { reason: refundReason } })
-      .then(({ data, error }) => {
-        setRefundLoading(false)
-        if (error || !data?.requested) {
-          setRefundError('Could not send your request. Please try again in a moment.')
-          return
-        }
-        posthog.capture('refund_requested')
-        setRefundSent(true)
-      })
-  }
-
   // Refunds only apply once a full-price charge exists, i.e. after the trial.
   const canRequestRefund = !!subscription && subscription.status !== 'trialing'
+
+  if (searchParams.get('refund') === '1') return <Navigate to={dashboardPath('/settings/refund')} replace />
 
   return (
     <div className="sig-page">
@@ -178,46 +160,13 @@ function SettingsPage() {
               <button className="sig-btn secondary" onClick={openPortal} disabled={portalLoading} style={{ marginTop: 8 }}>
                 {portalLoading ? 'Opening…' : 'Manage subscription'}
               </button>
-              {canRequestRefund && !refundOpen && !refundSent && (
-                <button className="sig-btn secondary" onClick={() => setRefundOpen(true)} style={{ marginTop: 8, marginLeft: 8 }}>
+              {canRequestRefund && (
+                <Link className="sig-btn secondary" to={dashboardPath('/settings/refund')} style={{ marginTop: 8, marginLeft: 8, display: 'inline-block' }}>
                   Request a refund
-                </button>
+                </Link>
               )}
               {portalError && (
                 <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: 8 }}>{portalError}</p>
-              )}
-              {canRequestRefund && refundSent && (
-                <div className="settings-cancel-confirm">
-                  <p style={{ fontSize: '0.85rem', margin: 0 }}>
-                    We've received your refund request. Our team will email you within 24 to 72 hours.
-                  </p>
-                </div>
-              )}
-              {canRequestRefund && refundOpen && !refundSent && (
-                <div className="settings-cancel-confirm">
-                  <p style={{ fontSize: '0.8rem', marginBottom: 8 }}>
-                    Tell us what happened and our team will get back to you by email within 24 to 72 hours.
-                  </p>
-                  <textarea
-                    value={refundReason}
-                    onChange={(e) => setRefundReason(e.target.value)}
-                    maxLength={2000}
-                    rows={3}
-                    placeholder="What went wrong? (optional)"
-                    style={{ width: '100%', boxSizing: 'border-box', marginBottom: 8, padding: 8, borderRadius: 6, font: 'inherit', fontSize: '0.85rem', background: 'transparent', color: 'inherit', border: '1px solid var(--border, #2a2f3a)' }}
-                  />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="sig-btn secondary" onClick={requestRefund} disabled={refundLoading}>
-                      {refundLoading ? 'Sending…' : 'Send refund request'}
-                    </button>
-                    <button className="sig-btn secondary" onClick={() => setRefundOpen(false)} disabled={refundLoading}>
-                      Never mind
-                    </button>
-                  </div>
-                  {refundError && (
-                    <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: 8 }}>{refundError}</p>
-                  )}
-                </div>
               )}
               {isWhop && subscription.cancel_at_period_end && (
                 <div className="settings-cancel-confirm">
