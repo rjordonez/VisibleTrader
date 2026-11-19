@@ -2,13 +2,16 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import posthog from '../lib/posthog'
 import { SkelBlock } from './Skeleton'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { dashboardPath } from '../lib/domains'
 
 interface Subscription {
   plan: string | null
   status: string | null
   current_period_end: string | null
+  provider?: string | null
+  whop_manage_url?: string | null
+  cancel_at_period_end?: boolean | null
 }
 
 const PLAN_LABEL: Record<string, string> = { pro: 'Pro', elite: 'Elite' }
@@ -26,13 +29,8 @@ function SettingsPage() {
 
   const [leaveUrl, setLeaveUrl] = useState<string | null>(null)
 
-  // ?refund=1 comes from the charge receipt email's "Request a refund" link.
+  // ?refund=1 comes from older charge receipt emails; the form has its own page now.
   const [searchParams] = useSearchParams()
-  const [refundOpen, setRefundOpen] = useState(searchParams.get('refund') === '1')
-  const [refundReason, setRefundReason] = useState('')
-  const [refundLoading, setRefundLoading] = useState(false)
-  const [refundError, setRefundError] = useState<string | null>(null)
-  const [refundSent, setRefundSent] = useState(false)
 
   useEffect(() => {
     // Redirecting the whole page to Stripe's portal is an effect, not
@@ -45,16 +43,29 @@ function SettingsPage() {
     if (leaveUrl) window.location.href = leaveUrl
   }, [leaveUrl])
 
-  useEffect(() => {
+  const loadSubscription = () =>
     Promise.resolve(
-      supabase.from('subscriptions').select('plan, status, current_period_end').maybeSingle()
+      supabase.from('subscriptions')
+        .select('plan, status, current_period_end, provider, whop_manage_url, cancel_at_period_end')
+        .maybeSingle()
     )
       .then(({ data }) => setSubscription(data as Subscription | null))
       .catch(() => setSubscription(null))
       .finally(() => setSubLoading(false))
-  }, [])
+
+  useEffect(() => { loadSubscription() }, [])
+
+  const isWhop = subscription?.provider === 'whop'
+  const periodEndLabel = subscription?.current_period_end
+    ? new Date(subscription.current_period_end).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+    : null
 
   const openPortal = () => {
+    // Whop customers manage billing (card, receipts) on Whop's own page.
+    if (isWhop && subscription?.whop_manage_url) {
+      window.open(subscription.whop_manage_url, '_blank', 'noopener')
+      return
+    }
     setPortalLoading(true)
     setPortalError(null)
     supabase.functions.invoke('create-portal-session', { body: {} })
@@ -88,23 +99,33 @@ function SettingsPage() {
       })
   }
 
-  const requestRefund = () => {
-    setRefundLoading(true)
-    setRefundError(null)
-    supabase.functions.invoke('request-refund', { body: { reason: refundReason } })
+  // Whop: cancel at period end (keeps access, no further charges) or undo it.
+  const whopCancel = (undo: boolean) => {
+    setCancelLoading(true)
+    setCancelError(null)
+    supabase.functions.invoke('cancel-trial', { body: { undo } })
       .then(({ data, error }) => {
-        setRefundLoading(false)
-        if (error || !data?.requested) {
-          setRefundError('Could not send your request. Please try again in a moment.')
+        setCancelLoading(false)
+        if (error || data?.provider !== 'whop') {
+          setCancelError('Could not update your subscription. Please try again in a moment.')
           return
         }
-        posthog.capture('refund_requested')
-        setRefundSent(true)
+        posthog.capture(undo ? 'whop_cancel_undone' : 'whop_canceled')
+        setConfirmingCancel(false)
+        // A trial cancel ends access immediately: remount so ProtectedRoute
+        // re-checks and shows the paywall, same as the Stripe trial cancel.
+        if (data?.immediate) {
+          setLeaveUrl('/')
+          return
+        }
+        loadSubscription()
       })
   }
 
   // Refunds only apply once a full-price charge exists, i.e. after the trial.
   const canRequestRefund = !!subscription && subscription.status !== 'trialing'
+
+  if (searchParams.get('refund') === '1') return <Navigate to={dashboardPath('/settings/refund')} replace />
 
   return (
     <div className="sig-page">
@@ -139,48 +160,50 @@ function SettingsPage() {
               <button className="sig-btn secondary" onClick={openPortal} disabled={portalLoading} style={{ marginTop: 8 }}>
                 {portalLoading ? 'Opening…' : 'Manage subscription'}
               </button>
-              {canRequestRefund && !refundOpen && !refundSent && (
-                <button className="sig-btn secondary" onClick={() => setRefundOpen(true)} style={{ marginTop: 8, marginLeft: 8 }}>
+              {canRequestRefund && (
+                <Link className="sig-btn secondary" to={dashboardPath('/settings/refund')} style={{ marginTop: 8, marginLeft: 8, display: 'inline-block' }}>
                   Request a refund
-                </button>
+                </Link>
               )}
               {portalError && (
                 <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: 8 }}>{portalError}</p>
               )}
-              {canRequestRefund && refundSent && (
+              {isWhop && subscription.cancel_at_period_end && (
                 <div className="settings-cancel-confirm">
-                  <p style={{ fontSize: '0.85rem', margin: 0 }}>
-                    We've received your refund request. Our team will email you within 24 to 72 hours.
+                  <p style={{ fontSize: '0.85rem', marginBottom: 8 }}>
+                    Your subscription is canceled{periodEndLabel ? ` and ends on ${periodEndLabel}` : ''}. You won't be charged again.
                   </p>
+                  <button className="sig-btn secondary" onClick={() => whopCancel(true)} disabled={cancelLoading}>
+                    {cancelLoading ? 'Saving…' : 'Keep my subscription'}
+                  </button>
+                  {cancelError && <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: 8 }}>{cancelError}</p>}
                 </div>
               )}
-              {canRequestRefund && refundOpen && !refundSent && (
-                <div className="settings-cancel-confirm">
-                  <p style={{ fontSize: '0.8rem', marginBottom: 8 }}>
-                    Tell us what happened and our team will get back to you by email within 24 to 72 hours.
-                  </p>
-                  <textarea
-                    value={refundReason}
-                    onChange={(e) => setRefundReason(e.target.value)}
-                    maxLength={2000}
-                    rows={3}
-                    placeholder="What went wrong? (optional)"
-                    style={{ width: '100%', boxSizing: 'border-box', marginBottom: 8, padding: 8, borderRadius: 6, font: 'inherit', fontSize: '0.85rem', background: 'transparent', color: 'inherit', border: '1px solid var(--border, #2a2f3a)' }}
-                  />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="sig-btn secondary" onClick={requestRefund} disabled={refundLoading}>
-                      {refundLoading ? 'Sending…' : 'Send refund request'}
-                    </button>
-                    <button className="sig-btn secondary" onClick={() => setRefundOpen(false)} disabled={refundLoading}>
-                      Never mind
-                    </button>
+              {isWhop && !subscription.cancel_at_period_end && ['trialing', 'active', 'past_due'].includes(subscription.status ?? '') && (
+                confirmingCancel ? (
+                  <div className="settings-cancel-confirm">
+                    <p style={{ fontSize: '0.8rem', marginBottom: 8 }}>
+                      {subscription.status === 'trialing'
+                        ? "Cancel your introductory period now? You'll lose access immediately and won't be billed for renewal. This can't be undone."
+                        : `Cancel your subscription? You'll keep access${periodEndLabel ? ` until ${periodEndLabel}` : ' until the end of your current period'} and won't be charged again.`}
+                    </p>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="sig-btn secondary" onClick={() => whopCancel(false)} disabled={cancelLoading} style={{ borderColor: '#f87171', color: '#f87171' }}>
+                        {cancelLoading ? 'Canceling…' : 'Yes, cancel subscription'}
+                      </button>
+                      <button className="sig-btn secondary" onClick={() => setConfirmingCancel(false)} disabled={cancelLoading}>
+                        Never mind
+                      </button>
+                    </div>
+                    {cancelError && <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: 8 }}>{cancelError}</p>}
                   </div>
-                  {refundError && (
-                    <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: 8 }}>{refundError}</p>
-                  )}
-                </div>
+                ) : (
+                  <button className="sig-btn secondary" onClick={() => setConfirmingCancel(true)} style={{ marginTop: 8, marginLeft: 8, borderColor: '#f87171', color: '#f87171' }}>
+                    {subscription.status === 'trialing' ? 'Cancel introductory period' : 'Cancel subscription'}
+                  </button>
+                )
               )}
-              {subscription.status === 'trialing' && (
+              {!isWhop && subscription.status === 'trialing' && (
                 confirmingCancel ? (
                   <div className="settings-cancel-confirm">
                     <p style={{ fontSize: '0.8rem', marginBottom: 8 }}>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cleanReason, latestRefundableCharge, MAX_REASON_LENGTH, refundRequestEmail } from './refund.ts'
+import { cleanCategory, cleanReason, latestRefundableCharge, MAX_REASON_LENGTH, newReference, refundConfirmationEmail, refundRequestEmail } from './refund.ts'
 
 const invoice = (id: string, amount: number) => ({
   id, amount_paid: amount, currency: 'usd', created: 1795000000, livemode: true,
@@ -49,4 +49,32 @@ test('test-mode charges link to the test dashboard', () => {
   })
   assert.ok(html.includes('https://dashboard.stripe.com/test/customers/cus_t'))
   assert.ok(html.includes('No reason given'))
+})
+
+test('references look like RR- plus 6 unambiguous characters', () => {
+  const ref = newReference()
+  assert.match(ref, /^RR-[A-HJ-NP-Z2-9]{6}$/)
+})
+
+test('only known refund reasons are accepted', () => {
+  assert.equal(cleanCategory('forgot_to_cancel'), 'forgot_to_cancel')
+  assert.equal(cleanCategory('hack'), null)
+  assert.equal(cleanCategory(undefined), null)
+})
+
+test('support email carries the reference and readable reason', () => {
+  const { subject, html } = refundRequestEmail({
+    reference: 'RR-ABC234', category: 'unexpected_charge',
+    customerEmail: 'a@example.invalid', userId: 'u', stripeCustomerId: 'cus_1', subscriptionStatus: 'active',
+    charge: { invoiceId: 'in_1', amountCents: 16000, currency: 'usd', paidAt: 1795046400, livemode: true }, reason: 'did not expect it',
+  })
+  assert.match(subject, /^Refund request RR-ABC234: /)
+  assert.match(html, /I didn&#39;t expect this charge/)
+})
+
+test('customer confirmation states reference, amount and the 24 to 72 hour window', () => {
+  const { subject, html } = refundConfirmationEmail({ reference: 'RR-ABC234', amountCents: 16000, currency: 'usd', paidAt: 1795046400, settingsUrl: 'https://app.visibletrader.com/settings' })
+  assert.match(subject, /RR-ABC234/)
+  assert.match(html, /\$160\.00/)
+  assert.match(html, /24 to 72 hours/)
 })

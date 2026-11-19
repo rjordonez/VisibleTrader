@@ -74,10 +74,17 @@ Deno.serve(async (req) => {
     const sub = await subscriptionForAccess(id, stripe)
     const userId = sub.metadata?.supabase_user_id
     if (!userId) return
+    // A user who now pays through Whop must not be overwritten by a late or
+    // replayed event from an old Stripe subscription.
+    const { data: currentRow, error: currentError } = await supabase.from('subscriptions')
+      .select('provider, status').eq('user_id', userId).maybeSingle()
+    if (currentError) throw currentError
+    if (currentRow?.provider === 'whop' && ['trialing', 'active', 'past_due'].includes(currentRow.status ?? '')) return
     const item = sub.items?.data?.[0]
     const periodEnd = item?.current_period_end ?? sub.current_period_end
     const { error } = await supabase.from('subscriptions').upsert({
       user_id: userId,
+      provider: 'stripe',
       stripe_customer_id: sub.customer,
       stripe_subscription_id: sub.id,
       price_id: item?.price?.id,
