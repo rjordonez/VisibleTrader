@@ -41,6 +41,7 @@ const Terminal = lazy(() => import('./app/terminal/Terminal'))
 const ProtectedRoute = lazy(() => import('./ProtectedRoute'))
 const SearchPage = lazy(() => import('./SearchPage'))
 const CreatorLeaderboardPage = lazy(() => import('./CreatorLeaderboardPage'))
+const CreatorDashboardPage = lazy(() => import('./CreatorDashboardPage'))
 const ReferralRedirect = lazy(() => import('./ReferralRedirect'))
 const PromoRedirect = lazy(() => import('./PromoRedirect'))
 
@@ -81,7 +82,8 @@ function MarketingRoutes() {
     <Routes>
       <Route element={<LandingLayout />}>
         <Route path="/" element={<Landing />} />
-        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/creator-dashboard" element={<CrossDomainRedirect />} />
+      <Route path="/pricing" element={<PricingPage />} />
         <Route path="/calculators" element={<CalculatorsPage />} />
         <Route path="/blog" element={<BlogPage />} />
         <Route path="/careers" element={<CareersPage />} />
@@ -137,6 +139,7 @@ function AppRoutes() {
           origin's localStorage is visible to startCheckout's auth check.
           Sitting outside ProtectedRoute like /search above so it's reachable
           without a subscription. */}
+      <Route path="/creator-dashboard" element={<CreatorDashboardPage />} />
       <Route path="/pricing" element={<PricingPage />} />
       {/* Full-bleed, own-chrome page — deliberately outside AppShell's
           <Routes> below so it never renders the normal app-header/tab nav/
@@ -153,6 +156,7 @@ function AppRoutes() {
           <Route path="/app/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/app/reset-password" element={<ResetPasswordPage />} />
           <Route path="/app/search" element={<SearchPage />} />
+          <Route path="/app/creator-dashboard" element={<CreatorDashboardPage />} />
           <Route path="/app/pricing" element={<PricingPage />} />
           <Route path="/app/terminal/*" element={<ProtectedRoute><Terminal /></ProtectedRoute>} />
         </>

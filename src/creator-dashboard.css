@@ -1,0 +1,22 @@
+/* The status page's native layout and tokens; no separate dashboard theme. */
+.creator-page { min-height: 65vh; }
+.creator-title-row { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:2rem; }
+.creator-title-row .blog-title { margin-bottom:0; }
+.creator-controls { justify-content:space-between; }
+.creator-controls h2 { margin:0; font:inherit; }
+.creator-controls select { min-width:0; max-width:80%; padding:0; color:var(--text-1); background:transparent; border:0; border-radius:0; font:inherit; cursor:pointer; }
+.creator-controls option, .creator-preview option { color:var(--text-1); background:var(--surface); }
+.creator-stats .status-row-head { margin-bottom:0; }
+.creator-stats strong { font-size:1.5rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.creator-stats .creator-converted { color:var(--green); }
+.creator-link { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1.5rem; font-size:.8125rem; }
+.creator-link a { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.creator-text-button { background:none; border:0; color:var(--text-3); padding:6px 0; cursor:pointer; font:inherit; font-size:.75rem; white-space:nowrap; }
+.creator-text-button:hover { color:var(--text-1); }
+.creator-text-button:disabled { opacity:.5; cursor:wait; }
+.creator-page .creator-updated { margin-top:1rem; color:var(--text-3); font-size:.6875rem; }
+.creator-preview { margin-top:1.5rem; }
+.creator-preview select { color:var(--text-3); background:transparent; border:1px solid var(--border); border-radius:var(--radius-sm); padding:6px 10px; font:inherit; font-size:.6875rem; }
+.creator-action { background:var(--green); color:#fff; border:0; border-radius:var(--radius-sm); padding:11px 18px; cursor:pointer; font:inherit; font-size:.875rem; }
+.creator-login p { margin-bottom:22px; }
+.creator-page button:focus-visible, .creator-page select:focus-visible, .creator-page a:focus-visible { outline:2px solid var(--green); outline-offset:4px; }
