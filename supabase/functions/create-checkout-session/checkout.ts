@@ -10,6 +10,32 @@ export interface CheckoutConfig {
   legacyCheckoutEnabled: boolean
 }
 
+export const THREE_DS_TEST = 'tds_test_v1'
+
+// 3D Secure A/B test. Assignment hashes the user id so a person who reopens
+// checkout stays in the same group; B asks Stripe to always request 3DS on
+// card entry (wallets like Apple Pay / Link mostly authenticate on-device
+// and skip it). The group rides on session + subscription metadata so later
+// charges, disputes and fraud warnings can be split by group.
+export function threeDSTestArm(userId: string): 'A' | 'B' {
+  let h = 0x811c9dc5
+  for (let i = 0; i < userId.length; i++) {
+    h ^= userId.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h % 2 === 0 ? 'A' : 'B'
+}
+
+export function threeDSTestParams(userId: string, enabled: boolean): URLSearchParams {
+  const params = new URLSearchParams()
+  if (!enabled) return params
+  const arm = threeDSTestArm(userId)
+  params.set(`metadata[${THREE_DS_TEST}]`, arm)
+  params.set(`subscription_data[metadata][${THREE_DS_TEST}]`, arm)
+  if (arm === 'B') params.set('payment_method_options[card][request_three_d_secure]', 'any')
+  return params
+}
+
 // Offer identifiers let the public page select a server-owned price without
 // needing a frontend environment-variable deployment to match the backend.
 export function checkoutLineItems(
