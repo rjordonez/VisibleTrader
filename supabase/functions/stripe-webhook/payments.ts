@@ -22,6 +22,8 @@ export type Payment = {
   currency: string
   paid_at: string
   billing_reason: string | null
+  trial_ended_at: string | null
+  trial_classification_checked: boolean
   payment_kind: 'introductory' | 'initial' | 'renewal' | 'adjustment'
   livemode: boolean
 }
@@ -34,7 +36,7 @@ function objectId(value: string | { id: string } | null | undefined) {
 // invoice ID so invoice.paid, payment_succeeded, and backfill cannot double count.
 export async function recordInvoicePayment(
   invoice: PaidInvoice,
-  stripe: (path: string) => Promise<{ metadata?: Record<string, string> }>,
+  stripe: (path: string) => Promise<{ metadata?: Record<string, string>; trial_end?: number | null }>,
   save: (payment: Payment) => Promise<void>,
 ) {
   const subscriptionId = objectId(invoice.parent?.subscription_details?.subscription ?? invoice.subscription)
@@ -58,5 +60,7 @@ export async function recordInvoicePayment(
     payment_kind: initial && sub.metadata?.offer === MONTHLY_INTRO_OFFER ? 'introductory'
       : initial ? 'initial' : invoice.billing_reason === 'subscription_cycle' ? 'renewal' : 'adjustment',
     livemode: invoice.livemode,
+    trial_ended_at: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
+    trial_classification_checked: true,
   })
 }

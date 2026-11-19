@@ -6,7 +6,7 @@ import {strict as assert} from 'node:assert'
 const require=createRequire(`${process.env.QA_PACKAGE_DIR||process.cwd()}/package.json`)
 const {chromium}=require('playwright')
 const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{})})
-const fixtures=JSON.parse(await readFile(process.env.CREATOR_PREVIEW_DATA||'/tmp/vt-creator-preview-data.json','utf8'))
+const fixtures=process.env.CREATOR_PREVIEW_DATA?JSON.parse(await readFile(process.env.CREATOR_PREVIEW_DATA,'utf8')):(await import('../src/dev/creatorDashboardPreview.ts')).creatorPreview.creators
 const output=process.env.CREATOR_SCREENSHOT_DIR||'/tmp'
 let mode='owner'
 try{
@@ -30,21 +30,21 @@ try{
  })
  const page=await context.newPage()
  await page.goto('http://127.0.0.1:5210/app/creator-dashboard')
- await page.getByRole('heading',{name:'Referral overview',exact:true}).waitFor()
- assert.equal(await page.locator('.creator-roster button').count(),21)
- await page.getByRole('button',{name:/Anthony Babin/}).click()
- assert.deepEqual(await page.locator('.creator-metrics strong').allTextContents(),['16','0','0'])
- await page.screenshot({path:output+'/creator-dashboard-desktop.png',fullPage:true})
+ await page.getByRole('heading',{name:'Creator referrals',exact:true}).waitFor()
+ assert.equal(await page.getByRole('combobox',{name:'Creator',exact:true}).locator('option').count(),21)
+ await page.getByRole('combobox',{name:'Creator',exact:true}).selectOption('anthony')
+ assert.deepEqual(await page.locator('.creator-stats strong').allTextContents(),['16','0','0','0'])
+ await page.screenshot({path:output+'/creator-referrals-desktop.png',fullPage:true})
  mode='creator'
  await page.getByRole('button',{name:'Refresh',exact:true}).click()
- await page.waitForFunction(()=>document.querySelectorAll('.creator-roster button').length===1)
+ await page.getByRole('heading',{name:'Anthony Babin',exact:true}).waitFor()
  await page.setViewportSize({width:390,height:844})
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false)
- await page.screenshot({path:output+'/creator-dashboard-mobile.png',fullPage:true})
+ await page.screenshot({path:output+'/creator-referrals-mobile.png',fullPage:true})
  mode='denied'
  await page.getByRole('button',{name:'Refresh',exact:true}).click()
- await page.getByRole('heading',{name:'This workspace is invite-only'}).waitFor()
- assert.equal(await page.locator('.creator-metrics').count(),0)
+ await page.getByText('This account doesn’t have access.',{exact:true}).waitFor()
+ assert.equal(await page.locator('.creator-stats').count(),0)
  console.log('PASS: owner roster, creator-only results, recorded metrics, mobile layout, and access-denied state')
  await context.close()
 }finally{await browser.close()}

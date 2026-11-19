@@ -12,10 +12,12 @@ Source roster: Visible Trader Expenses / Post Tracker (21 creators, read Nov 18,
 
 ## Metrics
 
-- Clicks are referral-link visits, not unique people. Repeat visits count. Unusually rapid bursts from one network are capped at 30/minute. This is browser link tracking, not fraud-proof commission evidence.
-- Signups are accounts carrying canonical creator attribution, independent of onboarding.
-- Paying subscribers are distinct payer IDs with at least one positive paid live subscription invoice, including introductory offers. Renewals don't create another customer. A separate figure shows accounts with at least one non-introductory payment. Refunds/cancellation don't erase the fact of a historical successful payment; these are not active subscriber or commission totals.
-- Click history is imported from PostHog by raw referral code and resolved through canonical aliases (creator properties were sometimes missing). Each history row has an explicit measurement cutoff; only database click events after that cutoff are added. Creators with no imported history show unavailable rather than false zero. New links start at zero when introduced. Dates for historical clicks are not necessarily the same as signup/payment lifetime coverage; no conversion rates are displayed.
+- Clicks: referral visits, including repeats.
+- Signups: accounts with the creator's saved attribution.
+- On trial: unique accounts whose current subscription is live, trialing, and has a trial end in the future. Introductory payments do not convert them to paid subscribers.
+- Converted: unique accounts with a positive successful recurring-cycle invoice paid after that subscription's trial ended. A $1 introduction, a failed or zero-value invoice, a direct non-trial subscription, and a proration do not count. Renewals count the person once; cancellation does not erase a past conversion.
+
+The API returns null while relevant historical trial data has not been reconciled. The UI shows a dash instead of an invented zero. Current trial counts and lifetime conversion counts are separate, not an implied same-cohort conversion rate. Invoice-paid history is not net revenue or a commission calculator.
 
 ## Click ingestion
 
@@ -23,7 +25,7 @@ Source roster: Visible Trader Expenses / Post Tracker (21 creators, read Nov 18,
 
 ## Rollout
 
-1. Apply the private_creator_dashboard migration first.
+1. Apply both private_creator_dashboard and creator_trial_conversions migrations first, then deploy the updated Stripe webhook. Run the trial-aware reconciliation script to classify historical invoices and current/free trials before treating reports as complete. No billing amounts, pricing, or subscription access statuses are changed by reconciliation.
 2. Apply creator grants from the owner-authorized Creator Info email mapping, using service-role/SQL admin access. Never publish this seed file in frontend code.
 3. Deploy `record-creator-click` with JWT verification disabled (intentional public visit ingestion; server-held service key is never returned).
 4. Import the legacy PostHog click snapshot with a fixed cutoff immediately before frontend rollout. Keep the source query/cutoff for audit. New links have no earlier history.
@@ -38,3 +40,7 @@ npm run build
 ```
 
 Browser QA uses an isolated context and mocked backend. Fixture data is local to tests and never shipped as a bypass. Start Vite with dummy Supabase URL `https://creator-preview.supabase.co`, anon key `qa-anon`, PostHog token `qa-token`, host `http://127.0.0.1:5210/analytics`, and `VITE_USE_PROD_DB=false`, on port 5210. Run `scripts/creator-dashboard-browser.test.mjs` with QA_PACKAGE_DIR (temporary Playwright installation), optional CHROMIUM_PATH, and CREATOR_PREVIEW_DATA pointing to a local report fixture array. CREATOR_SCREENSHOT_DIR selects the screenshot destination.
+
+## Local preview
+
+Use `http://127.0.0.1:5210/app/creator-dashboard?preview=1` with the dummy-backend Vite dev server. The local-only recorded snapshot is dynamically imported behind `import.meta.env.DEV`; it cannot bypass production authentication. Unknown historical conversions show a dash. Owner/creator preview selection is local UI only and makes no permission changes. The page uses the same Navbar, Footer, legal/blog container, status banner/list, Manrope font and brand tokens as the public status page.
