@@ -7,7 +7,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { recordInvoicePayment } from './payments.ts'
 import { subscriptionForAccess } from './subscription.ts'
-import { sendTrialEndingEmail } from './email.ts'
+import { sendChargeReceiptEmail, sendTrialEndingEmail } from './email.ts'
 
 async function verifyStripeSignature(payload: string, sigHeader: string | null, secret: string): Promise<boolean> {
   if (!sigHeader) return false
@@ -92,6 +92,46 @@ Deno.serve(async (req) => {
     if (error) throw error
   }
 
+  // Receipt with a refund path for full-price charges only: the first charge
+  // after the trial and each renewal, never the $1 intro. Best-effort, so a
+  // Resend outage can't make Stripe retry the whole event.
+  type ReceiptInvoice = {
+    id: string
+    created: number
+    billing_reason?: string | null
+    amount_paid?: number
+    currency?: string
+    customer_email?: string | null
+    status_transitions?: { paid_at?: number | null }
+  }
+  const sendReceipt = async (invoice: ReceiptInvoice, subscriptionId: string) => {
+    if (invoice.billing_reason !== 'subscription_cycle' || (invoice.amount_paid ?? 0) < 1000) return
+    const apiKey = Deno.env.get('RESEND_API_KEY')
+    const toEmail = invoice.customer_email
+    if (!apiKey || !toEmail) return
+    try {
+      const sub = await stripe(`/subscriptions/${subscriptionId}`)
+      const appUrl = Deno.env.get('APP_URL') || 'https://app.visibletrader.com'
+      const paidAt = invoice.status_transitions?.paid_at ?? invoice.created
+      await sendChargeReceiptEmail(
+        apiKey,
+        Deno.env.get('RESEND_FROM') || 'Visible Trader <billing@visibletrader.com>',
+        {
+          toEmail,
+          amountCents: invoice.amount_paid ?? 0,
+          currency: invoice.currency ?? 'usd',
+          interval: sub.items?.data?.[0]?.price?.recurring?.interval ?? 'month',
+          paidAtIso: new Date(paidAt * 1000).toISOString(),
+          manageUrl: `${appUrl}/settings`,
+          refundUrl: `${appUrl}/settings?refund=1`,
+        },
+        invoice.id,
+      )
+    } catch (err) {
+      console.error('charge receipt email failed:', err)
+    }
+  }
+
   try {
     switch (event.type) {
       case 'checkout.session.completed':
@@ -121,6 +161,7 @@ Deno.serve(async (req) => {
             })
           }
           await syncSubscription(id, true)
+          if (event.type === 'invoice.paid') await sendReceipt(invoice, id)
         }
         break
       }
