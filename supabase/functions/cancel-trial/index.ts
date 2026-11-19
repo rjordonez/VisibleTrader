@@ -5,6 +5,7 @@
 // isn't currently trialing, specifically to prevent it being used as a
 // backdoor immediate-cancel for paid periods.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { membershipRow, membershipStatus, whopConfig, whopFetch } from '../_shared/whop.ts'
 
 const corsHeaders = {
   'access-control-allow-origin': '*',
@@ -44,9 +45,41 @@ Deno.serve(async (req) => {
     )
     const { data: sub } = await supabase
       .from('subscriptions')
-      .select('stripe_subscription_id, status')
+      .select('stripe_subscription_id, status, provider, whop_membership_id')
       .eq('user_id', user.id)
       .maybeSingle()
+
+    // Whop customers. During the $1 trial: cancel immediately (access ends now
+    // and the $160 is never charged), matching the Stripe trial cancel. After
+    // a full-price charge: cancel at period end so they keep what they paid
+    // for, with { undo: true } to reverse it. Whop's cancel is immediate unless
+    // cancel_at_period_end: true is sent, so both cases pass it explicitly.
+    if (sub?.provider === 'whop' && sub.whop_membership_id) {
+      const whop = whopConfig((name) => Deno.env.get(name))
+      if (!whop) throw new Error('whop not configured')
+      const body = await req.json().catch(() => ({})) as { undo?: boolean }
+      const before = await whopFetch(whop, `/memberships/${sub.whop_membership_id}`)
+      const inTrial = membershipStatus(before) === 'trialing'
+      if (body.undo) {
+        await whopFetch(whop, `/memberships/${sub.whop_membership_id}`, { method: 'PATCH', body: { cancel_at_period_end: false } })
+      } else {
+        await whopFetch(whop, `/memberships/${sub.whop_membership_id}/cancel`, {
+          method: 'POST',
+          body: { cancel_at_period_end: !inTrial, reason: 'Canceled from Visible Trader settings' },
+        })
+      }
+      const m = await whopFetch(whop, `/memberships/${sub.whop_membership_id}`)
+      const row = membershipRow(m)
+      // An immediate trial cancel must lock the app now, even if Whop still
+      // reports the membership as active for a moment.
+      if (!body.undo && inTrial) row.status = 'canceled'
+      const { error: rowError } = await supabase.from('subscriptions')
+        .update(row).eq('user_id', user.id).eq('whop_membership_id', sub.whop_membership_id)
+      if (rowError) throw rowError
+      return new Response(JSON.stringify({ canceled: !body.undo, immediate: !body.undo && inTrial, cancel_at_period_end: !!m.cancel_at_period_end, provider: 'whop' }), {
+        headers: { ...corsHeaders, 'content-type': 'application/json' },
+      })
+    }
 
     if (!sub?.stripe_subscription_id) {
       return new Response(JSON.stringify({ error: 'no subscription on file' }), {
