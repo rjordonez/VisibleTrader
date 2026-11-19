@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert'
-import { checkoutLineItems, MONTHLY_INTRO_OFFER, type CheckoutConfig } from './checkout.ts'
+import { checkoutLineItems, MONTHLY_INTRO_OFFER, threeDSTestArm, threeDSTestParams, type CheckoutConfig } from './checkout.ts'
 
 const config: CheckoutConfig = {
   monthlyPrice: 'price_monthly', introPrice: 'price_intro', weeklyPrice: 'price_weekly',
@@ -21,4 +21,20 @@ Deno.test('arbitrary client prices and unknown offers are rejected', () => {
   assert.throws(() => checkoutLineItems({ price_id: 'price_attacker' }, config))
   assert.throws(() => checkoutLineItems({ offer: 'free' }, config))
   assert.throws(() => checkoutLineItems({ offer: MONTHLY_INTRO_OFFER }, { ...config, introPrice: undefined }), /not configured/)
+})
+Deno.test('3DS test is off unless enabled', () => {
+  assert.equal([...threeDSTestParams('user-1', false)].length, 0)
+})
+Deno.test('3DS test assigns a stable group and only B requests 3DS', () => {
+  const ids = Array.from({ length: 400 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`)
+  let b = 0
+  for (const id of ids) {
+    const p = threeDSTestParams(id, true)
+    const arm = p.get('metadata[tds_test_v1]')
+    assert.equal(arm, threeDSTestArm(id))
+    assert.equal(p.get('subscription_data[metadata][tds_test_v1]'), arm)
+    assert.equal(p.get('payment_method_options[card][request_three_d_secure]'), arm === 'B' ? 'any' : null)
+    if (arm === 'B') b++
+  }
+  assert.ok(b > 150 && b < 250, `split should be near even, got ${b}/400`)
 })
