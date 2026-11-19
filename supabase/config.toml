@@ -27,3 +27,7 @@ verify_jwt = false
 [functions.analyze-market]
 # Validates the caller with auth.getUser and checks their subscription.
 verify_jwt = false
+
+[functions.record-creator-click]
+# Public visit ingestion only; aggregation stays behind an authenticated allowlist.
+verify_jwt = false

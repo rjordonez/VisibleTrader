@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
-import { getReferralCode } from './lib/domains'
+import { dashboardPath, getReferralCode } from './lib/domains'
 
 // Runs on every authenticated app entry, including pricing, before onboarding.
 // OAuth cannot send custom user metadata to Supabase: claim the referral on the
@@ -23,6 +23,15 @@ export default function SignupAttribution({ children }: { children: React.ReactN
         if (data.session) {
           const result = await supabase.rpc('capture_signup_referral', { p_code: getReferralCode() })
           if (result.error) throw result.error
+        }
+        if (!cancelled && current === sequence && data.session) {
+          try {
+            if (sessionStorage.getItem('creator-dashboard-return') === '1') {
+              sessionStorage.removeItem('creator-dashboard-return')
+              window.location.replace(dashboardPath('/creator-dashboard'))
+              return
+            }
+          } catch { /* Storage blocked: normal app routing remains available. */ }
         }
         if (!cancelled && current === sequence) { resolvedUser.current = data.session?.user.id ?? null; setFailed(false); setReady(true) }
       } catch {
