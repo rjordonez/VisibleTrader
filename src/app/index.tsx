@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Suspense, lazy } from 'react'
 import { Routes, Route, Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Newspaper, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X, Sparkles } from 'lucide-react'
+import { Newspaper, TrendingUp, Trophy, Bell, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, CalendarDays, BarChart3, Menu, X, Sparkles, Settings } from 'lucide-react'
 import { supabase, isProdDb } from '../lib/supabase'
 import { dashboardPath } from '../lib/domains'
 import { useSubscriptionGate } from '../lib/subscriptionGate'
@@ -171,6 +171,7 @@ const terminalNavItem = { id: 'terminal', label: 'Terminal', path: '/terminal', 
 // still reachable from the sidebar/desktop.
 const personalNavItems = [
   { id: 'journal', label: 'Journal', path: '/journal', Icon: CalendarDays },
+  { id: 'settings', label: 'Settings', path: '/settings', Icon: Settings },
 ]
 
 // Wraps TraderDetailPage so it can live at a real /trader/:wallet URL —
