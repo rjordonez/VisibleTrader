@@ -87,9 +87,16 @@ Deno.serve(async (req) => {
     if (isWhop) {
       const whop = whopConfig((name) => Deno.env.get(name))
       if (!whop) throw new Error('whop not configured')
-      const payments = await whopFetch(whop,
-        `/payments?account_id=${whop.accountId}&membership_id=${sub.whop_membership_id}&statuses=paid&first=10`)
-      charge = latestRefundableCharge((payments.data ?? []).map(whopPaymentAsInvoice(whop.baseUrl)))
+      // A lookup failure (e.g. a membership from another Whop environment)
+      // means "no charge we can find", not a broken page.
+      try {
+        const payments = await whopFetch(whop,
+          `/payments?account_id=${whop.accountId}&membership_id=${sub.whop_membership_id}&statuses=paid&first=10`)
+        charge = latestRefundableCharge((payments.data ?? []).map(whopPaymentAsInvoice(whop.baseUrl)))
+      } catch (err) {
+        console.error('whop payment lookup failed', sub.whop_membership_id, err)
+        charge = null
+      }
     } else {
       const invoicesRes = await fetch(
         `https://api.stripe.com/v1/invoices?customer=${encodeURIComponent(sub.stripe_customer_id!)}&status=paid&limit=10`,
