@@ -351,7 +351,11 @@ export default function AppShell() {
           so the track record reads clearly instead of washing out under
           this blur + the overlay's own backdrop-blur stacked on top. */}
       {(() => {
-        const pageBlurred = locked && location.pathname !== dashboardPath('/')
+        // Settings stays usable when locked so past-due or canceled customers
+        // can still manage billing or request a refund instead of disputing.
+        const pageBlurred = locked
+          && location.pathname !== dashboardPath('/')
+          && location.pathname !== dashboardPath('/settings')
         return (
           <main className={`app-main ${pageBlurred ? 'app-main-locked' : ''}`}>
             <div className={pageBlurred ? 'search-locked-bg' : undefined}>
