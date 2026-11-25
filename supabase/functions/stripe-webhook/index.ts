@@ -7,7 +7,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { recordInvoicePayment } from './payments.ts'
 import { subscriptionForAccess } from './subscription.ts'
-import { sendChargeReceiptEmail, sendTrialEndingEmail } from './email.ts'
+import { sendChargeReceiptEmail, sendEmail } from './email.ts'
+import { fraudNoticeEmail, refundDecision, subscriptionsToCancel, type ChargeLike, type FraudWarning } from './fraud.ts'
 
 async function verifyStripeSignature(payload: string, sigHeader: string | null, secret: string): Promise<boolean> {
   if (!sigHeader) return false
@@ -60,6 +61,85 @@ Deno.serve(async (req) => {
     const result = await response.json()
     if (!response.ok) throw new Error(result.error?.message || 'Stripe subscription lookup failed')
     return result
+  }
+
+  // Form-encoded POST (Stripe's write API) with an idempotency key, so a
+  // redelivered event can't refund or block twice.
+  const stripePost = async (path: string, params: Record<string, string>, idempotencyKey?: string) => {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${Deno.env.get('STRIPE_SECRET_KEY')}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    }
+    if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey
+    const response = await fetch(`https://api.stripe.com/v1${path}`, { method: 'POST', headers, body: new URLSearchParams(params).toString() })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error?.message || `Stripe POST ${path} failed`)
+    return result
+  }
+
+  // Early fraud warning: refund the charge before it becomes a dispute, cancel
+  // anything that could bill this customer again, block the card and email,
+  // and tell the support inbox. The refund is the step that matters, so its
+  // failure is thrown (Stripe retries the event); the rest is best-effort.
+  const handleFraudWarning = async (efw: FraudWarning) => {
+    const charge: ChargeLike = await stripe(`/charges/${efw.charge}`)
+    const decision = refundDecision(efw, charge)
+    if (decision.refund) {
+      await stripePost('/refunds', {
+        charge: charge.id,
+        reason: 'fraudulent',
+        'metadata[early_fraud_warning]': efw.id,
+      }, `efw-refund-${efw.id}`)
+    }
+
+    const canceled: string[] = []
+    const blocked: string[] = []
+    try {
+      if (charge.customer) {
+        const subs = await stripe(`/subscriptions?customer=${charge.customer}&status=all&limit=20`)
+        for (const id of subscriptionsToCancel(subs.data ?? [])) {
+          await stripe(`/subscriptions/${id}`, 'DELETE')
+          canceled.push(id)
+        }
+      }
+    } catch (err) {
+      console.error('fraud warning: subscription cancel failed', efw.id, err)
+    }
+
+    const email = charge.billing_details?.email || charge.receipt_email || null
+    const block = async (alias: string, value: string | null | undefined, label: string) => {
+      if (!value) return
+      try {
+        const lists = await stripe(`/radar/value_lists?alias=${alias}`)
+        const listId = lists.data?.[0]?.id
+        if (!listId) return
+        await stripePost('/radar/value_list_items', { value_list: listId, value }, `efw-block-${alias}-${efw.id}`)
+        blocked.push(label)
+      } catch (err) {
+        // Already on the list is fine.
+        console.error('fraud warning: block failed', alias, (err as Error).message)
+      }
+    }
+    await block('card_fingerprint_blocklist', charge.payment_method_details?.card?.fingerprint, 'card')
+    await block('email_blocklist', email, 'email')
+
+    const apiKey = Deno.env.get('RESEND_API_KEY')
+    if (apiKey) {
+      try {
+        const { subject, html } = fraudNoticeEmail({
+          warningId: efw.id, fraudType: efw.fraud_type ?? 'unknown', chargeId: charge.id,
+          amountCents: charge.amount, currency: charge.currency, email,
+          refunded: decision.refund, why: decision.why, canceled, blocked,
+        })
+        await sendEmail(apiKey, {
+          from: Deno.env.get('RESEND_FROM') || 'Visible Trader <billing@visibletrader.com>',
+          to: Deno.env.get('REFUND_REQUEST_TO') || 'hq@visibletrader.com',
+          subject, html,
+        }, `efw-notice-${efw.id}`)
+      } catch (err) {
+        console.error('fraud warning notice failed', efw.id, err)
+      }
+    }
   }
 
   const syncSubscription = async (id: string, onlyIfCurrent = false) => {
@@ -172,51 +252,8 @@ Deno.serve(async (req) => {
         }
         break
       }
-      // Fires ~3 days before a trial converts to its first real charge. That's
-      // where ~all disputes land ("unrecognized" / "I cancelled"), so remind the
-      // customer of the amount, date, and how to cancel before they're billed.
-      case 'customer.subscription.trial_will_end': {
-        const sub = event.data.object
-        // Already cancelled or scheduled to cancel → they won't be charged, so
-        // no reminder (and no nagging someone who already left).
-        if (sub.status !== 'trialing' || sub.cancel_at_period_end || sub.canceled_at) break
-
-        const item = sub.items?.data?.[0]
-        const price = item?.price
-        const amountCents = (price?.unit_amount ?? 0) * (item?.quantity ?? 1)
-        if (!amountCents || !sub.trial_end) break
-
-        const apiKey = Deno.env.get('RESEND_API_KEY')
-        if (!apiKey) {
-          console.error('RESEND_API_KEY not set — skipping trial reminder for', sub.id)
-          break
-        }
-
-        // Best-effort: a Resend outage must not return non-2xx, or Stripe would
-        // retry the whole event and re-run the other handlers above.
-        try {
-          const customer = await stripe(`/customers/${sub.customer}`)
-          const toEmail = customer?.email
-          if (!toEmail) {
-            console.error('no customer email — skipping trial reminder for', sub.id)
-            break
-          }
-          const appUrl = Deno.env.get('APP_URL') || 'https://app.visibletrader.com'
-          await sendTrialEndingEmail(
-            apiKey,
-            Deno.env.get('RESEND_FROM') || 'Visible Trader <billing@visibletrader.com>',
-            {
-              toEmail,
-              amountCents,
-              currency: price?.currency ?? 'usd',
-              interval: price?.recurring?.interval ?? 'month',
-              trialEndIso: new Date(sub.trial_end * 1000).toISOString(),
-              cancelUrl: `${appUrl}/settings`,
-            },
-          )
-        } catch (err) {
-          console.error('trial reminder email failed:', err)
-        }
+      case 'radar.early_fraud_warning.created': {
+        await handleFraudWarning(event.data.object)
         break
       }
       case 'customer.subscription.deleted': {
