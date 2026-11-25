@@ -7,7 +7,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { recordInvoicePayment } from './payments.ts'
 import { subscriptionForAccess } from './subscription.ts'
-import { sendChargeReceiptEmail, sendTrialEndingEmail } from './email.ts'
+import { sendChargeReceiptEmail } from './email.ts'
 
 async function verifyStripeSignature(payload: string, sigHeader: string | null, secret: string): Promise<boolean> {
   if (!sigHeader) return false
@@ -169,53 +169,6 @@ Deno.serve(async (req) => {
           }
           await syncSubscription(id, true)
           if (event.type === 'invoice.paid') await sendReceipt(invoice, id)
-        }
-        break
-      }
-      // Fires ~3 days before a trial converts to its first real charge. That's
-      // where ~all disputes land ("unrecognized" / "I cancelled"), so remind the
-      // customer of the amount, date, and how to cancel before they're billed.
-      case 'customer.subscription.trial_will_end': {
-        const sub = event.data.object
-        // Already cancelled or scheduled to cancel → they won't be charged, so
-        // no reminder (and no nagging someone who already left).
-        if (sub.status !== 'trialing' || sub.cancel_at_period_end || sub.canceled_at) break
-
-        const item = sub.items?.data?.[0]
-        const price = item?.price
-        const amountCents = (price?.unit_amount ?? 0) * (item?.quantity ?? 1)
-        if (!amountCents || !sub.trial_end) break
-
-        const apiKey = Deno.env.get('RESEND_API_KEY')
-        if (!apiKey) {
-          console.error('RESEND_API_KEY not set — skipping trial reminder for', sub.id)
-          break
-        }
-
-        // Best-effort: a Resend outage must not return non-2xx, or Stripe would
-        // retry the whole event and re-run the other handlers above.
-        try {
-          const customer = await stripe(`/customers/${sub.customer}`)
-          const toEmail = customer?.email
-          if (!toEmail) {
-            console.error('no customer email — skipping trial reminder for', sub.id)
-            break
-          }
-          const appUrl = Deno.env.get('APP_URL') || 'https://app.visibletrader.com'
-          await sendTrialEndingEmail(
-            apiKey,
-            Deno.env.get('RESEND_FROM') || 'Visible Trader <billing@visibletrader.com>',
-            {
-              toEmail,
-              amountCents,
-              currency: price?.currency ?? 'usd',
-              interval: price?.recurring?.interval ?? 'month',
-              trialEndIso: new Date(sub.trial_end * 1000).toISOString(),
-              cancelUrl: `${appUrl}/settings`,
-            },
-          )
-        } catch (err) {
-          console.error('trial reminder email failed:', err)
         }
         break
       }
