@@ -10,6 +10,18 @@ export interface CheckoutConfig {
   legacyCheckoutEnabled: boolean
 }
 
+// New checkouts don't accept Discover: it was ~6% of revenue but nearly a
+// quarter of disputes, and Discover sends no early fraud warnings and isn't
+// covered by Visa RDR / Mastercard Ethoca. Existing Discover customers keep
+// renewing on their saved card. Remove the brand here to accept it again.
+export const BLOCKED_CARD_BRANDS = ['discover_global_network']
+
+export function blockedBrandParams(brands: string[] = BLOCKED_CARD_BRANDS): URLSearchParams {
+  const params = new URLSearchParams()
+  brands.forEach((brand, i) => params.set(`payment_method_options[card][restrictions][brands_blocked][${i}]`, brand))
+  return params
+}
+
 export const THREE_DS_TEST = 'tds_test_v1'
 
 // 3D Secure A/B test. Assignment hashes the user id so a person who reopens
