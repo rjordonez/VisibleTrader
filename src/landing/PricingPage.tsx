@@ -38,6 +38,9 @@ export default function PricingPage() {
   const [checkingOut, setCheckingOut] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
+  // Set when checkout refuses because the customer's existing subscription is
+  // past due: they pay that bill instead of starting a second subscription.
+  const [pastDue, setPastDue] = useState<{ url: string | null } | null>(null)
   // Redeeming requires an authenticated auth.uid() (see
   // redeem_access_code in supabase/migrations/20260925120000_access_codes.sql)
   // — hide the link entirely for an anonymous visitor rather than let them
@@ -88,6 +91,12 @@ export default function PricingPage() {
     const { data, error } = await supabase.functions.invoke('create-checkout-session', {
       body: { offer },
     })
+    if (!error && data?.reason === 'past_due') {
+      setCheckingOut(false)
+      setPastDue({ url: typeof data.pay_url === 'string' ? data.pay_url : null })
+      posthog.capture('checkout_blocked_past_due')
+      return
+    }
     if (error || !data?.url) {
       setCheckingOut(false)
       setCheckoutError('Could not start checkout — please try again in a moment.')
@@ -159,6 +168,15 @@ export default function PricingPage() {
               )}
               {plan.highlighted && checkoutError && (
                 <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>{checkoutError}</p>
+              )}
+              {plan.highlighted && pastDue && (
+                <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                  Your last payment didn't go through, so your subscription is on hold.{' '}
+                  <a href={pastDue.url ?? appUrl('/settings')} style={{ color: 'inherit', textDecoration: 'underline' }}>
+                    {pastDue.url ? 'Pay your open bill' : 'Update your card in Settings'}
+                  </a>{' '}
+                  to get your access back.
+                </p>
               )}
 
               <div className="hero-rating pricing-rating">

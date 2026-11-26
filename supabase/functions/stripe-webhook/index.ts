@@ -7,6 +7,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { recordInvoicePayment } from './payments.ts'
 import { subscriptionForAccess } from './subscription.ts'
+import { shouldReplaceRecord } from './record.ts'
 import { sendChargeReceiptEmail, sendEmail } from './email.ts'
 import { fraudNoticeEmail, refundDecision, subscriptionsToCancel, type ChargeLike, type FraudWarning } from './fraud.ts'
 
@@ -157,9 +158,25 @@ Deno.serve(async (req) => {
     // A user who now pays through Whop must not be overwritten by a late or
     // replayed event from an old Stripe subscription.
     const { data: currentRow, error: currentError } = await supabase.from('subscriptions')
-      .select('provider, status').eq('user_id', userId).maybeSingle()
+      .select('provider, status, stripe_subscription_id').eq('user_id', userId).maybeSingle()
     if (currentError) throw currentError
     if (currentRow?.provider === 'whop' && ['trialing', 'active', 'past_due'].includes(currentRow.status ?? '')) return
+    // The row points at a different Stripe subscription: only take it over
+    // if this one is at least as live (see record.ts). Read the other one's
+    // current state from Stripe, since the row's copy can itself be stale.
+    const currentId = currentRow?.provider === 'stripe' ? currentRow.stripe_subscription_id : null
+    if (currentId && currentId !== sub.id) {
+      let current: { id: string; status: string; created?: number } | null = null
+      try {
+        current = await stripe(`/subscriptions/${currentId}`)
+      } catch (err) {
+        console.error('could not read the subscription on record; letting this event replace it', currentId, err)
+      }
+      if (!shouldReplaceRecord(current, sub)) {
+        console.log('keeping row on', currentId, `(${current?.status}); ignoring`, sub.id, `(${sub.status})`)
+        return
+      }
+    }
     const item = sub.items?.data?.[0]
     const periodEnd = item?.current_period_end ?? sub.current_period_end
     const { error } = await supabase.from('subscriptions').upsert({

@@ -1,0 +1,24 @@
+name: Duplicate subscription check
+
+# Once a day, ask the duplicate-subscription-check function to email hq@ about
+# any customer with more than one live Stripe subscription. The function
+# changes nothing; it only reports.
+on:
+  schedule:
+    # 7am PT / 3pm UTC daily, before most trials convert to their first charge
+    - cron: '0 15 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run the check
+        env:
+          CHECK_SECRET: ${{ secrets.DUPLICATE_CHECK_SECRET }}
+        run: |
+          status=$(curl -sS -o out.json -w '%{http_code}' -X POST \
+            -H "x-check-secret: $CHECK_SECRET" \
+            https://vohtqodprqpobvvcdypy.supabase.co/functions/v1/duplicate-subscription-check)
+          cat out.json; echo
+          test "$status" = 200
