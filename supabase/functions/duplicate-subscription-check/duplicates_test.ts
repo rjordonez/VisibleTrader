@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert'
-import { duplicatesEmail, findDuplicates, type LiveSub } from './duplicates.ts'
+import { duplicatesEmail, findDuplicates, ignoreList, type LiveSub } from './duplicates.ts'
 
 const s = (id: string, user: string | undefined, status: string, created: number): LiveSub => ({
   id, status, created, customer: 'cus_' + id,
@@ -28,4 +28,10 @@ Deno.test('email lists each customer and escapes what it shows', () => {
   assert.match(html, /&lt;b&gt;a@b\.co&lt;\/b&gt;/)
   assert.match(html, /dashboard\.stripe\.com\/subscriptions\/x1/)
   assert.match(html, /\$160\/month/)
+})
+
+Deno.test('users on the ignore list are left out of the alert', () => {
+  const subs = [s('a1', 'u1', 'active', 1), s('a2', 'u1', 'active', 2), s('b1', 'u2', 'active', 1), s('b2', 'u2', 'trialing', 2)]
+  assert.deepEqual(findDuplicates(subs, ignoreList(' u1 ,')).map((d) => d.userId), ['u2'])
+  assert.deepEqual(findDuplicates(subs, ignoreList(undefined)).map((d) => d.userId), ['u1', 'u2'])
 })

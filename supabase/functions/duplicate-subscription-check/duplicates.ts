@@ -15,11 +15,13 @@ export type LiveSub = {
 
 export type Duplicate = { userId: string; subs: LiveSub[] }
 
-export function findDuplicates(subs: LiveSub[]): Duplicate[] {
+// `ignore` lists users whose extra subscriptions are known and left on
+// purpose, so they don't show up in every day's alert.
+export function findDuplicates(subs: LiveSub[], ignore: ReadonlySet<string> = new Set()): Duplicate[] {
   const byUser = new Map<string, Map<string, LiveSub>>()
   for (const s of subs) {
     const userId = s.metadata?.supabase_user_id
-    if (!userId || !(LIVE_STATUSES as readonly string[]).includes(s.status)) continue
+    if (!userId || ignore.has(userId) || !(LIVE_STATUSES as readonly string[]).includes(s.status)) continue
     if (!byUser.has(userId)) byUser.set(userId, new Map())
     byUser.get(userId)!.set(s.id, s)
   }
@@ -49,4 +51,9 @@ export function duplicatesEmail(dups: Duplicate[], emails: Record<string, string
     subject: `${n} customer${n === 1 ? ' has' : 's have'} more than one live subscription`,
     html: `<p>Each customer below can be charged more than once. Cancel the extra subscription in Stripe (and refund any duplicate charge) before it bills.</p>${rows}`,
   }
+}
+
+// Comma-separated user ids from DUPLICATE_CHECK_IGNORE_USERS.
+export function ignoreList(raw: string | undefined): Set<string> {
+  return new Set((raw ?? '').split(',').map((v) => v.trim()).filter(Boolean))
 }
