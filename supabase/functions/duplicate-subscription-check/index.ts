@@ -4,7 +4,7 @@
 // Action in .github/workflows/duplicate-subscription-check.yml with a shared
 // secret, since a cron job can't carry a user's auth.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { duplicatesEmail, findDuplicates, LIVE_STATUSES, type LiveSub } from './duplicates.ts'
+import { duplicatesEmail, findDuplicates, ignoreList, LIVE_STATUSES, type LiveSub } from './duplicates.ts'
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
   if (!secret || req.headers.get('x-check-secret') !== secret) return json({ error: 'unauthorized' }, 401)
 
   try {
-    const dups = findDuplicates(await listLive())
+    const dups = findDuplicates(await listLive(), ignoreList(Deno.env.get('DUPLICATE_CHECK_IGNORE_USERS')))
     if (dups.length === 0) return json({ duplicates: 0 })
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
