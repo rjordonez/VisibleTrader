@@ -6,6 +6,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { blockedBrandParams, checkoutLineItems, MONTHLY_INTRO_OFFER, threeDSTestParams } from './checkout.ts'
 import { chooseProvider, splitPercent, whopConfig, whopFetch } from '../_shared/whop.ts'
+import { checkoutDecision, stripeSubscriptionsFor } from './existing.ts'
 
 const corsHeaders = {
   'access-control-allow-origin': '*',
@@ -70,15 +71,43 @@ Deno.serve(async (req) => {
     )
     const { data: existing, error: subscriptionError } = await serviceClient
       .from('subscriptions')
-      .select('status')
+      .select('status, provider, stripe_customer_id, whop_manage_url')
       .eq('user_id', user.id)
       .maybeSingle()
     if (subscriptionError) throw subscriptionError
-    if (existing && (existing.status === 'trialing' || existing.status === 'active')) {
-      return new Response(JSON.stringify({ error: 'already subscribed' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'content-type': 'application/json' },
+    const alreadySubscribed = () => new Response(JSON.stringify({ error: 'already subscribed' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'content-type': 'application/json' },
+    })
+    // Past due: send them to pay what they owe on the subscription they have,
+    // never a second subscription that bills alongside the first. 200 so the
+    // client gets the body (supabase-js drops it on errors).
+    const payExistingBill = (url: string | null) => new Response(JSON.stringify({ pay_url: url, reason: 'past_due' }), {
+      headers: { ...corsHeaders, 'content-type': 'application/json' },
+    })
+    if (existing && (existing.status === 'trialing' || existing.status === 'active')) return alreadySubscribed()
+    if (existing?.provider === 'whop' && (existing.status === 'past_due' || existing.status === 'unpaid')) {
+      return payExistingBill(existing.whop_manage_url ?? null)
+    }
+
+    // Our row can point at the wrong subscription, so ask Stripe what this
+    // user really has. A Stripe outage here falls back to the row check above
+    // rather than blocking every checkout.
+    try {
+      const stripeSubs = await stripeSubscriptionsFor(user.id, existing?.stripe_customer_id, async (path) => {
+        const res = await fetch(`https://api.stripe.com/v1${path}`, {
+          headers: { Authorization: `Bearer ${Deno.env.get('STRIPE_SECRET_KEY')}` },
+        })
+        const body = await res.json()
+        if (!res.ok) throw new Error(body.error?.message || `Stripe GET ${path} failed`)
+        return body
       })
+      const decision = checkoutDecision(stripeSubs)
+      if (decision.kind === 'already_subscribed') return alreadySubscribed()
+      if (decision.kind === 'pay_invoice') return payExistingBill(decision.url)
+    } catch (err) {
+      console.error('existing-subscription lookup failed; relying on the subscriptions row', err)
+      if (existing?.status === 'past_due' || existing?.status === 'unpaid') return payExistingBill(null)
     }
 
     // Attribution is frozen in the database, never trusted from request data or

@@ -36,3 +36,8 @@ verify_jwt = false
 [functions.record-creator-click]
 # Public visit ingestion only; aggregation stays behind an authenticated allowlist.
 verify_jwt = false
+
+[functions.duplicate-subscription-check]
+# Called by a scheduled GitHub Action, which can't carry a user's auth; the
+# x-check-secret header check in index.ts is the security boundary.
+verify_jwt = false
