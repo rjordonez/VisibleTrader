@@ -4,6 +4,7 @@ type StripeSubscription = {
   id: string
   customer: string
   status: string
+  created?: number
   livemode?: boolean
   trial_start?: number | null
   trial_end?: number | null
